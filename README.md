@@ -46,6 +46,14 @@ Generates `.deb` in `dist/` for Ubuntu/Debian.
 4. Double-click connection to connect
 5. Click a collection to open it
 
+## Mongo test docker
+
+```bash
+docker run -d --name mongodb-dev -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=secret mongo:7
+
+docker exec -it mongodb-dev mongosh -u admin -p secret --authenticationDatabase admin
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE)

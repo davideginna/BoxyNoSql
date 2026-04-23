@@ -2,6 +2,9 @@ interface StatsViewProps {
   stats: any;
 }
 
+const mb = (n: any) => (typeof n === 'number' ? `${(n / 1024 / 1024).toFixed(2)} MB` : '—');
+const num = (n: any) => (n === undefined || n === null ? '—' : String(n));
+
 export default function StatsView({ stats }: StatsViewProps) {
   if (!stats) {
     return (
@@ -18,23 +21,35 @@ export default function StatsView({ stats }: StatsViewProps) {
     </div>
   );
 
+  const wt = stats.wiredTiger;
+  const lsmSize = wt?.LSM?.['size of all LSM objects'];
+  const cacheBytes = wt?.cache?.['bytes currently in the cache'];
+
   return (
     <div className="tab-pane active" style={{ padding: 24 }}>
       <h3 style={{ marginBottom: 16 }}>Collection Statistics</h3>
       <div>
-        <StatRow label="Documents" value={stats.count} />
-        <StatRow label="Size" value={`${(stats.size / 1024 / 1024).toFixed(2)} MB`} />
-        <StatRow label="Storage Size" value={`${(stats.storageSize / 1024 / 1024).toFixed(2)} MB`} />
-        <StatRow label="Indexes" value={stats.nindexes} />
-        <StatRow label="Total Index Size" value={`${(stats.totalIndexSize / 1024 / 1024).toFixed(2)} MB`} />
-        <StatRow label="Average Object Size" value={stats.avgObjSize} />
-        <StatRow label="Objects per Scan" value={stats.objsPerScan} />
+        <StatRow label="Documents" value={num(stats.count)} />
+        <StatRow label="Size" value={mb(stats.size)} />
+        <StatRow label="Storage Size" value={mb(stats.storageSize)} />
+        <StatRow label="Indexes" value={num(stats.nindexes)} />
+        <StatRow label="Total Index Size" value={mb(stats.totalIndexSize)} />
+        <StatRow label="Average Object Size" value={num(stats.avgObjSize)} />
+        <StatRow label="Capped" value={stats.capped ? 'Yes' : 'No'} />
       </div>
 
-      <h3 style={{ marginTop: 24, marginBottom: 16 }}>WiredTiger Stats</h3>
-      <div>
-        <StatRow label="LSM Size" value={`${(stats.wiredTiger?.['LSM']['size of all LSM objects'] ?? 0) / 1024 / 1024} MB`} />
-      </div>
+      {wt && (
+        <>
+          <h3 style={{ marginTop: 24, marginBottom: 16 }}>WiredTiger Stats</h3>
+          <div>
+            {typeof lsmSize === 'number' && <StatRow label="LSM Size" value={mb(lsmSize)} />}
+            {typeof cacheBytes === 'number' && <StatRow label="Cache Bytes" value={mb(cacheBytes)} />}
+            {typeof lsmSize !== 'number' && typeof cacheBytes !== 'number' && (
+              <div style={{ color: '#888', fontSize: 12 }}>No WiredTiger stats available.</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

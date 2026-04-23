@@ -77,6 +77,33 @@ body.theme-hc {
   --status-text:   #000000;
 }
 
+/* Solarized — caldo, tonalità verde acqua/ocra su deep-teal */
+body.theme-solarized {
+  --bg-primary:    #002b36;
+  --bg-secondary:  #073642;
+  --bg-hover:      #0b4450;
+  --bg-active:     #0d5766;
+  --bg-selected:   #0b4450;
+  --bg-input:      #073642;
+  --border:        #0d4a58;
+  --text-primary:  #eee8d5;
+  --text-secondary:#93a1a1;
+  --accent:        #b58900;
+  --accent-hover:  #cb9b00;
+  --icon-db:       #859900;
+  --icon-col:      #268bd2;
+  --icon-conn:     #cb4b16;
+  --val-str:       #2aa198;
+  --val-num:       #d33682;
+  --val-bool:      #268bd2;
+  --val-null:      #93a1a1;
+  --tree-key:      #b58900;
+  --error:         #dc322f;
+  --success:       #859900;
+  --status-bg:     #b58900;
+  --status-text:   #002b36;
+}
+
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -314,7 +341,22 @@ body {
 }
 .db-tree-toolbar button:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-.tree-chevron { color: var(--text-secondary); font-size: 9px; width: 10px; text-align: center; flex-shrink: 0; }
+.tree-chevron {
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  user-select: none;
+  transition: background 0.08s, color 0.08s;
+}
+.tree-chevron:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .tree-node-header {
   display: flex;
@@ -412,26 +454,33 @@ body {
   padding: 0 8px;
   gap: 2px;
   flex-shrink: 0;
-  align-items: center;
+  align-items: stretch;
+  overflow: hidden;
 }
 .view-switcher button {
   background: none;
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 7px 16px;
+  padding: 6px 14px;
   font-size: 12px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   letter-spacing: 0.02em;
-  transition: color 0.1s;
+  line-height: 18px;
+  box-sizing: border-box;
+  border-radius: 4px 4px 0 0;
+  transition: color 0.1s, background 0.1s;
+  white-space: nowrap;
 }
-.view-switcher button:hover { color: var(--text-primary); background: var(--bg-hover); border-radius: 4px 4px 0 0; }
+.view-switcher button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 .view-switcher button.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
-  font-weight: 600;
 }
 
 /* ── Tab content ─────────────────────────────────────────────────────────────── */
@@ -802,6 +851,56 @@ button:not(.secondary):not(.icon-btn):not(.ctx-item):not(.view-toggle button):no
 }
 .find-close:hover { color: var(--error); }
 .find-mark { background: #f5a623; color: #000; border-radius: 2px; }
+
+/* JSON syntax highlighting — shared by view & edit modals */
+.jk { color: #9cdcfe; }              /* keys */
+.js { color: #ce9178; }              /* strings */
+.jn { color: #b5cea8; }              /* numbers */
+.jb { color: #569cd6; }              /* booleans */
+.jl { color: #c586c0; }              /* null */
+.jo { color: #4ec9b0; }              /* ObjectId / ISODate wrappers */
+
+/* Layered editor: transparent textarea over highlighted <pre> */
+.json-editor-wrap {
+  position: relative;
+  width: 100%;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: #1e1e1e;
+  overflow: hidden;
+}
+.json-editor-hl,
+.json-editor-ta {
+  margin: 0;
+  padding: 12px;
+  width: 100%;
+  height: 100%;
+  border: none;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+  box-sizing: border-box;
+}
+.json-editor-hl {
+  position: absolute;
+  inset: 0;
+  color: #cccccc;
+  overflow: auto;
+  pointer-events: none;
+  background: transparent;
+}
+.json-editor-ta {
+  position: relative;
+  color: transparent;
+  caret-color: #ffffff;
+  background: transparent;
+  resize: none;
+  outline: none;
+  overflow: auto;
+}
+.json-editor-ta::selection { background: rgba(58, 108, 160, 0.5); color: transparent; }
 
 /* ── Edit diff panel ─────────────────────────────────────────────────────────── */
 .edit-dirty-badge {

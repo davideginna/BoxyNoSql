@@ -67,7 +67,7 @@ function App() {
   const [showConnModal, setShowConnModal] = useState(false);
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light' | 'hc'>(
+  const [theme, setTheme] = useState<'dark' | 'light' | 'hc' | 'solarized'>(
     () => (localStorage.getItem('theme') as any) || 'dark'
   );
 

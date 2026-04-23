@@ -20,7 +20,7 @@ interface SidebarProps {
   expandedDbs: Set<string>;
   collections: Record<string, string[]>;
   selectedCollection: string | null;
-  theme: 'dark' | 'light' | 'hc';
+  theme: 'dark' | 'light' | 'hc' | 'solarized';
   onAddConnection: () => void;
   onEditConnection: (conn: Connection) => void;
   onDeleteConnection: (id: string) => void;
@@ -46,7 +46,7 @@ interface SidebarProps {
   onMoveFolder: (folderId: string, newParentId: string | undefined) => void;
   onReorderConnections: (conns: Connection[]) => void;
   onReorderFolders: (folders: Folder[]) => void;
-  onThemeChange: (t: 'dark' | 'light' | 'hc') => void;
+  onThemeChange: (t: 'dark' | 'light' | 'hc' | 'solarized') => void;
   onSaveConnection: (conn: Connection) => void;
   style?: React.CSSProperties;
 }
@@ -420,6 +420,7 @@ export default function Sidebar(props: SidebarProps) {
         <button className={theme === 'dark' ? 'active' : ''} onClick={() => onThemeChange('dark')} title="Dark">🌙</button>
         <button className={theme === 'light' ? 'active' : ''} onClick={() => onThemeChange('light')} title="Light">☀️</button>
         <button className={theme === 'hc' ? 'active' : ''} onClick={() => onThemeChange('hc')} title="High contrast">⚡</button>
+        <button className={theme === 'solarized' ? 'active' : ''} onClick={() => onThemeChange('solarized')} title="Solarized">🌊</button>
       </div>
 
       {dbCtxMenu && (

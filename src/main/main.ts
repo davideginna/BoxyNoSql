@@ -62,7 +62,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -87,8 +87,9 @@ ipcMain.handle('show-input', async (_, title: string, defaultValue = '') => {
       parent: mainWindow!, frame: false, alwaysOnTop: true,
       webPreferences: { nodeIntegration: true, contextIsolation: false }
     });
+    const safeTitle = String(title).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]!));
     const html = `<html><body style="margin:0;background:#252526;color:#ccc;font-family:sans-serif;display:flex;flex-direction:column;padding:16px;gap:10px">
-      <label style="font-size:13px">${title}</label>
+      <label style="font-size:13px">${safeTitle}</label>
       <input id="v" value="${defaultValue.replace(/"/g, '&quot;')}" style="background:#3c3c3c;border:1px solid #007acc;color:#ccc;padding:6px 8px;border-radius:4px;font-size:13px;outline:none" />
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button onclick="require('electron').ipcRenderer.send('input-done',null)" style="background:#3c3c3c;border:none;color:#ccc;padding:5px 14px;border-radius:4px;cursor:pointer">Cancel</button>
@@ -97,11 +98,17 @@ ipcMain.handle('show-input', async (_, title: string, defaultValue = '') => {
       <script>document.getElementById('v').select();document.getElementById('v').addEventListener('keydown',e=>{if(e.key==='Enter')require('electron').ipcRenderer.send('input-done',document.getElementById('v').value);if(e.key==='Escape')require('electron').ipcRenderer.send('input-done',null);});</script>
     </body></html>`;
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    ipcMain.once('input-done', (_, value: string | null) => {
-      win.close();
+    let settled = false;
+    const done = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeListener('input-done', listener);
+      if (!win.isDestroyed()) win.close();
       resolve(value);
-    });
-    win.on('closed', () => resolve(null));
+    };
+    const listener = (_e: any, value: string | null) => done(value);
+    ipcMain.on('input-done', listener);
+    win.on('closed', () => done(null));
   });
 });
 
@@ -295,7 +302,8 @@ ipcMain.handle('update-document', async (_, connectionId: string, dbName: string
   if (!client) throw new Error('Not connected');
   let filter: any;
   try { filter = { _id: new ObjectId(docId) }; } catch { filter = { _id: docId }; }
-  const { _id: _removed, ...updateDoc } = update;
+  const { _id: _removed, ...rest } = update;
+  const updateDoc = fromExtJSON(rest);
   await client.db(dbName).collection(collection).replaceOne(filter, updateDoc);
   return { success: true };
 });
@@ -303,7 +311,8 @@ ipcMain.handle('update-document', async (_, connectionId: string, dbName: string
 ipcMain.handle('insert-documents', async (_, connectionId: string, dbName: string, collection: string, docs: any[]) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  const result = await client.db(dbName).collection(collection).insertMany(docs);
+  const prepared = docs.map(d => fromExtJSON(d));
+  const result = await client.db(dbName).collection(collection).insertMany(prepared);
   return { insertedCount: result.insertedCount };
 });
 
@@ -329,7 +338,8 @@ ipcMain.handle('run-query', async (_, connectionId: string, dbName: string, coll
 ipcMain.handle('run-aggregation', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  const docs = await client.db(dbName).collection(collection).aggregate(pipeline).toArray();
+  const prepared = fromExtJSON(pipeline);
+  const docs = await client.db(dbName).collection(collection).aggregate(prepared).toArray();
   return docs.map(v => serializeDoc(v));
 });
 
@@ -371,10 +381,18 @@ ipcMain.handle('export-collection', async (_, connectionId: string, dbName: stri
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const docs = await client.db(dbName).collection(collection).find({}).toArray();
-  if (format === 'json') return JSON.stringify(docs.map(v => serializeDoc(v)), null, 2);
-  if (docs.length === 0) return '';
-  const keys = Object.keys(docs[0]);
-  return [keys.join(','), ...docs.map(doc => keys.map(k => JSON.stringify((doc as any)[k])).join(','))].join('\n');
+  const serialized = docs.map(v => serializeDoc(v));
+  if (format === 'json') return JSON.stringify(serialized, null, 2);
+  if (serialized.length === 0) return '';
+  const keySet = new Set<string>();
+  serialized.forEach(d => Object.keys(d).forEach(k => keySet.add(k)));
+  const keys = Array.from(keySet);
+  const esc = (v: any): string => {
+    if (v === null || v === undefined) return '';
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [keys.join(','), ...serialized.map(doc => keys.map(k => esc((doc as any)[k])).join(','))].join('\n');
 });
 
 // ── Users ─────────────────────────────────────────────────────────────────────

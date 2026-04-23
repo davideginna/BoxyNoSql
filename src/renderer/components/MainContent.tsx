@@ -89,7 +89,7 @@ export default function MainContent({
     const el = tabsRef.current;
     if (!el) return;
     setTabsOverflow(el.scrollHeight > MAX_ROWS * TAB_HEIGHT + 2);
-  });
+  }, [tabs.length]);
 
   if (!activeTabData) {
     return (

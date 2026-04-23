@@ -12,24 +12,31 @@ interface DocumentsViewProps {
   collection: string;
 }
 
-const OPERATORS: { value: Operator; label: string }[] = [
-  { value: '$eq', label: '=' },
-  { value: '$ne', label: '≠' },
-  { value: '$gt', label: '>' },
-  { value: '$gte', label: '≥' },
-  { value: '$lt', label: '<' },
-  { value: '$lte', label: '≤' },
-  { value: '$regex', label: '~' },
-  { value: '$exists', label: 'exists' },
-];
+// Shell-style pretty print: {$oid:"x"} → ObjectId("x"), {$date:"x"} → ISODate("x")
+function prettyDoc(doc: any): string {
+  return JSON.stringify(doc, null, 2)
+    .replace(/\{\s*"\$oid":\s*"([0-9a-fA-F]{24})"\s*\}/g, 'ObjectId("$1")')
+    .replace(/\{\s*"\$date":\s*"([^"\\]+)"\s*\}/g, 'ISODate("$1")');
+}
 
+function normalizePretty(text: string): string {
+  return text
+    .replace(/ObjectId\(\s*"([0-9a-fA-F]{24})"\s*\)/g, '{"$$oid":"$1"}')
+    .replace(/ObjectId\(\s*'([0-9a-fA-F]{24})'\s*\)/g, '{"$$oid":"$1"}')
+    .replace(/ISODate\(\s*"([^"]+)"\s*\)/g, '{"$$date":"$1"}')
+    .replace(/ISODate\(\s*'([^']+)'\s*\)/g, '{"$$date":"$1"}');
+}
 
 function formatJson(raw: string): string {
-  try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
+  try { return prettyDoc(JSON.parse(normalizePretty(raw))); } catch { return raw; }
 }
 
 function validateJson(raw: string): string | null {
-  try { JSON.parse(raw); return null; } catch (e: any) { return e.message; }
+  try { JSON.parse(normalizePretty(raw)); return null; } catch (e: any) { return e.message; }
+}
+
+function parseEditable(raw: string): any {
+  return JSON.parse(normalizePretty(raw));
 }
 
 function escapeRe(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -66,8 +73,8 @@ function diffObjects(orig: any, curr: any, path = ''): DiffEntry[] {
 
 function computeDiff(origJson: string, currJson: string): DiffEntry[] | null {
   try {
-    const orig = JSON.parse(origJson);
-    const curr = JSON.parse(currJson);
+    const orig = parseEditable(origJson);
+    const curr = parseEditable(currJson);
     return diffObjects(orig, curr);
   } catch { return null; }
 }
@@ -77,10 +84,35 @@ function truncate(v: any, max = 60): string {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Single-pass JSON tokenizer → colored HTML. No HTML attr collision.
+function highlightJson(raw: string): string {
+  const safe = escapeHtml(raw);
+  const re = /(ObjectId|ISODate)\(("(?:\\.|[^"\\])*")\)|("(?:\\.|[^"\\])*")(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false|null)\b/g;
+  return safe.replace(re, (_m, wrap, wrapStr, str, colon, num, kw) => {
+    if (wrap) return `<span class="jo">${wrap}(</span><span class="js">${wrapStr}</span><span class="jo">)</span>`;
+    if (str) return colon
+      ? `<span class="jk">${str}</span>${colon}`
+      : `<span class="js">${str}</span>`;
+    if (num) return `<span class="jn">${num}</span>`;
+    if (kw) return kw === 'null'
+      ? `<span class="jl">null</span>`
+      : `<span class="jb">${kw}</span>`;
+    return _m;
+  });
+}
+
 function highlightText(text: string, query: string): string {
-  if (!query) return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return safe.replace(new RegExp(escapeRe(query), 'gi'), m => `<mark class="find-mark">${m}</mark>`);
+  const colored = highlightJson(text);
+  if (!query) return colored;
+  // Highlight find matches on top; match against escaped raw (case-insensitive)
+  // Simple approach: re-highlight using escaped query over the already-colored string;
+  // skip inside tags.
+  const q = escapeRe(escapeHtml(query));
+  return colored.replace(new RegExp(`(${q})(?![^<]*>)`, 'gi'), '<mark class="find-mark">$1</mark>');
 }
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
@@ -157,7 +189,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const goToPage = (pg: number) => { setPage(pg); loadDocuments(buildFilter(conditions, matchAll), limit, pg); };
 
   const openEdit = useCallback((doc: any) => {
-    const json = JSON.stringify(doc, null, 2);
+    const json = prettyDoc(doc);
     setEditingDoc(doc);
     setEditJson(json);
     setOriginalEditJson(json);
@@ -190,7 +222,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     const jsonErr = validateJson(addJson);
     if (jsonErr) { setAddError('Invalid JSON: ' + jsonErr); return; }
     let parsed: any;
-    try { parsed = JSON.parse(addJson); } catch (e: any) { setAddError('Invalid JSON: ' + e.message); return; }
+    try { parsed = parseEditable(addJson); } catch (e: any) { setAddError('Invalid JSON: ' + e.message); return; }
     try {
       const docs = Array.isArray(parsed) ? parsed : [parsed];
       await inv('insert-documents', connectionId, database, collection, docs);
@@ -277,6 +309,13 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         return;
       }
       if (e.ctrlKey && e.key === 'd') { e.preventDefault(); openAddDoc(); return; }
+      if (e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        if (documents.length > 0) setSelectedIndices(new Set(documents.map((_, i) => i)));
+        return;
+      }
       if (e.ctrlKey && e.key === 'c') {
         if (selectedIndices.size > 0) { e.preventDefault(); handleBulkCopy(); }
         return;
@@ -372,7 +411,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     const jsonErr = validateJson(editJson);
     if (jsonErr) { setEditError('Invalid JSON: ' + jsonErr); return; }
     let parsed: any;
-    try { parsed = JSON.parse(editJson); } catch (e: any) { setEditError('Invalid JSON: ' + e.message); return; }
+    try { parsed = parseEditable(editJson); } catch (e: any) { setEditError('Invalid JSON: ' + e.message); return; }
     try {
       await inv('update-document', connectionId, database, collection, idToString(editingDoc._id), parsed);
       setEditingDoc(null);
@@ -417,7 +456,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       { label: '➕  Add field', onClick: () => {
         const updated = { ...doc, newField: '' };
         setEditingDoc(updated);
-        setEditJson(JSON.stringify(updated, null, 2));
+        setEditJson(prettyDoc(updated));
         setEditError(null);
       }},
       { separator: true },
@@ -433,7 +472,6 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   };
 
   const keys = getKeys();
-  const fields = allFields();
   const jsonValid = validateJson(editJson);
 
   const findMatchCount = (text: string, query: string) => {
@@ -441,7 +479,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     return (text.match(new RegExp(escapeRe(query), 'gi')) || []).length;
   };
   const editMatchCount = findMatchCount(editJson, editFind);
-  const viewText = viewingDoc ? JSON.stringify(viewingDoc, null, 2) : '';
+  const viewText = viewingDoc ? prettyDoc(viewingDoc) : '';
   const viewMatchCount = findMatchCount(viewText, viewFind);
 
   const hasSelection = selectedIndices.size > 0;
@@ -781,21 +819,28 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               </div>
               <div className="modal-body">
                 {addError && <div style={{ color: '#f48771', marginBottom: 8, fontSize: 12 }}>{addError}</div>}
-                <textarea
-                  ref={addTextareaRef}
-                  value={addJson}
-                  onChange={e => { setAddJson(e.target.value); setAddError(null); }}
-                  style={{
-                    width: '100%', height: 420,
-                    background: '#1e1e1e', border: `1px solid ${addValid ? '#6b2b2b' : '#3c3c3c'}`,
-                    color: '#cccccc', fontFamily: 'Consolas, Monaco, monospace',
-                    fontSize: 13, padding: 12, resize: 'vertical', borderRadius: 4,
-                  }}
-                  onKeyDown={e => {
-                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleAddSave(); }
-                    if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
-                  }}
-                />
+                <div className="json-editor-wrap" style={{ height: 420, borderColor: addValid ? '#6b2b2b' : '#3c3c3c' }}>
+                  <pre
+                    className="json-editor-hl"
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: highlightJson(addJson) + '\n' }}
+                  />
+                  <textarea
+                    ref={addTextareaRef}
+                    className="json-editor-ta"
+                    value={addJson}
+                    spellCheck={false}
+                    onChange={e => { setAddJson(e.target.value); setAddError(null); }}
+                    onScroll={e => {
+                      const pre = (e.currentTarget.previousSibling as HTMLElement);
+                      if (pre) { pre.scrollTop = e.currentTarget.scrollTop; pre.scrollLeft = e.currentTarget.scrollLeft; }
+                    }}
+                    onKeyDown={e => {
+                      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleAddSave(); }
+                      if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
+                    }}
+                  />
+                </div>
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                   Ctrl+Enter save · Esc close · Paste an array [ ] to insert multiple
                 </div>
@@ -848,21 +893,28 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               )}
               <div className="modal-body">
                 {editError && <div style={{ color: '#f48771', marginBottom: 8, fontSize: 12 }}>{editError}</div>}
-                <textarea
-                  ref={editTextareaRef}
-                  value={editJson}
-                  onChange={e => { setEditJson(e.target.value); setEditError(null); }}
-                  style={{
-                    width: '100%', height: diff && diff.length > 0 ? 340 : 420,
-                    background: '#1e1e1e', border: `1px solid ${jsonValid ? '#6b2b2b' : '#3c3c3c'}`,
-                    color: '#cccccc', fontFamily: 'Consolas, Monaco, monospace',
-                    fontSize: 13, padding: 12, resize: 'vertical', borderRadius: 4,
-                  }}
-                  onKeyDown={e => {
-                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
-                    if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
-                  }}
-                />
+                <div className="json-editor-wrap" style={{ height: diff && diff.length > 0 ? 340 : 420, borderColor: jsonValid ? '#6b2b2b' : '#3c3c3c' }}>
+                  <pre
+                    className="json-editor-hl"
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: highlightJson(editJson) + '\n' }}
+                  />
+                  <textarea
+                    ref={editTextareaRef}
+                    className="json-editor-ta"
+                    value={editJson}
+                    spellCheck={false}
+                    onChange={e => { setEditJson(e.target.value); setEditError(null); }}
+                    onScroll={e => {
+                      const pre = (e.currentTarget.previousSibling as HTMLElement);
+                      if (pre) { pre.scrollTop = e.currentTarget.scrollTop; pre.scrollLeft = e.currentTarget.scrollLeft; }
+                    }}
+                    onKeyDown={e => {
+                      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
+                      if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
+                    }}
+                  />
+                </div>
                 {diff && diff.length > 0 && (
                   <div className="edit-diff-panel">
                     <div className="edit-diff-title">Changes ({diff.length})</div>
