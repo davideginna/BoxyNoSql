@@ -2,16 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import { showConfirm } from '../dialog';
+import { buildFilter, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
 
 type ViewMode = 'table' | 'tree';
-type Operator = '$eq' | '$ne' | '$gt' | '$gte' | '$lt' | '$lte' | '$regex' | '$exists';
-
-interface Condition {
-  id: number;
-  field: string;
-  op: Operator;
-  value: string;
-}
 
 interface DocumentsViewProps {
   connectionId: string;
@@ -30,19 +23,6 @@ const OPERATORS: { value: Operator; label: string }[] = [
   { value: '$exists', label: 'exists' },
 ];
 
-function buildFilter(conditions: Condition[]): any {
-  if (conditions.length === 0) return {};
-  const parts = conditions.map(c => {
-    let val: any = c.value;
-    if (c.op === '$exists') val = c.value !== 'false';
-    else if (val === 'true') val = true;
-    else if (val === 'false') val = false;
-    else if (val === 'null') val = null;
-    else if (val !== '' && !isNaN(Number(val))) val = Number(val);
-    return { [c.field]: { [c.op]: val } };
-  });
-  return parts.length === 1 ? parts[0] : { $and: parts };
-}
 
 function formatJson(raw: string): string {
   try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
@@ -110,7 +90,8 @@ let condId = 0;
 export default function DocumentsView({ connectionId, database, collection }: DocumentsViewProps) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
-  const [showQB, setShowQB] = useState(false);
+  const [showQB, setShowQB] = useState(true);
+  const [matchAll, setMatchAll] = useState(true);
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [limit, setLimit] = useState(20);
   const [page, setPage] = useState(0);
@@ -164,9 +145,9 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     loadDocuments({}, limit, 0);
   }, [connectionId, database, collection]);
 
-  const applyFilter = () => { setPage(0); loadDocuments(buildFilter(conditions), limit, 0); };
+  const applyFilter = () => { setPage(0); loadDocuments(buildFilter(conditions, matchAll), limit, 0); };
   const resetFilter = () => { setConditions([]); setPage(0); loadDocuments({}, limit, 0); };
-  const goToPage = (pg: number) => { setPage(pg); loadDocuments(buildFilter(conditions), limit, pg); };
+  const goToPage = (pg: number) => { setPage(pg); loadDocuments(buildFilter(conditions, matchAll), limit, pg); };
 
   const openEdit = useCallback((doc: any) => {
     const json = JSON.stringify(doc, null, 2);
@@ -207,7 +188,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       const docs = Array.isArray(parsed) ? parsed : [parsed];
       await inv('insert-documents', connectionId, database, collection, docs);
       setShowAddDoc(false);
-      loadDocuments(buildFilter(conditions), limit, page);
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setAddError(err.message); }
   };
 
@@ -250,7 +231,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         inv('delete-document', connectionId, database, collection, String(doc._id))
       ));
       setSelectedIndices(new Set());
-      loadDocuments(buildFilter(conditions), limit, page);
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setError(err.message); }
   }, [selectedIndices, documents, connectionId, database, collection, conditions, limit]);
 
@@ -270,7 +251,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       // Remove _id from pasted docs to avoid duplicate key errors
       const cleaned = docs.map(({ _id: _, ...rest }: any) => rest);
       await inv('insert-documents', connectionId, database, collection, cleaned);
-      loadDocuments(buildFilter(conditions), limit, page);
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setError('Paste failed: ' + err.message); }
   }, [connectionId, database, collection, conditions, limit]);
 
@@ -333,17 +314,33 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     ta.scrollTop = Math.max(0, (lines - 5) * lineHeight);
   }, [editJson, editFind, editFindIdx]);
 
-  const allFields = (): string[] => {
-    const fields = new Set<string>();
-    documents.forEach(doc => Object.keys(doc).forEach(k => fields.add(k)));
-    return Array.from(fields).sort();
+  const allFields = (): { field: string; type: FieldType }[] => {
+    const map = new Map<string, FieldType>();
+    documents.forEach(doc => {
+      Object.entries(doc).forEach(([k, v]) => {
+        if (!map.has(k)) map.set(k, detectType(v));
+      });
+    });
+    return Array.from(map.entries()).map(([field, type]) => ({ field, type })).sort((a, b) => a.field.localeCompare(b.field));
   };
 
-  const addCondition = (field: string) => {
-    setConditions(prev => [...prev, { id: ++condId, field, op: '$eq', value: '' }]);
+  const addCondition = (field: string, type: FieldType = 'string', value = '') => {
+    const ops = OPERATORS_BY_TYPE[type];
+    const defaultOp = ops[0].value;
+    setConditions(prev => [...prev, { id: ++condId, field, op: defaultOp, value, type }]);
   };
   const updateCondition = (id: number, changes: Partial<Condition>) => {
-    setConditions(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c));
+    setConditions(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const updated = { ...c, ...changes };
+      if (changes.type && changes.type !== c.type) {
+        const ops = OPERATORS_BY_TYPE[changes.type];
+        updated.op = ops[0].value;
+        updated.value = '';
+      }
+      if (changes.op && changes.op !== c.op) updated.value = '';
+      return updated;
+    }));
   };
   const removeCondition = (id: number) => {
     setConditions(prev => prev.filter(c => c.id !== id));
@@ -351,8 +348,16 @@ export default function DocumentsView({ connectionId, database, collection }: Do
 
   const handleDropField = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
-    const field = e.dataTransfer.getData('field');
-    if (field) addCondition(field);
+    const raw = e.dataTransfer.getData('qb-field');
+    if (raw) {
+      try {
+        const { field, type, value } = JSON.parse(raw);
+        addCondition(field, type as FieldType, value);
+        return;
+      } catch {}
+    }
+    const plain = e.dataTransfer.getData('field');
+    if (plain) addCondition(plain);
   };
 
   const handleSave = async () => {
@@ -364,7 +369,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     try {
       await inv('update-document', connectionId, database, collection, String(editingDoc._id), parsed);
       setEditingDoc(null);
-      loadDocuments(buildFilter(conditions), limit, page);
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setEditError(err.message); }
   };
 
@@ -372,7 +377,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     if (!await showConfirm({ message: `Delete document ${String(doc._id)}?`, danger: true, confirmText: 'Delete' })) return;
     try {
       await inv('delete-document', connectionId, database, collection, String(doc._id));
-      loadDocuments(buildFilter(conditions), limit, page);
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setError(err.message); }
   };
 
@@ -448,8 +453,9 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         <button
           className={`secondary${showQB ? ' active-secondary' : ''}`}
           onClick={() => setShowQB(v => !v)}
+          title="Toggle query builder"
         >
-          <span className="toolbar-label">🔧 Filter</span>
+          <span className="toolbar-label">🔧 Filter{conditions.length > 0 ? ` (${conditions.length})` : ''}</span>
         </button>
         <span className="toolbar-label" style={{ fontSize: 12, color: '#888' }}>Limit:</span>
         <input type="number" value={limit} onChange={e => setLimit(Number(e.target.value))} style={{ width: 60 }} />
@@ -477,47 +483,6 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       {error && <div style={{ padding: '6px 12px', color: '#f48771', fontSize: 12, background: '#2d1a1a' }}>{error}</div>}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {showQB && (
-          <div className="query-builder-panel">
-            <div className="qb-section-title">Fields</div>
-            <div className="qb-fields">
-              {fields.map(f => (
-                <div key={f} className="qb-field-item" draggable
-                  onDragStart={e => e.dataTransfer.setData('field', f)}
-                  onClick={() => addCondition(f)} title="Click or drag to add condition"
-                >{f}</div>
-              ))}
-              {fields.length === 0 && <div style={{ color: '#555', fontSize: 11, padding: 4 }}>No documents loaded</div>}
-            </div>
-            <div className="qb-section-title" style={{ marginTop: 12 }}>Conditions</div>
-            <div className={`qb-conditions-drop${dragOver ? ' drag-over' : ''}`}
-              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDropField}
-            >
-              {conditions.length === 0 && <div className="qb-empty-drop">Drop field here</div>}
-              {conditions.map(c => (
-                <div key={c.id} className="qb-condition">
-                  <span className="qb-field-tag" title={c.field}>{c.field}</span>
-                  <select value={c.op} onChange={e => updateCondition(c.id, { op: e.target.value as Operator })}>
-                    {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  {c.op !== '$exists' && (
-                    <input value={c.value} onChange={e => updateCondition(c.id, { value: e.target.value })}
-                      placeholder="value" onKeyDown={e => e.key === 'Enter' && applyFilter()} />
-                  )}
-                  <button onClick={() => removeCondition(c.id)}>×</button>
-                </div>
-              ))}
-            </div>
-            {conditions.length > 0 && (
-              <div style={{ marginTop: 8, display: 'flex', gap: 4 }}>
-                <button style={{ flex: 1, fontSize: 12 }} onClick={applyFilter}>Run</button>
-                <button className="secondary" style={{ fontSize: 12 }} onClick={resetFilter}>Reset</button>
-              </div>
-            )}
-          </div>
-        )}
 
         <div
           style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}
@@ -599,12 +564,134 @@ export default function DocumentsView({ connectionId, database, collection }: Do
             </div>
           )}
         </div>
+
+        {/* Query Builder — right panel */}
+        {showQB && (() => {
+          const fieldList = allFields();
+          const activeFilter = buildFilter(conditions, matchAll);
+          const hasFilter = conditions.length > 0;
+          return (
+            <div className="qb-panel">
+              <div className="qb-panel-header">
+                <span className="qb-panel-title">Query</span>
+                <select
+                  className="qb-match-select"
+                  value={matchAll ? 'and' : 'or'}
+                  onChange={e => setMatchAll(e.target.value === 'and')}
+                >
+                  <option value="and">Match all ($and)</option>
+                  <option value="or">Match any ($or)</option>
+                </select>
+              </div>
+
+              <div className="qb-conditions-list">
+                {conditions.map(c => {
+                  const ops = OPERATORS_BY_TYPE[c.type] || OPERATORS_BY_TYPE.string;
+                  const opDef = ops.find(o => o.value === c.op);
+                  const noValue = opDef?.noValue ?? false;
+                  return (
+                    <div key={c.id} className="qb-cond-card">
+                      <div className="qb-cond-row1">
+                        <select
+                          className="qb-field-select"
+                          value={c.field}
+                          onChange={e => {
+                            const f = fieldList.find(x => x.field === e.target.value);
+                            updateCondition(c.id, { field: e.target.value, type: f?.type ?? 'string' });
+                          }}
+                        >
+                          <option value={c.field}>{c.field}</option>
+                          {fieldList.filter(x => x.field !== c.field).map(x => (
+                            <option key={x.field} value={x.field}>{x.field}</option>
+                          ))}
+                        </select>
+                        <select
+                          className="qb-op-select"
+                          value={c.op}
+                          onChange={e => updateCondition(c.id, { op: e.target.value as Operator })}
+                        >
+                          {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <button className="qb-del-btn" onClick={() => removeCondition(c.id)}>🗑️</button>
+                      </div>
+                      {!noValue && (
+                        <div className="qb-cond-row2">
+                          <span className="qb-type-badge" style={{ background: TYPE_COLORS[c.type] }}>
+                            {TYPE_LABELS[c.type]}
+                          </span>
+                          <input
+                            className="qb-val-input"
+                            value={c.value}
+                            placeholder={c.type === 'number' ? '0' : c.type === 'date' ? 'YYYY-MM-DD' : 'value'}
+                            onChange={e => updateCondition(c.id, { value: e.target.value })}
+                            onKeyDown={e => e.key === 'Enter' && applyFilter()}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div
+                  className={`qb-drop-zone${dragOver ? ' drag-over' : ''}`}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDropField}
+                  onDoubleClick={() => {
+                    if (fieldList.length > 0) addCondition(fieldList[0].field, fieldList[0].type);
+                  }}
+                >
+                  + Drag field here or double-click
+                </div>
+              </div>
+
+              {fieldList.length > 0 && (
+                <div className="qb-fields-section">
+                  <div className="qb-fields-title">Fields</div>
+                  <div className="qb-fields-list">
+                    {fieldList.map(({ field, type }) => (
+                      <div
+                        key={field}
+                        className="qb-field-chip"
+                        draggable
+                        onDragStart={e => {
+                          const val = documents[0]?.[field];
+                          e.dataTransfer.setData('qb-field', JSON.stringify({ field, type, value: val == null ? '' : String(val) }));
+                        }}
+                        onClick={() => addCondition(field, type)}
+                        title={`${TYPE_LABELS[type]} — click or drag to add`}
+                      >
+                        <span className="qb-chip-dot" style={{ background: TYPE_COLORS[type] }} />
+                        {field}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="qb-panel-footer">
+                {hasFilter && (
+                  <details className="qb-preview-details">
+                    <summary>Query preview</summary>
+                    <pre className="qb-preview">{JSON.stringify(activeFilter, null, 2)}</pre>
+                  </details>
+                )}
+                <div className="qb-footer-btns">
+                  <button className="secondary" style={{ fontSize: 11 }} onClick={resetFilter}>↺ Reset</button>
+                  <button style={{ fontSize: 11, flex: 1 }} onClick={applyFilter} disabled={loading}>
+                    {loading ? '…' : '▶ Run'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="status-bar">
         <span>{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}</span>
         <span style={{ flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: 11 }}>
-          {conditions.length > 0 ? JSON.stringify(buildFilter(conditions)) : ''}
+          {conditions.length > 0 ? JSON.stringify(buildFilter(conditions, matchAll)) : ''}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button className="page-btn" onClick={() => goToPage(0)} disabled={page === 0 || loading}>«</button>

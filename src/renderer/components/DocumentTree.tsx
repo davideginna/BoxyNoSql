@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { detectType } from '../utils/buildFilter';
 
 function ValueDisplay({ value }: { value: any }) {
   if (value === null) return <span className="tree-val-null">null</span>;
@@ -8,8 +9,8 @@ function ValueDisplay({ value }: { value: any }) {
   return null;
 }
 
-function TreeNode({ name, value, depth, expandTick, expandTarget }:
-  { name: string; value: any; depth: number; expandTick: number; expandTarget: boolean }) {
+function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
+  { name: string; path: string; value: any; depth: number; expandTick: number; expandTarget: boolean }) {
   const [open, setOpen] = useState(false);
   const isComplex = value !== null && typeof value === 'object';
   const isArray = Array.isArray(value);
@@ -18,7 +19,18 @@ function TreeNode({ name, value, depth, expandTick, expandTarget }:
 
   if (!isComplex) {
     return (
-      <div className="tree-leaf" style={{ paddingLeft: depth * 14 + 20 }}>
+      <div
+        className="tree-leaf"
+        style={{ paddingLeft: depth * 14 + 20 }}
+        draggable
+        onDragStart={e => {
+          e.stopPropagation();
+          const type = detectType(value);
+          const strVal = value === null ? '' : String(value);
+          e.dataTransfer.setData('qb-field', JSON.stringify({ field: path, type, value: strVal }));
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
+      >
         <span className="tree-key">{name}</span>
         <span className="tree-sep">: </span>
         <ValueDisplay value={value} />
@@ -40,7 +52,12 @@ function TreeNode({ name, value, depth, expandTick, expandTarget }:
         {!open && <span className="tree-summary">{summary}</span>}
       </div>
       {open && entries.map(([k, v]) => (
-        <TreeNode key={k} name={k} value={v} depth={depth + 1} expandTick={expandTick} expandTarget={expandTarget} />
+        <TreeNode
+          key={k} name={k}
+          path={path ? `${path}.${k}` : k}
+          value={v} depth={depth + 1}
+          expandTick={expandTick} expandTarget={expandTarget}
+        />
       ))}
     </div>
   );
@@ -95,7 +112,7 @@ export default function DocumentTree({
       {open && (
         <div className="doc-tree-body">
           {Object.entries(doc).map(([k, v]) => (
-            <TreeNode key={k} name={k} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} />
+            <TreeNode key={k} name={k} path={k} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} />
           ))}
         </div>
       )}
