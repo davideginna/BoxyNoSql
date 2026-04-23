@@ -6,13 +6,16 @@ function ValueDisplay({ value }: { value: any }) {
   if (typeof value === 'boolean') return <span className="tree-val-bool">{String(value)}</span>;
   if (typeof value === 'number') return <span className="tree-val-num">{value}</span>;
   if (typeof value === 'string') return <span className="tree-val-str">"{value}"</span>;
+  if (value && typeof value === 'object' && '$oid' in value)
+    return <span className="tree-val-oid">ObjectId("{value.$oid}")</span>;
   return null;
 }
 
 function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
   { name: string; path: string; value: any; depth: number; expandTick: number; expandTarget: boolean }) {
   const [open, setOpen] = useState(false);
-  const isComplex = value !== null && typeof value === 'object';
+  const isOid = value !== null && typeof value === 'object' && '$oid' in value;
+  const isComplex = !isOid && value !== null && typeof value === 'object';
   const isArray = Array.isArray(value);
 
   useEffect(() => { if (expandTick > 0) setOpen(expandTarget); }, [expandTick]);
@@ -26,7 +29,7 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
         onDragStart={e => {
           e.stopPropagation();
           const type = detectType(value);
-          const strVal = value === null ? '' : String(value);
+          const strVal = value === null ? '' : (value && typeof value === 'object' && '$oid' in value) ? value.$oid : String(value);
           e.dataTransfer.setData('qb-field', JSON.stringify({ field: path, type, value: strVal }));
           e.dataTransfer.effectAllowed = 'copy';
         }}
@@ -92,7 +95,8 @@ export default function DocumentTree({
     }
   }, [docExpTick]);
 
-  const id = doc._id ? String(doc._id) : 'Document';
+  const rawId = doc._id;
+  const id = rawId == null ? 'Document' : (typeof rawId === 'object' && '$oid' in rawId) ? rawId.$oid : String(rawId);
   const preview = id.length > 32 ? id.slice(0, 32) + '…' : id;
 
   return (

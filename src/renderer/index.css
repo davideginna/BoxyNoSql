@@ -536,6 +536,7 @@ body {
 .tree-val-num  { color: var(--val-num); }
 .tree-val-bool { color: var(--val-bool); }
 .tree-val-null { color: var(--val-null); font-style: italic; }
+.tree-val-oid  { color: #e74c3c; }
 
 /* ── Query Builder ───────────────────────────────────────────────────────────── */
 /* ── Query Builder panel (right side) ───────────────────────────────────────── */

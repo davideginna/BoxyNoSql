@@ -70,10 +70,15 @@ describe('serializeDoc', () => {
     expect(node).toBe('[MaxDepth]');
   });
 
-  it('converts BSON-like objects (with _bsontype) to string', () => {
+  it('converts ObjectId BSON to { $oid } Extended JSON', () => {
     const fakeObjectId = { _bsontype: 'ObjectId', toString: () => '507f1f77bcf86cd799439011' };
-    expect(serializeDoc(fakeObjectId)).toBe('507f1f77bcf86cd799439011');
-    expect(serializeDoc({ _id: fakeObjectId })).toEqual({ _id: '507f1f77bcf86cd799439011' });
+    expect(serializeDoc(fakeObjectId)).toEqual({ $oid: '507f1f77bcf86cd799439011' });
+    expect(serializeDoc({ _id: fakeObjectId })).toEqual({ _id: { $oid: '507f1f77bcf86cd799439011' } });
+  });
+
+  it('converts other BSON types to string', () => {
+    const fakeBson = { _bsontype: 'Decimal128', toString: () => '1.5' };
+    expect(serializeDoc(fakeBson)).toBe('1.5');
   });
 
   it('each array element gets independent circular ref tracking', () => {

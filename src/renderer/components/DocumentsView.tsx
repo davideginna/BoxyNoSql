@@ -85,6 +85,12 @@ function highlightText(text: string, query: string): string {
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
+function idToString(id: any): string {
+  if (id === null || id === undefined) return '';
+  if (typeof id === 'object' && '$oid' in id) return id.$oid;
+  return String(id);
+}
+
 let condId = 0;
 
 export default function DocumentsView({ connectionId, database, collection }: DocumentsViewProps) {
@@ -113,6 +119,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const [docExpands, setDocExpands] = useState<Record<number, { tick: number; target: boolean }>>({});
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; idx: number } | null>(null);
   const [emptyCtxMenu, setEmptyCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showQueryModal, setShowQueryModal] = useState(false);
   // Add document modal
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [addJson, setAddJson] = useState('');
@@ -228,7 +235,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     try {
       const toDelete = [...selectedIndices].map(i => documents[i]).filter(Boolean);
       await Promise.all(toDelete.map(doc =>
-        inv('delete-document', connectionId, database, collection, String(doc._id))
+        inv('delete-document', connectionId, database, collection, idToString(doc._id))
       ));
       setSelectedIndices(new Set());
       loadDocuments(buildFilter(conditions, matchAll), limit, page);
@@ -367,16 +374,16 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     let parsed: any;
     try { parsed = JSON.parse(editJson); } catch (e: any) { setEditError('Invalid JSON: ' + e.message); return; }
     try {
-      await inv('update-document', connectionId, database, collection, String(editingDoc._id), parsed);
+      await inv('update-document', connectionId, database, collection, idToString(editingDoc._id), parsed);
       setEditingDoc(null);
       loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setEditError(err.message); }
   };
 
   const handleDelete = async (doc: any) => {
-    if (!await showConfirm({ message: `Delete document ${String(doc._id)}?`, danger: true, confirmText: 'Delete' })) return;
+    if (!await showConfirm({ message: `Delete document ${idToString(doc._id)}?`, danger: true, confirmText: 'Delete' })) return;
     try {
-      await inv('delete-document', connectionId, database, collection, String(doc._id));
+      await inv('delete-document', connectionId, database, collection, idToString(doc._id));
       loadDocuments(buildFilter(conditions, matchAll), limit, page);
     } catch (err: any) { setError(err.message); }
   };
@@ -390,7 +397,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `doc_${String(doc._id)}.json`;
+    a.download = `doc_${idToString(doc._id)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -656,7 +663,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                         draggable
                         onDragStart={e => {
                           const val = documents[0]?.[field];
-                          e.dataTransfer.setData('qb-field', JSON.stringify({ field, type, value: val == null ? '' : String(val) }));
+                          const strVal = val == null ? '' : (typeof val === 'object' && '$oid' in val) ? val.$oid : String(val);
+                          e.dataTransfer.setData('qb-field', JSON.stringify({ field, type, value: strVal }));
                         }}
                         onClick={() => addCondition(field, type)}
                         title={`${TYPE_LABELS[type]} — click or drag to add`}
@@ -672,7 +680,13 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               <div className="qb-panel-footer">
                 {hasFilter && (
                   <details className="qb-preview-details">
-                    <summary>Query preview</summary>
+                    <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Query preview</span>
+                      <span
+                        style={{ fontSize: 10, color: 'var(--accent)', cursor: 'pointer', padding: '0 4px' }}
+                        onClick={e => { e.preventDefault(); setShowQueryModal(true); }}
+                      >⛶ expand</span>
+                    </summary>
                     <pre className="qb-preview">{JSON.stringify(activeFilter, null, 2)}</pre>
                   </details>
                 )}
@@ -721,6 +735,31 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           items={[{ label: '➕  Add document', shortcut: 'Ctrl+D', onClick: openAddDoc }]}
           onClose={() => setEmptyCtxMenu(null)}
         />
+      )}
+
+      {/* Query preview modal */}
+      {showQueryModal && (
+        <div className="modal-overlay" onClick={() => setShowQueryModal(false)}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Query</h3>
+              <button className="icon-btn" onClick={() => setShowQueryModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <pre style={{
+                background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#cccccc',
+                fontFamily: 'Consolas, Monaco, monospace', fontSize: 13, padding: 12,
+                borderRadius: 4, overflow: 'auto', maxHeight: 500, margin: 0, whiteSpace: 'pre-wrap',
+              }}>
+                {JSON.stringify(buildFilter(conditions, matchAll), null, 2)}
+              </pre>
+            </div>
+            <div className="modal-footer">
+              <button className="secondary" onClick={() => { navigator.clipboard.writeText(JSON.stringify(buildFilter(conditions, matchAll), null, 2)); }}>📋 Copy</button>
+              <button onClick={() => setShowQueryModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add document modal */}
@@ -779,7 +818,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
             <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>
-                  Edit — {String(editingDoc._id)}
+                  Edit — {idToString(editingDoc._id)}
                   {isDirty && <span className="edit-dirty-badge">● modified</span>}
                 </h3>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -863,7 +902,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         <div className="modal-overlay" onClick={() => setViewingDoc(null)}>
           <div className="modal modal-wide" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setViewingDoc(null); }}>
             <div className="modal-header">
-              <h3>View — {String(viewingDoc._id)}</h3>
+              <h3>View — {idToString(viewingDoc._id)}</h3>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="secondary" style={{ fontSize: 12 }}
                   onClick={() => { openEdit(viewingDoc); setViewingDoc(null); }}>Edit (Ctrl+J)</button>

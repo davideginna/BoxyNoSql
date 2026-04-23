@@ -109,6 +109,7 @@ export function detectType(value: any): FieldType {
   if (typeof value === 'number') return 'number';
   if (typeof value === 'boolean') return 'boolean';
   if (Array.isArray(value)) return 'array';
+  if (value && typeof value === 'object' && '$oid' in value) return 'objectid';
   if (value && typeof value === 'object' && value._bsontype === 'ObjectId') return 'objectid';
   if (value instanceof Date) return 'date';
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return 'date';
@@ -121,6 +122,7 @@ function parseValue(value: string, type: FieldType): any {
   if (type === 'number') return Number(value);
   if (type === 'boolean') return value !== 'false';
   if (type === 'date') return new Date(value);
+  if (type === 'objectid') return { $oid: value };
   return value;
 }
 
@@ -141,6 +143,7 @@ function conditionToMongo(c: Condition): any {
     case 'gte':          return { [field]: { $gte: parseValue(value, type) } };
     case 'lt':           return { [field]: { $lt: parseValue(value, type) } };
     case 'lte':          return { [field]: { $lte: parseValue(value, type) } };
+    case 'array_contains': return { [field]: parseValue(value, type) };
     case 'contains':     return { [field]: { $regex: escapeRegex(value), $options: 'i' } };
     case 'not_contains': return { [field]: { $not: { $regex: escapeRegex(value), $options: 'i' } } };
     case 'starts_with':  return { [field]: { $regex: '^' + escapeRegex(value), $options: 'i' } };
@@ -154,7 +157,6 @@ function conditionToMongo(c: Condition): any {
     case 'nin':          return { [field]: { $nin: parseList(value, type) } };
     case 'is_true':      return { [field]: true };
     case 'is_false':     return { [field]: false };
-    case 'array_contains': return { [field]: parseValue(value, type) };
     default:             return {};
   }
 }
