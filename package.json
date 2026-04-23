@@ -1,0 +1,56 @@
+{
+  "name": "boxynosql",
+  "version": "1.0.0",
+  "description": "BoxyNoSql — desktop NoSQL GUI client",
+  "homepage": "https://github.com/dginnasio/boxynosql",
+  "author": "Davide Ginnasio",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"wait-on http://localhost:5173 dist/main/main.js && NODE_ENV=development electron .\"",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "vite",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "electron:build": "npm run build && electron-builder --linux deb",
+    "electron:build:dir": "npm run build && electron-builder --dir",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "monaco-editor": "^0.45.0",
+    "mongodb": "^6.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "vite-plugin-monaco-editor": "^1.1.0",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.boxynosql.app",
+    "productName": "BoxyNoSql",
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "deb": {
+      "maintainer": "Davide Ginnasio"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ]
+  }
+}
