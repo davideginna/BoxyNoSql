@@ -77,74 +77,15 @@ function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string
 }
 
 function DbIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <ellipse cx="7" cy="3.5" rx="4.5" ry="1.8" stroke="var(--icon-db)" strokeWidth="1.2"/>
-      <path d="M2.5 3.5v7c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8v-7" stroke="var(--icon-db)" strokeWidth="1.2" fill="none"/>
-      <path d="M2.5 6.8c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8" stroke="var(--icon-db)" strokeWidth="1.2" fill="none"/>
-    </svg>
-  );
+  return <span style={{ flexShrink: 0, fontSize: 13 }}>🗄️</span>;
 }
 
 function ColIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="1.5" y="2.5" width="11" height="9" rx="1" stroke="var(--icon-col)" strokeWidth="1.2"/>
-      <line x1="1.5" y1="5.5" x2="12.5" y2="5.5" stroke="var(--icon-col)" strokeWidth="1"/>
-      <line x1="1.5" y1="8.5" x2="12.5" y2="8.5" stroke="var(--icon-col)" strokeWidth="1"/>
-      <line x1="4.5" y1="5.5" x2="4.5" y2="11.5" stroke="var(--icon-col)" strokeWidth="1"/>
-    </svg>
-  );
+  return <span style={{ flexShrink: 0, fontSize: 12 }}>📄</span>;
 }
 
-function FolderIcon({ color, open }: { color?: string; open: boolean }) {
-  const c = color || 'var(--text-secondary)';
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      {open
-        ? <path d="M1 4h12v7a1 1 0 01-1 1H2a1 1 0 01-1-1V4zm0 0V3a1 1 0 011-1h3l1.5 2H1z" fill={c} opacity="0.9"/>
-        : <path d="M1 3a1 1 0 011-1h3l1.5 2H13a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V3z" fill={c} opacity="0.9"/>
-      }
-    </svg>
-  );
-}
-
-function IconConnect() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-      <circle cx="4" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-      <circle cx="12" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-      <line x1="6.5" y1="8" x2="9.5" y2="8" stroke="currentColor" strokeWidth="1.4"/>
-    </svg>
-  );
-}
-
-function IconDisconnect() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-      <circle cx="4" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-      <circle cx="12" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-      <line x1="6.5" y1="6.5" x2="9.5" y2="9.5" stroke="currentColor" strokeWidth="1.4"/>
-      <line x1="9.5" y1="6.5" x2="6.5" y2="9.5" stroke="currentColor" strokeWidth="1.4"/>
-    </svg>
-  );
-}
-
-function IconEdit() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-      <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function IconDelete() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-      <line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      <line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    </svg>
-  );
+function FolderIcon({ open }: { color?: string; open: boolean }) {
+  return <span style={{ flexShrink: 0, fontSize: 13 }}>{open ? '📂' : '📁'}</span>;
 }
 
 export default function Sidebar(props: SidebarProps) {
@@ -156,7 +97,7 @@ export default function Sidebar(props: SidebarProps) {
     onExpandAll, onCollapseAll, onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onClearCollection, onDropDatabase, onClearDatabase,
     onManageUsers, onAddFolder, onSaveFolder,
-    onDeleteFolder, onMoveConnection, onMoveFolder,
+    onDeleteFolder, onMoveConnection, onMoveFolder, onReorderFolders,
     onThemeChange, onSaveConnection,
     style
   } = props;
@@ -243,7 +184,7 @@ export default function Sidebar(props: SidebarProps) {
               className="db-search-clear"
               onClick={() => setDbSearch(prev => ({ ...prev, [connId]: '' }))}
             >
-              <IconDelete />
+              ✕
             </button>
           )}
         </div>
@@ -311,7 +252,7 @@ export default function Sidebar(props: SidebarProps) {
                 onClick={e => { e.stopPropagation(); onDisconnect(conn.id); }}
                 className="conn-action-disconnect"
               >
-                <IconDisconnect />
+                ⏸
               </button>
             ) : (
               <button
@@ -319,20 +260,38 @@ export default function Sidebar(props: SidebarProps) {
                 onClick={e => { e.stopPropagation(); onConnect(conn.id); }}
                 className="conn-action-connect"
               >
-                <IconConnect />
+                ▶
               </button>
             )}
             <button title="Edit" onClick={e => { e.stopPropagation(); onEditConnection(conn); }}>
-              <IconEdit />
+              ✏️
             </button>
             <button title="Delete" onClick={e => { e.stopPropagation(); onDeleteConnection(conn.id); }}>
-              <IconDelete />
+              🗑️
             </button>
           </div>
         </div>
         {isConnected && renderDbTree(conn.id, connColor)}
       </div>
     );
+  };
+
+  const getSiblings = (folder: Folder) =>
+    [...folders].filter(f => f.parentId === folder.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const moveFolderInOrder = (folder: Folder, dir: -1 | 1) => {
+    const siblings = getSiblings(folder);
+    const idx = siblings.findIndex(f => f.id === folder.id);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return;
+    const other = siblings[swapIdx];
+    const aOrder = folder.order ?? idx;
+    const bOrder = other.order ?? swapIdx;
+    onReorderFolders(folders.map(f => {
+      if (f.id === folder.id) return { ...f, order: bOrder };
+      if (f.id === other.id) return { ...f, order: aOrder };
+      return f;
+    }));
   };
 
   const renderFolder = (folder: Folder): React.ReactNode => {
@@ -342,6 +301,8 @@ export default function Sidebar(props: SidebarProps) {
     const folderConns = connections
       .filter(c => c.folderId === folder.id)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const siblings = getSiblings(folder);
+    const sibIdx = siblings.findIndex(f => f.id === folder.id);
     return (
       <div
         key={folder.id}
@@ -377,6 +338,8 @@ export default function Sidebar(props: SidebarProps) {
             <span className="folder-name">{folder.name}</span>
           )}
           <div className="actions" onClick={e => e.stopPropagation()}>
+            <button title="Move up" disabled={sibIdx <= 0} onClick={() => moveFolderInOrder(folder, -1)}>↑</button>
+            <button title="Move down" disabled={sibIdx >= siblings.length - 1} onClick={() => moveFolderInOrder(folder, 1)}>↓</button>
             <button title="Delete folder" onClick={() => onDeleteFolder(folder.id)}>🗑</button>
           </div>
         </div>

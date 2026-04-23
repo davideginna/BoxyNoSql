@@ -579,9 +579,10 @@ body {
 /* ── Bulk Action Bar ─────────────────────────────────────────────────────────── */
 .bulk-action-bar {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 12px; background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  padding: 5px 12px; background: var(--bg-secondary);
   border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: 12px;
 }
+.bulk-action-bar--active { background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary)); }
 .bulk-action-bar span { color: var(--text-secondary); margin-right: 4px; }
 
 /* ── Status Bar ──────────────────────────────────────────────────────────────── */

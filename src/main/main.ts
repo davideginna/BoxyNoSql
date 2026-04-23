@@ -9,15 +9,17 @@ function getAdminDb(client: MongoClient): Db {
   return client.db('admin') as Db;
 }
 
-function serializeDoc(val: any): any {
+function serializeDoc(val: any, seen = new Set<any>()): any {
   if (val === null || val === undefined) return val;
   if (typeof val !== 'object') return val;
   if (val._bsontype) return val.toString();
   if (val instanceof Date) return val.toISOString();
   if (Buffer.isBuffer(val)) return val.toString('hex');
-  if (Array.isArray(val)) return val.map(serializeDoc);
+  if (seen.has(val)) return '[Circular]';
+  seen.add(val);
+  if (Array.isArray(val)) return val.map(v => serializeDoc(v, new Set()));
   const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(val)) out[k] = serializeDoc(v);
+  for (const [k, v] of Object.entries(val)) out[k] = serializeDoc(v, seen);
   return out;
 }
 
@@ -285,7 +287,7 @@ ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, 
     col.find(query).skip(skip).limit(limit).toArray(),
     col.countDocuments(query),
   ]);
-  return { docs: docs.map(serializeDoc), total };
+  return { docs: docs.map(v => serializeDoc(v)), total };
 });
 
 ipcMain.handle('update-document', async (_, connectionId: string, dbName: string, collection: string, docId: string, update: any) => {
@@ -317,14 +319,18 @@ ipcMain.handle('delete-document', async (_, connectionId: string, dbName: string
 ipcMain.handle('run-query', async (_, connectionId: string, dbName: string, collection: string, query: string) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  const fn = new Function('db', `return ${query}`);
-  return fn(client.db(dbName));
+  const fn = new Function('db', `return (async () => { return (${query}) })()`);
+  let result = await fn(client.db(dbName));
+  if (result != null && typeof result.toArray === 'function') result = await result.toArray();
+  if (Array.isArray(result)) return result.map(v => serializeDoc(v));
+  return serializeDoc(result);
 });
 
 ipcMain.handle('run-aggregation', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  return client.db(dbName).collection(collection).aggregate(pipeline).toArray();
+  const docs = await client.db(dbName).collection(collection).aggregate(pipeline).toArray();
+  return docs.map(v => serializeDoc(v));
 });
 
 // ── Indexes ──────────────────────────────────────────────────────────────────
@@ -365,7 +371,7 @@ ipcMain.handle('export-collection', async (_, connectionId: string, dbName: stri
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const docs = await client.db(dbName).collection(collection).find({}).toArray();
-  if (format === 'json') return JSON.stringify(docs.map(serializeDoc), null, 2);
+  if (format === 'json') return JSON.stringify(docs.map(v => serializeDoc(v)), null, 2);
   if (docs.length === 0) return '';
   const keys = Object.keys(docs[0]);
   return [keys.join(','), ...docs.map(doc => keys.map(k => JSON.stringify((doc as any)[k])).join(','))].join('\n');

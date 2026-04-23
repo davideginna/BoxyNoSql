@@ -466,15 +466,13 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       </div>
 
       {/* Bulk action bar */}
-      {hasSelection && (
-        <div className="bulk-action-bar">
-          <span>{selectedIndices.size} selected</span>
-          <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)">📋 Copy</button>
-          <button className="secondary" onClick={handlePaste} title="Paste from clipboard (Ctrl+V)">📌 Paste</button>
-          <button style={{ background: 'var(--error)' }} onClick={handleBulkDelete} title="Delete selected (Del)">🗑 Delete</button>
-          <button className="secondary" onClick={() => setSelectedIndices(new Set())}>✗ Deselect all</button>
-        </div>
-      )}
+      <div className={`bulk-action-bar${hasSelection ? ' bulk-action-bar--active' : ''}`}>
+        <span>{selectedIndices.size} selected</span>
+        <button className="secondary" onClick={handleBulkCopy} disabled={!hasSelection} title="Copy selected (Ctrl+C)">📋 Copy</button>
+        <button className="secondary" onClick={handlePaste} title="Paste from clipboard (Ctrl+V)">📌 Paste</button>
+        <button style={hasSelection ? { background: 'var(--error)' } : {}} className={hasSelection ? '' : 'secondary'} onClick={handleBulkDelete} disabled={!hasSelection} title="Delete selected (Del)">🗑 Delete</button>
+        <button className="secondary" onClick={() => setSelectedIndices(new Set())} disabled={!hasSelection}>✗ Deselect all</button>
+      </div>
 
       {error && <div style={{ padding: '6px 12px', color: '#f48771', fontSize: 12, background: '#2d1a1a' }}>{error}</div>}
 
