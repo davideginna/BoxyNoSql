@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron';
 import path from 'path';
 import Store from 'electron-store';
 import { MongoClient, Db, ObjectId } from 'mongodb';
@@ -47,10 +47,29 @@ const store = new Store<{ connections: Connection[]; folders: Folder[] }>({
 
 let mainWindow: BrowserWindow | null = null;
 
+function resolveIcon(): string | undefined {
+  const candidates = [
+    path.join(__dirname, '../../build/icon.png'),  // dev: project/build/icon.png from dist/main
+    path.join(__dirname, '../build/icon.png'),     // packaged app resources
+    path.join(process.resourcesPath || '', 'build/icon.png'),
+  ];
+  for (const p of candidates) {
+    try {
+      require('fs').accessSync(p);
+      return p;
+    } catch {}
+  }
+  return undefined;
+}
+
 function createWindow() {
+  const iconPath = resolveIcon();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    icon: iconPath,
+    title: 'BoxyNoSql',
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -67,6 +86,9 @@ function createWindow() {
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+// Hide the default File/Edit/View/Window/Help menu (not used by this app)
+Menu.setApplicationMenu(null);
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

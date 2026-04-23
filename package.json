@@ -50,13 +50,27 @@
     "productName": "BoxyNoSql",
     "linux": {
       "target": [
-        "deb"
+        "deb",
+        "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "build/icon.png",
+      "desktop": {
+        "Name": "BoxyNoSql",
+        "Comment": "Desktop NoSQL GUI client",
+        "Categories": "Development;Database;",
+        "StartupWMClass": "BoxyNoSql"
+      }
     },
     "deb": {
       "maintainer": "Davide Ginnasio"
     },
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      }
+    ],
     "files": [
       "dist/**/*",
       "package.json"
