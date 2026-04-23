@@ -5,6 +5,7 @@ import ConnectionModal from './components/ConnectionModal';
 import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
 import { showConfirm, showInput } from './dialog';
+import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -269,6 +270,52 @@ function App() {
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
+  // ── Import ───────────────────────────────────────────────────────────────────
+  const handleImportDocuments = async (dbName: string, colName: string) => {
+    if (!selectedConnection) return;
+    const file = await pickFile('.json,.ndjson,.jsonl');
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const docs = parseDocs(text);
+      if (docs.length === 0) { alert('No documents found in file'); return; }
+      const result = await inv('insert-documents', selectedConnection, dbName, colName, docs);
+      alert(`Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${dbName}.${colName}`);
+    } catch (e: any) { alert('Import failed: ' + e.message); }
+  };
+
+  const handleImportCollection = async (dbName: string) => {
+    if (!selectedConnection) return;
+    const file = await pickFile('.json,.ndjson,.jsonl');
+    if (!file) return;
+    const suggested = file.name.replace(/\.(json|ndjson|jsonl)$/i, '');
+    const colName = await showInput({ title: 'Import Collection', message: 'Collection name:', defaultValue: suggested });
+    if (!colName?.trim()) return;
+    try {
+      const text = await file.text();
+      const docs = parseDocs(text);
+      const result = await inv('import-collection', selectedConnection, dbName, colName.trim(), docs);
+      await refreshCollections(dbName);
+      alert(`Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${dbName}.${colName.trim()}`);
+    } catch (e: any) { alert('Import failed: ' + e.message); }
+  };
+
+  const handleImportDatabase = async () => {
+    if (!selectedConnection) return;
+    const file = await pickFile('.json');
+    if (!file) return;
+    const suggested = file.name.replace(/\.json$/i, '');
+    const dbName = await showInput({ title: 'Import Database', message: 'Database name:', defaultValue: suggested });
+    if (!dbName?.trim()) return;
+    try {
+      const text = await file.text();
+      const collections = parseDatabaseFile(text);
+      const result = await inv('import-database', selectedConnection, dbName.trim(), collections);
+      await refreshDatabases(selectedConnection);
+      alert(`Imported ${result.documents} documents across ${result.collections} collections into "${dbName.trim()}"`);
+    } catch (e: any) { alert('Import failed: ' + e.message); }
+  };
+
   const handleClearCollection = async (dbName: string, colName: string) => {
     if (!await showConfirm({ title: 'Clear Collection', message: `Delete ALL documents in "${colName}"? This cannot be undone.`, danger: true, confirmText: 'Clear' })) return;
     try {
@@ -333,6 +380,9 @@ function App() {
         onDropDatabase={handleDropDatabase}
         onClearDatabase={handleClearDatabase}
         onManageUsers={db => setUsersRolesDb(db)}
+        onImportDocuments={handleImportDocuments}
+        onImportCollection={handleImportCollection}
+        onImportDatabase={handleImportDatabase}
         onAddFolder={handleAddFolder}
         onSaveFolder={handleSaveFolder}
         onDeleteFolder={handleDeleteFolder}

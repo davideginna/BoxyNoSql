@@ -39,6 +39,9 @@ interface SidebarProps {
   onDropDatabase: (db: string) => void;
   onClearDatabase: (db: string) => void;
   onManageUsers: (db: string) => void;
+  onImportDocuments: (db: string, col: string) => void;
+  onImportCollection: (db: string) => void;
+  onImportDatabase: () => void;
   onAddFolder: (parentId?: string) => void;
   onSaveFolder: (f: Folder) => void;
   onDeleteFolder: (id: string) => void;
@@ -96,7 +99,8 @@ export default function Sidebar(props: SidebarProps) {
     onSelectConnection, onConnect, onDisconnect, onExpandDb, onSelectCollection,
     onExpandAll, onCollapseAll, onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onClearCollection, onDropDatabase, onClearDatabase,
-    onManageUsers, onAddFolder, onSaveFolder,
+    onManageUsers, onImportDocuments, onImportCollection, onImportDatabase,
+    onAddFolder, onSaveFolder,
     onDeleteFolder, onMoveConnection, onMoveFolder, onReorderFolders,
     onThemeChange, onSaveConnection,
     style
@@ -170,7 +174,8 @@ export default function Sidebar(props: SidebarProps) {
         <div className="db-tree-toolbar">
           <button onClick={onExpandAll} title="Expand all">↕ All</button>
           <button onClick={onCollapseAll} title="Collapse all">↑ Collapse</button>
-          <button onClick={onCreateDatabase} title="Create database" style={{ marginLeft: 'auto' }}>🗄 + DB</button>
+          <button onClick={onImportDatabase} title="Import database from JSON" style={{ marginLeft: 'auto' }}>📥 Import</button>
+          <button onClick={onCreateDatabase} title="Create database">🗄 + DB</button>
         </div>
         <div className="db-search-wrap">
           <input
@@ -193,7 +198,7 @@ export default function Sidebar(props: SidebarProps) {
             <div
               className="tree-node-header"
               onClick={() => onExpandDb(db)}
-              onContextMenu={e => { e.preventDefault(); setDbCtxMenu({ x: e.clientX, y: e.clientY, db }); }}
+              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setDbCtxMenu({ x: e.clientX, y: e.clientY, db }); }}
             >
               <span className="tree-chevron">{expandedDbs.has(db) ? '▾' : '▸'}</span>
               <DbIcon />
@@ -355,6 +360,7 @@ export default function Sidebar(props: SidebarProps) {
 
   const dbCtxItems: ContextMenuEntry[] = dbCtxMenu ? [
     { label: '➕  New collection', onClick: () => { onCreateCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
+    { label: '📥  Import collection…', onClick: () => { onImportCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
     { separator: true },
     { label: '🧹  Clear database', onClick: () => { onClearDatabase(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: '🗑  Drop database', onClick: () => { onDropDatabase(dbCtxMenu.db); setDbCtxMenu(null); } },
@@ -364,6 +370,7 @@ export default function Sidebar(props: SidebarProps) {
     { label: '📂  Open', onClick: () => { onSelectCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { separator: true },
     { label: '✏️  Rename', onClick: () => { onRenameCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
+    { label: '📥  Import documents…', onClick: () => { onImportDocuments(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { separator: true },
     { label: '🧹  Clear collection', onClick: () => { onClearCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { label: '🗑  Drop collection', onClick: () => { onDropCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
@@ -457,6 +464,8 @@ export default function Sidebar(props: SidebarProps) {
           items={[
             { label: '📁  New folder', onClick: () => { onAddFolder(); setBgCtxMenu(null); } },
             { label: '🔌  New connection', onClick: () => { onAddConnection(); setBgCtxMenu(null); } },
+            { separator: true },
+            { label: '📥  Import database…', disabled: !selectedConnection, onClick: () => { onImportDatabase(); setBgCtxMenu(null); } },
           ]}
           onClose={() => setBgCtxMenu(null)}
         />

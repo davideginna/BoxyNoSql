@@ -395,6 +395,36 @@ ipcMain.handle('export-collection', async (_, connectionId: string, dbName: stri
   return [keys.join(','), ...serialized.map(doc => keys.map(k => esc((doc as any)[k])).join(','))].join('\n');
 });
 
+// ── Import ───────────────────────────────────────────────────────────────────
+ipcMain.handle('import-collection', async (_, connectionId: string, dbName: string, colName: string, docs: any[]) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const dbRef = client.db(dbName);
+  try { await dbRef.createCollection(colName); } catch { /* may already exist */ }
+  if (!Array.isArray(docs) || docs.length === 0) return { insertedCount: 0 };
+  const prepared = docs.map(d => fromExtJSON(d));
+  const result = await dbRef.collection(colName).insertMany(prepared);
+  return { insertedCount: result.insertedCount };
+});
+
+ipcMain.handle('import-database', async (_, connectionId: string, dbName: string, collections: Record<string, any[]>) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const dbRef = client.db(dbName);
+  let totalDocs = 0;
+  let totalCols = 0;
+  for (const [colName, docs] of Object.entries(collections)) {
+    try { await dbRef.createCollection(colName); } catch { /* exists */ }
+    totalCols++;
+    if (Array.isArray(docs) && docs.length > 0) {
+      const prepared = docs.map(d => fromExtJSON(d));
+      const result = await dbRef.collection(colName).insertMany(prepared);
+      totalDocs += result.insertedCount;
+    }
+  }
+  return { collections: totalCols, documents: totalDocs };
+});
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 ipcMain.handle('list-users', async (_, connectionId: string, dbName: string) => {
   const client = clients.get(connectionId);

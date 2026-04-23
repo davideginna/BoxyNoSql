@@ -9,13 +9,16 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Database/collection tree view with search
 - ✅ Document viewer (tree + table), multi-select, bulk copy/paste/delete
 - ✅ Paginated document browsing with configurable limit
-- ✅ Query terminal with JS syntax
+- ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)`
+- ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
 - ✅ Aggregation pipeline builder
 - ✅ Index management (create/drop) with usage stats
 - ✅ Collection stats
+- ✅ Import from JSON / NDJSON at three levels (document, collection, full database)
 - ✅ Export JSON/CSV
 - ✅ User/role management per database
-- ✅ Dark / light / high-contrast themes
+- ✅ Per-tab persistent state: switching between collections/views keeps filters and results
+- ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊
 
 ## Install
 

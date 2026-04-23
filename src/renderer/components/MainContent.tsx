@@ -47,12 +47,54 @@ export default function MainContent({
   tabs, activeTab, selectedConnection, connections,
   onOpenTab: _onOpenTab, onCloseTab, onSwitchTab, onChangeTabType, activeTabData
 }: MainContentProps) {
-  const [aggregationResult, setAggregationResult] = useState<any[]>([]);
-  const [queryResult, setQueryResult] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  // Per-tab result buffers keyed by tabId so they survive tab switching
+  const [aggregationResults, setAggregationResults] = useState<Record<string, any[]>>({});
+  const [queryResults, setQueryResults] = useState<Record<string, any[]>>({});
+  const [statsMap, setStatsMap] = useState<Record<string, any>>({});
+  // Track which (tabId, viewType) pairs have ever been mounted — keep them mounted
+  const [mountedViews, setMountedViews] = useState<Record<string, Set<string>>>({});
   const [tabsOverflow, setTabsOverflow] = useState(false);
   const [tabCtxMenu, setTabCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
+
+  // Mark active (tabId, type) as mounted
+  useEffect(() => {
+    if (!activeTabData) return;
+    setMountedViews(prev => {
+      const existing = prev[activeTabData.id] || new Set<string>();
+      if (existing.has(activeTabData.type)) return prev;
+      const next = new Set(existing); next.add(activeTabData.type);
+      return { ...prev, [activeTabData.id]: next };
+    });
+  }, [activeTab, activeTabData?.type]);
+
+  // GC mountedViews when tabs close
+  useEffect(() => {
+    const alive = new Set(tabs.map(t => t.id));
+    setMountedViews(prev => {
+      const kept: Record<string, Set<string>> = {};
+      let changed = false;
+      for (const [k, v] of Object.entries(prev)) {
+        if (alive.has(k)) kept[k] = v; else changed = true;
+      }
+      return changed ? kept : prev;
+    });
+    setQueryResults(prev => {
+      const kept: Record<string, any[]> = {};
+      for (const [k, v] of Object.entries(prev)) if (alive.has(k)) kept[k] = v;
+      return kept;
+    });
+    setAggregationResults(prev => {
+      const kept: Record<string, any[]> = {};
+      for (const [k, v] of Object.entries(prev)) if (alive.has(k)) kept[k] = v;
+      return kept;
+    });
+    setStatsMap(prev => {
+      const kept: Record<string, any> = {};
+      for (const [k, v] of Object.entries(prev)) if (alive.has(k)) kept[k] = v;
+      return kept;
+    });
+  }, [tabs]);
 
   const closeAll = useCallback(() => {
     tabs.forEach(t => onCloseTab(t.id));
@@ -73,12 +115,12 @@ export default function MainContent({
 
   const loadData = async () => {
     if (!activeTabData || !selectedConnection) return;
-    const { type, database, collection } = activeTabData;
+    const { id, type, database, collection } = activeTabData;
     if (!database || !collection) return;
     try {
       if (type === 'stats') {
         const s = await (window as any).electron.invoke('get-collection-stats', selectedConnection, database, collection);
-        setStats(s);
+        setStatsMap(prev => ({ ...prev, [id]: s }));
       }
     } catch (err) { console.error('Error loading data:', err); }
   };
@@ -104,22 +146,29 @@ export default function MainContent({
 
   const hasCollection = !!(activeTabData.collection && activeTabData.database);
 
-  const renderContent = () => {
-    const { type, connectionId, database, collection } = activeTabData;
+  const renderPane = (tab: Tab, viewType: Tab['type']) => {
+    const { connectionId, database, collection, id } = tab;
     const connId = connectionId || selectedConnection || '';
     if (!database || !collection) return null;
-
-    switch (type) {
+    switch (viewType) {
       case 'documents':
         return <DocumentsView connectionId={connId} database={database} collection={collection} />;
       case 'query':
-        return <QueryTerminal connectionId={connId} database={database} collection={collection} result={queryResult} setResult={setQueryResult} />;
+        return <QueryTerminal
+          connectionId={connId} database={database} collection={collection}
+          result={queryResults[id] || []}
+          setResult={r => setQueryResults(prev => ({ ...prev, [id]: r }))}
+        />;
       case 'aggregation':
-        return <AggregationBuilder connectionId={connId} database={database} collection={collection} result={aggregationResult} setResult={setAggregationResult} />;
+        return <AggregationBuilder
+          connectionId={connId} database={database} collection={collection}
+          result={aggregationResults[id] || []}
+          setResult={r => setAggregationResults(prev => ({ ...prev, [id]: r }))}
+        />;
       case 'indexes':
         return <IndexesView connectionId={connId} database={database} collection={collection} />;
       case 'stats':
-        return <StatsView stats={stats} />;
+        return <StatsView stats={statsMap[id]} />;
       default:
         return null;
     }
@@ -176,8 +225,35 @@ export default function MainContent({
           ))}
         </div>
       )}
-      <div className="tab-content">
-        {renderContent()}
+      <div className="tab-content" style={{ position: 'relative' }}>
+        {tabs.map(tab => {
+          const mountedTypes = mountedViews[tab.id] || new Set<string>([tab.type]);
+          const tabActive = tab.id === activeTab;
+          return (
+            <div
+              key={tab.id}
+              style={{
+                display: tabActive ? 'flex' : 'none',
+                flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+              }}
+            >
+              {Array.from(mountedTypes).map(viewType => {
+                const viewActive = tabActive && viewType === tab.type;
+                return (
+                  <div
+                    key={viewType}
+                    style={{
+                      display: viewActive ? 'flex' : 'none',
+                      flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+                    }}
+                  >
+                    {renderPane(tab, viewType as Tab['type'])}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
       {tabCtxMenu && (
         <ContextMenu
