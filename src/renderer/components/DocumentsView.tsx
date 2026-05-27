@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
+import Icon from './Icon';
 import { showConfirm } from '../dialog';
 import { buildFilter, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
 
@@ -444,23 +445,23 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const buildCtxItems = (idx: number): ContextMenuEntry[] => {
     const doc = documents[idx];
     return [
-      { label: '👁  View', shortcut: 'F3', onClick: () => openView(doc) },
-      { label: '✏️  Edit', shortcut: 'Ctrl+J', onClick: () => openEdit(doc) },
+      { label: 'View', icon: 'eye', shortcut: 'F3', onClick: () => openView(doc) },
+      { label: 'Edit', icon: 'edit', shortcut: 'Ctrl+J', onClick: () => openEdit(doc) },
       { separator: true },
-      { label: '↕  Expand all', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: true } })) },
-      { label: '↑  Collapse all', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: false } })) },
+      { label: 'Expand all', icon: 'expandAll', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: true } })) },
+      { label: 'Collapse all', icon: 'collapseAll', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: false } })) },
       { separator: true },
-      { label: '📋  Copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(doc) },
-      { label: '💾  Export JSON', onClick: () => handleExport(doc) },
+      { label: 'Copy', icon: 'copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(doc) },
+      { label: 'Export JSON', icon: 'save', onClick: () => handleExport(doc) },
       { separator: true },
-      { label: '➕  Add field', onClick: () => {
+      { label: 'Add field', icon: 'plus', onClick: () => {
         const updated = { ...doc, newField: '' };
         setEditingDoc(updated);
         setEditJson(prettyDoc(updated));
         setEditError(null);
       }},
       { separator: true },
-      { label: '🗑  Delete', onClick: () => handleDelete(doc) },
+      { label: 'Delete', icon: 'trash', onClick: () => handleDelete(doc) },
     ];
   };
 
@@ -489,10 +490,10 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       <div className="toolbar">
         <div className="view-toggle">
           <button className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')}>
-            <span className="toolbar-label">☰ Table</span>
+            <span className="toolbar-label"><Icon name="menu" size={13} /> Table</span>
           </button>
           <button className={viewMode === 'tree' ? 'active' : ''} onClick={() => setViewMode('tree')}>
-            <span className="toolbar-label">🌲 Tree</span>
+            <span className="toolbar-label"><Icon name="tree" size={13} /> Tree</span>
           </button>
         </div>
         <button
@@ -500,18 +501,18 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           onClick={() => setShowQB(v => !v)}
           title="Toggle query builder"
         >
-          <span className="toolbar-label">🔧 Filter{conditions.length > 0 ? ` (${conditions.length})` : ''}</span>
+          <span className="toolbar-label"><Icon name="filter" size={13} /> Filter{conditions.length > 0 ? ` (${conditions.length})` : ''}</span>
         </button>
         <span className="toolbar-label" style={{ fontSize: 12, color: '#888' }}>Limit:</span>
         <input type="number" value={limit} onChange={e => setLimit(Number(e.target.value))} style={{ width: 60 }} />
-        <button onClick={applyFilter} disabled={loading}>{loading ? '…' : '▶ Run'}</button>
-        <button className="secondary" onClick={resetFilter}>↺ Reset</button>
-        <button className="secondary" title="Add document (Ctrl+D)" onClick={openAddDoc}>➕ Add</button>
+        <button onClick={applyFilter} disabled={loading}>{loading ? '…' : <><Icon name="play" size={12} /> Run</>}</button>
+        <button className="secondary" onClick={resetFilter}><Icon name="refresh" size={13} /> Reset</button>
+        <button className="secondary" title="Add document (Ctrl+D)" onClick={openAddDoc}><Icon name="plus" size={13} /> Add</button>
         {viewMode === 'tree' && (
           <>
             <div style={{ width: 1, background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
-            <button className="secondary" title="Expand all" onClick={() => { setExpandTarget(true); setExpandTick(t => t + 1); }}>↕</button>
-            <button className="secondary" title="Collapse all" onClick={() => { setExpandTarget(false); setExpandTick(t => t + 1); }}>↑</button>
+            <button className="secondary" title="Expand all" onClick={() => { setExpandTarget(true); setExpandTick(t => t + 1); }}><Icon name="expandAll" size={13} /></button>
+            <button className="secondary" title="Collapse all" onClick={() => { setExpandTarget(false); setExpandTick(t => t + 1); }}><Icon name="collapseAll" size={13} /></button>
           </>
         )}
       </div>
@@ -519,10 +520,10 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       {/* Bulk action bar */}
       <div className={`bulk-action-bar${hasSelection ? ' bulk-action-bar--active' : ''}`}>
         <span>{selectedIndices.size} selected</span>
-        <button className="secondary" onClick={handleBulkCopy} disabled={!hasSelection} title="Copy selected (Ctrl+C)">📋 Copy</button>
-        <button className="secondary" onClick={handlePaste} title="Paste from clipboard (Ctrl+V)">📌 Paste</button>
-        <button style={hasSelection ? { background: 'var(--error)' } : {}} className={hasSelection ? '' : 'secondary'} onClick={handleBulkDelete} disabled={!hasSelection} title="Delete selected (Del)">🗑 Delete</button>
-        <button className="secondary" onClick={() => setSelectedIndices(new Set())} disabled={!hasSelection}>✗ Deselect all</button>
+        <button className="secondary" onClick={handleBulkCopy} disabled={!hasSelection} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
+        <button className="secondary" onClick={handlePaste} title="Paste from clipboard (Ctrl+V)"><Icon name="pin" size={13} /> Paste</button>
+        <button style={hasSelection ? { background: 'var(--error)' } : {}} className={hasSelection ? '' : 'secondary'} onClick={handleBulkDelete} disabled={!hasSelection} title="Delete selected (Del)"><Icon name="trash" size={13} /> Delete</button>
+        <button className="secondary" onClick={() => setSelectedIndices(new Set())} disabled={!hasSelection}><Icon name="close" size={13} /> Deselect all</button>
       </div>
 
       {error && <div style={{ padding: '6px 12px', color: '#f48771', fontSize: 12, background: '#2d1a1a' }}>{error}</div>}
@@ -657,7 +658,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                         >
                           {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
-                        <button className="qb-del-btn" onClick={() => removeCondition(c.id)}>🗑️</button>
+                        <button className="qb-del-btn" onClick={() => removeCondition(c.id)}><Icon name="trash" size={13} /></button>
                       </div>
                       {!noValue && (
                         <div className="qb-cond-row2">
@@ -723,7 +724,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                       <span
                         style={{ fontSize: 10, color: 'var(--accent)', cursor: 'pointer', padding: '0 4px' }}
                         onClick={e => { e.preventDefault(); setShowQueryModal(true); }}
-                      >⛶ expand</span>
+                      ><Icon name="expand" size={11} /> expand</span>
                     </summary>
                     <pre className="qb-preview">{JSON.stringify(activeFilter, null, 2)}</pre>
                   </details>
@@ -770,7 +771,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       {emptyCtxMenu && (
         <ContextMenu
           x={emptyCtxMenu.x} y={emptyCtxMenu.y}
-          items={[{ label: '➕  Add document', shortcut: 'Ctrl+D', onClick: openAddDoc }]}
+          items={[{ label: 'Add document', icon: 'plus', shortcut: 'Ctrl+D', onClick: openAddDoc }]}
           onClose={() => setEmptyCtxMenu(null)}
         />
       )}
@@ -781,7 +782,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Query</h3>
-              <button className="icon-btn" onClick={() => setShowQueryModal(false)}>✕</button>
+              <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
             </div>
             <div className="modal-body">
               <pre style={{
@@ -793,7 +794,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               </pre>
             </div>
             <div className="modal-footer">
-              <button className="secondary" onClick={() => { navigator.clipboard.writeText(JSON.stringify(buildFilter(conditions, matchAll), null, 2)); }}>📋 Copy</button>
+              <button className="secondary" onClick={() => { navigator.clipboard.writeText(JSON.stringify(buildFilter(conditions, matchAll), null, 2)); }}><Icon name="copy" size={13} /> Copy</button>
               <button onClick={() => setShowQueryModal(false)}>Close</button>
             </div>
           </div>
@@ -812,9 +813,9 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   <button className="secondary" style={{ fontSize: 11, padding: '2px 8px' }}
                     onClick={() => setAddJson(formatJson(addJson))}>Format</button>
                   {addValid
-                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}>✕ {addValid}</span>
-                    : <span style={{ fontSize: 11, color: 'var(--success)' }}>✓ Valid</span>}
-                  <button className="icon-btn" onClick={() => setShowAddDoc(false)}>✕</button>
+                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}><Icon name="close" size={11} /> {addValid}</span>
+                    : <span style={{ fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={11} /> Valid</span>}
+                  <button className="icon-btn" onClick={() => setShowAddDoc(false)}><Icon name="close" size={14} /></button>
                 </div>
               </div>
               <div className="modal-body">
@@ -870,9 +871,9 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   <button className="secondary" style={{ fontSize: 11, padding: '2px 8px' }}
                     onClick={() => setEditJson(formatJson(editJson))}>Format</button>
                   {jsonValid
-                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}>✕ {jsonValid}</span>
-                    : <span style={{ fontSize: 11, color: 'var(--success)' }}>✓ Valid</span>}
-                  <button className="icon-btn" onClick={() => closeEdit()}>✕</button>
+                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}><Icon name="close" size={11} /> {jsonValid}</span>
+                    : <span style={{ fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={11} /> Valid</span>}
+                  <button className="icon-btn" onClick={() => closeEdit()}><Icon name="close" size={14} /></button>
                 </div>
               </div>
               {showEditFind && (
@@ -888,7 +889,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   <span className="find-count">{editFind ? `${editMatchCount} match${editMatchCount !== 1 ? 'es' : ''}` : ''}</span>
                   <button className="find-nav" onClick={() => findInEdit(-1)}>↑</button>
                   <button className="find-nav" onClick={() => findInEdit(1)}>↓</button>
-                  <button className="find-close" onClick={() => { setShowEditFind(false); setEditFind(''); }}>✕</button>
+                  <button className="find-close" onClick={() => { setShowEditFind(false); setEditFind(''); }}><Icon name="close" size={14} /></button>
                 </div>
               )}
               <div className="modal-body">
@@ -958,7 +959,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="secondary" style={{ fontSize: 12 }}
                   onClick={() => { openEdit(viewingDoc); setViewingDoc(null); }}>Edit (Ctrl+J)</button>
-                <button className="icon-btn" onClick={() => setViewingDoc(null)}>✕</button>
+                <button className="icon-btn" onClick={() => setViewingDoc(null)}><Icon name="close" size={14} /></button>
               </div>
             </div>
             {showViewFind && (
@@ -972,7 +973,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   onKeyDown={e => { if (e.key === 'Escape') { setShowViewFind(false); setViewFind(''); } }}
                 />
                 <span className="find-count">{viewFind ? `${viewMatchCount} match${viewMatchCount !== 1 ? 'es' : ''}` : ''}</span>
-                <button className="find-close" onClick={() => { setShowViewFind(false); setViewFind(''); }}>✕</button>
+                <button className="find-close" onClick={() => { setShowViewFind(false); setViewFind(''); }}><Icon name="close" size={14} /></button>
               </div>
             )}
             <div className="modal-body" onKeyDown={e => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { showConfirm } from '../dialog';
+import Icon from './Icon';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -31,6 +32,28 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
   };
 
   useEffect(() => { load(); }, [tab]);
+
+  const isDirty = () =>
+    !!newUser.username || !!newUser.password || !!newRole.name || !!newRole.inherits;
+
+  const attemptClose = async () => {
+    if (isDirty()) {
+      const discard = await showConfirm({
+        title: 'Discard changes?',
+        message: 'You have unsaved input in the form. Close anyway?',
+        confirmText: 'Discard',
+        danger: true,
+      });
+      if (!discard) return;
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); attemptClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
 
   const createUser = async () => {
     if (!newUser.username || !newUser.password) return;
@@ -65,12 +88,12 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={attemptClose}>
       <div className="modal modal-wide" onClick={e => e.stopPropagation()}
         style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header">
           <h3>Manage — {database}</h3>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <button className="icon-btn" onClick={attemptClose}><Icon name="close" size={15} /></button>
         </div>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
           {(['users', 'roles'] as const).map(t => (
@@ -109,7 +132,7 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
                             {u.roles?.map((r: any) => `${r.role}@${r.db}`).join(', ') || '—'}
                           </td>
                           <td>
-                            <button className="icon-btn" onClick={() => dropUser(u.user)}>×</button>
+                            <button className="icon-btn" onClick={() => dropUser(u.user)}><Icon name="trash" size={13} /></button>
                           </td>
                         </tr>
                       ))}
@@ -139,7 +162,7 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
                           <td style={{ fontFamily: 'monospace' }}>{r.role}</td>
                           <td style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.isBuiltin ? 'Yes' : 'No'}</td>
                           <td>
-                            {!r.isBuiltin && <button className="icon-btn" onClick={() => dropRole(r.role)}>×</button>}
+                            {!r.isBuiltin && <button className="icon-btn" onClick={() => dropRole(r.role)}><Icon name="trash" size={13} /></button>}
                           </td>
                         </tr>
                       ))}
@@ -149,7 +172,7 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
           )}
         </div>
         <div className="modal-footer">
-          <button className="secondary" onClick={onClose}>Close</button>
+          <button className="secondary" onClick={attemptClose}>Close</button>
         </div>
       </div>
     </div>

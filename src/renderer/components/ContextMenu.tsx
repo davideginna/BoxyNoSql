@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
+import Icon, { IconName } from './Icon';
 
 export interface ContextMenuItem {
   label: string;
   shortcut?: string;
+  icon?: IconName;
   onClick: () => void;
   separator?: false;
   disabled?: boolean;
@@ -56,7 +58,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             disabled={(item as ContextMenuItem).disabled}
             onClick={() => { (item as ContextMenuItem).onClick(); onClose(); }}
           >
-            <span>{(item as ContextMenuItem).label}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {(item as ContextMenuItem).icon && <Icon name={(item as ContextMenuItem).icon!} size={14} />}
+              {(item as ContextMenuItem).label}
+            </span>
             {(item as ContextMenuItem).shortcut && (
               <span className="ctx-shortcut">{(item as ContextMenuItem).shortcut}</span>
             )}

@@ -281,6 +281,25 @@ ipcMain.handle('rename-collection', async (_, connectionId: string, dbName: stri
   return { success: true };
 });
 
+ipcMain.handle('duplicate-collection', async (_, connectionId: string, dbName: string, srcName: string, destName: string) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const db = client.db(dbName);
+  const existing = await db.listCollections({ name: destName }, { nameOnly: true }).toArray();
+  if (existing.length > 0) throw new Error(`Collection "${destName}" already exists`);
+  await db.createCollection(destName);
+  // Copy all documents server-side via aggregation $out.
+  await db.collection(srcName).aggregate([{ $out: destName }]).toArray();
+  // Recreate non-_id indexes.
+  const indexes = await db.collection(srcName).indexes();
+  for (const idx of indexes) {
+    if (idx.name === '_id_') continue;
+    const { key, name, v, ...opts } = idx as any;
+    try { await db.collection(destName).createIndex(key, { name, ...opts }); } catch {}
+  }
+  return { success: true };
+});
+
 ipcMain.handle('clear-collection', async (_, connectionId: string, dbName: string, colName: string) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { registerDialogs, ConfirmOpts, InputOpts } from '../dialog';
+import Icon from './Icon';
 
 type PendingConfirm = { opts: ConfirmOpts; resolve: (v: boolean) => void };
 type PendingInput = { opts: InputOpts; resolve: (v: string | null) => void };
@@ -51,7 +52,7 @@ export default function DialogModal() {
           )}
           <div className="modal-body" style={{ paddingBottom: 8 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              {confirm.opts.danger && <span className="dialog-icon-error">⚠</span>}
+              {confirm.opts.danger && <span className="dialog-icon-error"><Icon name="warn" size={20} /></span>}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0 }}>
                   {confirm.opts.message}

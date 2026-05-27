@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { showConfirm } from '../dialog';
+import Icon from './Icon';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -197,7 +198,7 @@ export default function IndexesView({ connectionId, database, collection }: Inde
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div className="toolbar">
         <button onClick={() => { setShowCreate(v => !v); if (!showCreate) loadDocFields(); }}>
-          {showCreate ? '✕ Cancel' : '+ Create Index'}
+          {showCreate ? <><Icon name="close" size={13} /> Cancel</> : <><Icon name="plus" size={13} /> Create Index</>}
         </button>
         <button className="secondary" onClick={loadAll} disabled={loading}>↻ Refresh</button>
       </div>
@@ -279,8 +280,8 @@ export default function IndexesView({ connectionId, database, collection }: Inde
                   <tr key={idx.name}>
                     <td style={{ fontFamily: 'monospace' }}>{idx.name}</td>
                     <td style={{ fontFamily: 'monospace' }}>{JSON.stringify(idx.key)}</td>
-                    <td>{idx.unique ? '✓' : ''}</td>
-                    <td>{idx.sparse ? '✓' : ''}</td>
+                    <td>{idx.unique ? <Icon name="check" size={13} color="var(--success)" /> : ''}</td>
+                    <td>{idx.sparse ? <Icon name="check" size={13} color="var(--success)" /> : ''}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', color: used ? 'var(--success)' : 'var(--text-secondary)' }}>
                       {s ? formatOps(s.ops) : '—'}
                     </td>

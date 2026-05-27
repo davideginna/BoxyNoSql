@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
+import Icon, { IconName } from './Icon';
 import DocumentsView from './DocumentsView';
 import QueryTerminal from './QueryTerminal';
 import AggregationBuilder from './AggregationBuilder';
@@ -32,12 +33,12 @@ interface MainContentProps {
   activeTabData: Tab | undefined;
 }
 
-const VIEW_TYPES: { type: Tab['type']; label: string }[] = [
-  { type: 'documents', label: '📄 Documents' },
-  { type: 'query', label: '🔍 Query' },
-  { type: 'aggregation', label: '⚙️ Aggregation' },
-  { type: 'indexes', label: '📑 Indexes' },
-  { type: 'stats', label: '📊 Stats' },
+const VIEW_TYPES: { type: Tab['type']; label: string; icon: IconName }[] = [
+  { type: 'documents', label: 'Documents', icon: 'doc' },
+  { type: 'query', label: 'Query', icon: 'search' },
+  { type: 'aggregation', label: 'Aggregation', icon: 'gear' },
+  { type: 'indexes', label: 'Indexes', icon: 'tabs' },
+  { type: 'stats', label: 'Stats', icon: 'stats' },
 ];
 
 const TAB_HEIGHT = 32;
@@ -105,9 +106,9 @@ export default function MainContent({
   }, [tabs, onCloseTab]);
 
   const buildTabCtxItems = useCallback((tabId: string): ContextMenuEntry[] => [
-    { label: '✕  Close tab', onClick: () => onCloseTab(tabId) },
-    { label: '✕  Close all', onClick: closeAll },
-    { label: '✕  Close others', onClick: () => closeOthers(tabId) },
+    { label: 'Close tab', icon: 'close', shortcut: 'Ctrl+W', onClick: () => onCloseTab(tabId) },
+    { label: 'Close all', icon: 'close', onClick: closeAll },
+    { label: 'Close others', icon: 'close', onClick: () => closeOthers(tabId) },
   ], [onCloseTab, closeAll, closeOthers]);
 
   const connColorMap: Record<string, string> = {};
@@ -202,7 +203,7 @@ export default function MainContent({
               onAuxClick={e => { if (e.button === 1) { e.preventDefault(); onCloseTab(tab.id); } }}
             >
               <span className="tab-title">{tab.title}</span>
-              <span className="close-btn" onClick={e => { e.stopPropagation(); onCloseTab(tab.id); }}>✕</span>
+              <span className="close-btn" onClick={e => { e.stopPropagation(); onCloseTab(tab.id); }}><Icon name="close" size={12} /></span>
             </button>
           );
         })}
@@ -214,13 +215,13 @@ export default function MainContent({
       )}
       {hasCollection && (
         <div className="view-switcher">
-          {VIEW_TYPES.map(({ type, label }) => (
+          {VIEW_TYPES.map(({ type, label, icon }) => (
             <button
               key={type}
               className={activeTabData.type === type ? 'active' : ''}
               onClick={() => onChangeTabType(activeTab!, type)}
             >
-              {label}
+              <Icon name={icon} size={13} /> {label}
             </button>
           ))}
         </div>

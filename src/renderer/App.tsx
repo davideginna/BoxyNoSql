@@ -2,8 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
 import ConnectionModal from './components/ConnectionModal';
+import ConnectionManagerModal from './components/ConnectionManagerModal';
 import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
+import SettingsModal from './components/SettingsModal';
+import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
 import { showConfirm, showInput, showAlert } from './dialog';
 import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
 
@@ -12,6 +15,7 @@ const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...
 interface Connection {
   id: string; name: string; uri: string; database?: string;
   folderId?: string; color?: string; order?: number;
+  iconDbColor?: string; iconColColor?: string;
 }
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 interface Tab {
@@ -87,6 +91,9 @@ function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [showConnModal, setShowConnModal] = useState(false);
+  const [showConnManager, setShowConnManager] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light' | 'hc' | 'solarized'>(
@@ -105,6 +112,28 @@ function App() {
     });
   }, []);
 
+  // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
+  // while typing in a field.
+  const anyModalOpen = showConnModal || showConnManager || showSettings || !!usersRolesDb;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (anyModalOpen) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      if (e.key === 'm' || e.key === 'M') { e.preventDefault(); setShowConnManager(true); }
+      else if (e.key === ',') { e.preventDefault(); setShowSettings(true); }
+      else if (e.key === 'w' || e.key === 'W') { if (activeTab) { e.preventDefault(); closeTab(activeTab); } }
+      else if (/^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        if (tabs[idx]) { e.preventDefault(); setActiveTab(tabs[idx].id); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [anyModalOpen, activeTab, tabs]);
+
   // ── Connections ──────────────────────────────────────────────────────────────
   const handleSaveConnection = async (conn: Connection) => {
     const updated = await inv('save-connection', conn);
@@ -122,8 +151,15 @@ function App() {
     setConnectedIds(s => { const n = new Set(s); n.delete(id); return n; });
   };
 
-  const handleSelectConnection = (id: string) => {
+  const handleSelectConnection = async (id: string) => {
+    if (id === selectedConnection) return;
     setSelectedConnection(id);
+    if (connectedIds.has(id)) {
+      setCollections({});
+      setExpandedDbs(new Set());
+      try { setDatabases(await inv('list-databases', id)); }
+      catch { setDatabases([]); }
+    }
   };
 
   const handleConnect = async (connectionId: string) => {
@@ -136,6 +172,7 @@ function App() {
       setDatabases(result.databases);
       setCollections({});
       setExpandedDbs(new Set());
+      setShowConnManager(false);
     } catch (e: any) {
       const conn = connections.find(c => c.id === connectionId);
       const { message, detail } = friendlyConnError(e?.message || String(e));
@@ -189,11 +226,6 @@ function App() {
     const conn = connections.find(c => c.id === connId);
     if (!conn) return;
     const updated = await inv('save-connection', { ...conn, folderId });
-    setConnections(updated);
-  };
-
-  const handleReorderConnections = async (conns: Connection[]) => {
-    const updated = await inv('reorder-connections', conns);
     setConnections(updated);
   };
 
@@ -298,6 +330,19 @@ function App() {
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
+  const handleDuplicateCollection = async (dbName: string, colName: string) => {
+    const newName = await showInput({ title: 'Duplicate Collection', message: `Copy "${colName}" to:`, defaultValue: `${colName}_copy` });
+    if (!newName?.trim() || newName.trim() === colName) return;
+    try {
+      await inv('duplicate-collection', selectedConnection, dbName, colName, newName.trim());
+      await refreshCollections(dbName);
+    } catch (e: any) { showAlert({ title: 'Duplicate failed', message: e.message, danger: true }); }
+  };
+
+  const handleCopyCollectionName = async (_dbName: string, colName: string) => {
+    try { await navigator.clipboard.writeText(colName); } catch {}
+  };
+
   // ── Import ───────────────────────────────────────────────────────────────────
   const handleImportDocuments = async (dbName: string, colName: string) => {
     if (!selectedConnection) return;
@@ -382,7 +427,6 @@ function App() {
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
         connections={connections}
-        folders={folders}
         selectedConnection={selectedConnection}
         connectedIds={connectedIds}
         connectingIds={connectingIds}
@@ -391,11 +435,10 @@ function App() {
         collections={collections}
         selectedCollection={selectedCollection}
         theme={theme}
-        onAddConnection={() => { setEditingConn(null); setShowConnModal(true); }}
-        onEditConnection={c => { setEditingConn(c); setShowConnModal(true); }}
-        onDeleteConnection={handleDeleteConnection}
+        iconSettings={iconSettings}
+        onOpenManager={() => setShowConnManager(true)}
+        onOpenSettings={() => setShowSettings(true)}
         onSelectConnection={handleSelectConnection}
-        onConnect={handleConnect}
         onDisconnect={handleDisconnect}
         onExpandDb={handleExpandDb}
         onSelectCollection={handleSelectCollection}
@@ -405,6 +448,8 @@ function App() {
         onCreateCollection={handleCreateCollection}
         onDropCollection={handleDropCollection}
         onRenameCollection={handleRenameCollection}
+        onDuplicateCollection={handleDuplicateCollection}
+        onCopyCollectionName={handleCopyCollectionName}
         onClearCollection={handleClearCollection}
         onDropDatabase={handleDropDatabase}
         onClearDatabase={handleClearDatabase}
@@ -412,15 +457,7 @@ function App() {
         onImportDocuments={handleImportDocuments}
         onImportCollection={handleImportCollection}
         onImportDatabase={handleImportDatabase}
-        onAddFolder={handleAddFolder}
-        onSaveFolder={handleSaveFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onMoveConnection={handleMoveConnection}
-        onMoveFolder={handleMoveFolder}
-        onReorderConnections={handleReorderConnections}
-        onReorderFolders={handleReorderFolders}
         onThemeChange={setTheme}
-        onSaveConnection={handleSaveConnection}
       />
       <div className="sidebar-resize-handle" onMouseDown={onResizeStart} />
       <MainContent
@@ -434,11 +471,40 @@ function App() {
         onChangeTabType={changeTabType}
         activeTabData={tabs.find(t => t.id === activeTab)}
       />
+      {showConnManager && (
+        <ConnectionManagerModal
+          connections={connections}
+          folders={folders}
+          connectedIds={connectedIds}
+          connectingIds={connectingIds}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onAddConnection={() => { setEditingConn(null); setShowConnModal(true); }}
+          onEditConnection={c => { setEditingConn(c); setShowConnModal(true); }}
+          onDeleteConnection={handleDeleteConnection}
+          onSaveConnection={handleSaveConnection}
+          onAddFolder={handleAddFolder}
+          onSaveFolder={handleSaveFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onMoveConnection={handleMoveConnection}
+          onMoveFolder={handleMoveFolder}
+          onReorderFolders={handleReorderFolders}
+          disableEsc={showConnModal}
+          onClose={() => setShowConnManager(false)}
+        />
+      )}
       {showConnModal && (
         <ConnectionModal
           connection={editingConn}
           onSave={handleSaveConnection}
           onClose={() => setShowConnModal(false)}
+        />
+      )}
+      {showSettings && (
+        <SettingsModal
+          settings={iconSettings}
+          onChange={s => { setIconSettings(s); saveIconSettings(s); }}
+          onClose={() => setShowSettings(false)}
         />
       )}
       {usersRolesDb && selectedConnection && (

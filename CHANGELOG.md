@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **Cross-platform packaging**: Windows (`nsis`) electron-builder target + generated `build/icon.ico`; per-platform scripts (`electron:build:linux` / `:win` / `:all`); installers output to `release/` (no longer clobbers `dist/`)
+- **GitHub Actions release workflow** (`.github/workflows/release.yml`): ubuntu + windows matrix, builds + uploads installers on `v*` tags
+- **Connection manager overlay** (`ConnectionManagerModal`): all saved-connection and folder management (create/edit/delete, drag-drop, connect) moved into a dedicated modal; opened via sidebar **Manage** button or `Ctrl+M`. Sidebar now shows only connected databases
+- Connection manager overlay is **resizable** (drag right edge); width persisted in `localStorage` across reopen and restart
+- Per-connection host/replica-set display in the manager: lists each host (one per line) plus `SRV` and `rs:<name>` tags
+- **Monochrome SVG icon set** (`Icon.tsx`) replacing every emoji across the whole app; `ContextMenu` gained `icon` + `shortcut` fields
+- **Icon color customization**: Appearance settings modal (sidebar ⚙) sets database / collection icon color mode (mono / connection / custom) with a preset+hex+native color picker; per-connection overrides in the connection form. Defaults: database icon green, collection icon yellow; default connection color yellow
+- **Folder edit modal** (`FolderEditModal`): change folder name + color, with an option to apply the color to all connections inside the folder
+- **Copy** collection name and **Duplicate** collection (`duplicate-collection` IPC clones documents + non-`_id` indexes)
+- **Keyboard shortcuts**: `Ctrl+M` manager, `Ctrl+,` appearance, `Ctrl+W` close tab, `Ctrl+1-9` switch tab; collection (focused) Enter open / F2 rename / Del drop / `Ctrl+D` duplicate / `Ctrl+C` copy name; Enter to connect/disconnect in the manager
+- Connection-attempt feedback: inline "Connecting…" spinner in the sidebar while a connection is in flight
+- `Esc` closes Connection / Users-Roles / Settings / Manager modals; modals with unsaved input prompt "Discard changes?" first
+- Reusable inline `ColorEditor` (preset swatches + editable hex + native picker) and `ColorPickerPopup`
 - **Import**: three-level JSON import
   - Documents into a collection (JSON array, single object, or NDJSON)
   - Collection into a database (creates collection, prompts for name)
@@ -23,6 +36,11 @@
 - `PIANO_TEST.md` — complete manual test plan with Docker MongoDB setup (auth + no-auth), seed scripts, 18 sections covering every feature
 
 ### Fixed
+- **Renderer build broken under Vite 8**: `vite-plugin-monaco-editor` required `esbuild` (no longer bundled by rolldown-based Vite) → added `esbuild` dev dependency
+- Monaco worker bundles were written to a bogus nested path inside `src/` (plugin joined two absolute paths); fixed via `customDistPath`
+- `linux.desktop` config rejected by electron-builder v26 (flat keys) → moved under `desktop.entry`
+- Connection timeout lowered from 10s to 5s (`serverSelectionTimeoutMS` + `connectTimeoutMS` on `connect-db`); failures now show a styled, human-readable dialog (timeout / refused / auth / host-not-found) instead of a raw error string
+- Switching between connected connections showed stale databases: `handleSelectConnection` now reloads the selected connection's database list
 - **Production build broken**: `main.ts` loaded `../../renderer/index.html` but built layout is `dist/main/main.js` + `dist/renderer/index.html`, so packaged app showed a blank page. Path corrected to `../renderer/index.html`
 - **Stats view crashed** with `TypeError: Cannot read 'size of all LSM objects'` when `wiredTiger.LSM` is absent (modern MongoDB without LSM). Added optional chaining and conditional sections; shows "No WiredTiger stats available" as a graceful fallback
 - **Extended-JSON round-trip**: `insert-documents`, `update-document`, and `run-aggregation` now apply `fromExtJSON` so `{$oid}` / `{$date}` from the renderer are rehydrated to real `ObjectId` / `Date` in MongoDB (previously saved as plain objects, breaking queries)
@@ -38,6 +56,9 @@
 - Sidebar tree chevrons were 9px wide and hard to click: now 18×18 px with hover background, `cursor: pointer`, `border-radius`
 
 ### Changed
+- Reverted emoji icons back to a unified monochrome SVG icon set (see `Icon.tsx`), now colorable by connection/theme
+- Sidebar scope narrowed to connected databases only; saved-connection/folder management lives in the connection manager overlay
+- Connection / folder color is shown via the colored icon in the overlay (color is edited in the connection or folder form, not via an inline swatch)
 - Added Docker MongoDB snippet to `README.md`
 - `StatsView.tsx`: safer rendering — `mb()` / `num()` helpers handle missing numeric fields instead of showing `NaN MB` or `undefined`
 
