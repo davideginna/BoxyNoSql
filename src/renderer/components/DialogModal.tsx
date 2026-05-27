@@ -50,14 +50,27 @@ export default function DialogModal() {
             </div>
           )}
           <div className="modal-body" style={{ paddingBottom: 8 }}>
-            <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-              {confirm.opts.message}
-            </p>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {confirm.opts.danger && <span className="dialog-icon-error">⚠</span>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0 }}>
+                  {confirm.opts.message}
+                </p>
+                {confirm.opts.detail && (
+                  <p style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', margin: '8px 0 0', fontFamily: 'monospace' }}>
+                    {confirm.opts.detail}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
           <div className="modal-footer">
-            <button className="secondary" autoFocus onClick={() => resolveConfirm(false)}>Cancel</button>
+            {!confirm.opts.hideCancel && (
+              <button className="secondary" autoFocus onClick={() => resolveConfirm(false)}>Cancel</button>
+            )}
             <button
-              style={confirm.opts.danger ? { background: 'var(--error)' } : {}}
+              autoFocus={confirm.opts.hideCancel}
+              style={confirm.opts.danger && !confirm.opts.hideCancel ? { background: 'var(--error)' } : {}}
               onClick={() => resolveConfirm(true)}
               onKeyDown={e => { if (e.key === 'Enter') resolveConfirm(true); if (e.key === 'Escape') resolveConfirm(false); }}
             >

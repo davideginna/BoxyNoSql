@@ -7,7 +7,11 @@ export default defineConfig({
   root: path.resolve(__dirname, 'src/renderer'),
   plugins: [
     react(),
-    monacoEditorPlugin({})
+    monacoEditorPlugin({
+      // outDir is already absolute; plugin default re-joins it with root → workers
+      // get written to a bogus nested path inside src/. Return outDir directly.
+      customDistPath: (_root, outDir) => path.join(outDir, 'monacoeditorwork'),
+    })
   ],
   base: './',
   build: {

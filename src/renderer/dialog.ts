@@ -3,6 +3,8 @@ export interface ConfirmOpts {
   message: string;
   danger?: boolean;
   confirmText?: string;
+  hideCancel?: boolean;
+  detail?: string;
 }
 
 export interface InputOpts {
@@ -31,4 +33,12 @@ export function showConfirm(opts: ConfirmOpts | string): Promise<boolean> {
 export function showInput(opts: InputOpts | string, defaultValue?: string): Promise<string | null> {
   const o = typeof opts === 'string' ? { message: opts, defaultValue } : opts;
   return _input ? _input(o) : Promise.resolve(window.prompt(o.message, o.defaultValue) ?? null);
+}
+
+export function showAlert(opts: ConfirmOpts | string): Promise<void> {
+  const o = typeof opts === 'string' ? { message: opts } : opts;
+  const full: ConfirmOpts = { confirmText: 'OK', ...o, hideCancel: true };
+  if (_confirm) return _confirm(full).then(() => {});
+  window.alert(o.message + (o.detail ? `\n\n${o.detail}` : ''));
+  return Promise.resolve();
 }

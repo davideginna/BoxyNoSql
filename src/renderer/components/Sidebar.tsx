@@ -16,6 +16,7 @@ interface SidebarProps {
   folders: Folder[];
   selectedConnection: string | null;
   connectedIds: Set<string>;
+  connectingIds: Set<string>;
   databases: string[];
   expandedDbs: Set<string>;
   collections: Record<string, string[]>;
@@ -93,7 +94,7 @@ function FolderIcon({ open }: { color?: string; open: boolean }) {
 
 export default function Sidebar(props: SidebarProps) {
   const {
-    connections, folders, selectedConnection, connectedIds,
+    connections, folders, selectedConnection, connectedIds, connectingIds,
     databases, expandedDbs, collections, selectedCollection,
     theme, onAddConnection, onEditConnection, onDeleteConnection,
     onSelectConnection, onConnect, onDisconnect, onExpandDb, onSelectCollection,
@@ -236,22 +237,24 @@ export default function Sidebar(props: SidebarProps) {
   const renderConnection = (conn: Connection) => {
     const isSelected = selectedConnection === conn.id;
     const isConnected = connectedIds.has(conn.id);
+    const isConnecting = connectingIds.has(conn.id);
     const connColor = conn.color || 'var(--success)';
     return (
       <div key={conn.id}>
         <div
-          className={`connection-item ${isSelected ? 'active' : ''} ${isConnected ? 'connected' : ''}`}
+          className={`connection-item ${isSelected ? 'active' : ''} ${isConnected ? 'connected' : ''} ${isConnecting ? 'connecting' : ''}`}
           style={isConnected ? { borderLeftColor: connColor } : {}}
           draggable
           onDragStart={() => handleDragStart('conn', conn.id)}
           onClick={() => onSelectConnection(conn.id)}
-          onDoubleClick={() => { if (!isConnected) onConnect(conn.id); }}
+          onDoubleClick={() => { if (!isConnected && !isConnecting) onConnect(conn.id); }}
           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setConnCtxMenu({ x: e.clientX, y: e.clientY, conn }); }}
         >
           <ColorPicker value={conn.color} onChange={c => onSaveConnection({ ...conn, color: c })} />
           <span className="name">{conn.name}</span>
+          {isConnecting && <span className="conn-connecting-label"><span className="conn-spinner" />Connecting…</span>}
           <div className="actions">
-            {isConnected ? (
+            {isConnecting ? null : isConnected ? (
               <button
                 title="Disconnect"
                 onClick={e => { e.stopPropagation(); onDisconnect(conn.id); }}
@@ -385,7 +388,7 @@ export default function Sidebar(props: SidebarProps) {
   ] : [];
 
   const connCtxItems: ContextMenuEntry[] = connCtxMenu ? [
-    { label: '🔌  Connect', disabled: connectedIds.has(connCtxMenu.conn.id), onClick: () => { onConnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
+    { label: '🔌  Connect', disabled: connectedIds.has(connCtxMenu.conn.id) || connectingIds.has(connCtxMenu.conn.id), onClick: () => { onConnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { label: '🔌  Disconnect', disabled: !connectedIds.has(connCtxMenu.conn.id), onClick: () => { onDisconnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { separator: true },
     { label: '✏️  Edit', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },

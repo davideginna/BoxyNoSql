@@ -218,7 +218,10 @@ ipcMain.handle('connect-db', async (_, connectionId: string) => {
     try { await clients.get(connectionId)!.close(); } catch {}
   }
 
-  const client = new MongoClient(sanitizeUri(connection.uri));
+  const client = new MongoClient(sanitizeUri(connection.uri), {
+    serverSelectionTimeoutMS: 5000,
+    connectTimeoutMS: 5000,
+  });
   await client.connect();
   clients.set(connectionId, client);
 

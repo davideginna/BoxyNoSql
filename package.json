@@ -12,7 +12,10 @@
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "electron:build": "npm run build && electron-builder --linux deb",
+    "electron:build": "npm run build && electron-builder --linux deb AppImage",
+    "electron:build:linux": "npm run build && electron-builder --linux deb AppImage",
+    "electron:build:win": "npm run build && electron-builder --win nsis",
+    "electron:build:all": "npm run build && electron-builder --linux deb AppImage --win nsis",
     "electron:build:dir": "npm run build && electron-builder --dir",
     "start": "electron .",
     "test": "vitest run --reporter=verbose",
@@ -34,13 +37,14 @@
     "@vitejs/plugin-react": "^4.2.1",
     "@vitest/coverage-v8": "^4.1.5",
     "concurrently": "^8.2.2",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
     "jsdom": "^29.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.8",
+    "vite": "^8.0.14",
     "vite-plugin-monaco-editor": "^1.1.0",
     "vitest": "^4.1.5",
     "wait-on": "^9.0.5"
@@ -48,6 +52,9 @@
   "build": {
     "appId": "com.boxynosql.app",
     "productName": "BoxyNoSql",
+    "directories": {
+      "output": "release"
+    },
     "linux": {
       "target": [
         "deb",
@@ -56,14 +63,27 @@
       "category": "Development",
       "icon": "build/icon.png",
       "desktop": {
-        "Name": "BoxyNoSql",
-        "Comment": "Desktop NoSQL GUI client",
-        "Categories": "Development;Database;",
-        "StartupWMClass": "BoxyNoSql"
+        "entry": {
+          "Name": "BoxyNoSql",
+          "Comment": "Desktop NoSQL GUI client",
+          "Categories": "Development;Database;",
+          "StartupWMClass": "BoxyNoSql"
+        }
       }
     },
     "deb": {
       "maintainer": "Davide Ginnasio"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     },
     "extraResources": [
       {

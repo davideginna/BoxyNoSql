@@ -4,7 +4,7 @@ import MainContent from './components/MainContent';
 import ConnectionModal from './components/ConnectionModal';
 import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
-import { showConfirm, showInput } from './dialog';
+import { showConfirm, showInput, showAlert } from './dialog';
 import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
@@ -22,6 +22,26 @@ interface Tab {
 
 const SIDEBAR_MIN = 160;
 const SIDEBAR_MAX = 600;
+
+function friendlyConnError(raw: string): { message: string; detail: string } {
+  const detail = raw.replace(/^Error invoking remote method '[^']+':\s*/, '');
+  const lc = detail.toLowerCase();
+  let message: string;
+  if (lc.includes('timed out') || lc.includes('etimedout') || lc.includes('serverselection')) {
+    message = "Couldn't reach the server in time. Make sure MongoDB is running and that you're on the right network (Docker up? VPN connected? Internet on?).";
+  } else if (lc.includes('econnrefused')) {
+    message = 'Connection refused. Nothing is listening on that host/port — is MongoDB actually running there?';
+  } else if (lc.includes('enotfound') || lc.includes('getaddrinfo')) {
+    message = "Host not found. Double-check the hostname in the connection URI.";
+  } else if (lc.includes('authentication failed') || lc.includes('auth') || lc.includes('not authorized')) {
+    message = 'Authentication failed. Check the username and password.';
+  } else if (lc.includes('econnreset') || lc.includes('socket')) {
+    message = 'The connection dropped. The server may be unreachable or behind a firewall/VPN.';
+  } else {
+    message = "Couldn't connect to the database.";
+  }
+  return { message, detail };
+}
 
 function App() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(
@@ -59,6 +79,7 @@ function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedConnection, setSelectedConnection] = useState<string | null>(null);
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
+  const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
   const [databases, setDatabases] = useState<string[]>([]);
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
   const [collections, setCollections] = useState<Record<string, string[]>>({});
@@ -106,6 +127,8 @@ function App() {
   };
 
   const handleConnect = async (connectionId: string) => {
+    if (connectingIds.has(connectionId)) return;
+    setConnectingIds(s => new Set([...s, connectionId]));
     try {
       const result = await inv('connect-db', connectionId);
       setSelectedConnection(connectionId);
@@ -113,7 +136,12 @@ function App() {
       setDatabases(result.databases);
       setCollections({});
       setExpandedDbs(new Set());
-    } catch (e: any) { alert('Connection failed: ' + e.message); }
+    } catch (e: any) {
+      const conn = connections.find(c => c.id === connectionId);
+      const { message, detail } = friendlyConnError(e?.message || String(e));
+      showAlert({ title: `Can't connect to ${conn?.name || 'server'}`, message, detail, danger: true });
+    }
+    finally { setConnectingIds(s => { const n = new Set(s); n.delete(connectionId); return n; }); }
   };
 
   const handleDisconnect = async (connectionId: string) => {
@@ -357,6 +385,7 @@ function App() {
         folders={folders}
         selectedConnection={selectedConnection}
         connectedIds={connectedIds}
+        connectingIds={connectingIds}
         databases={databases}
         expandedDbs={expandedDbs}
         collections={collections}
