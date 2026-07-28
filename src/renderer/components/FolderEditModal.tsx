@@ -27,8 +27,10 @@ export default function FolderEditModal({ folder, connectionCount, onSave, onClo
     onClose();
   };
 
+  // Nested inside the connection manager's overlay: the backdrop click must be
+  // swallowed, otherwise it also reaches the manager overlay and closes it.
   return (
-    <div className="modal-overlay" style={{ zIndex: 1700 }} onClick={onClose}>
+    <div className="modal-overlay" style={{ zIndex: 1700 }} onClick={e => { e.stopPropagation(); onClose(); }}>
       <div className="modal" style={{ width: 440 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Edit Folder</h3>

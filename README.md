@@ -36,10 +36,14 @@ npm start      # open Electron (after dev server is up)
 ## Build
 
 ```bash
-npm run electron:build
+npm run electron:build:linux   # .deb + AppImage
+npm run electron:build:win     # NSIS installer
+npm run electron:build:all     # both
 ```
 
-Generates `.deb` in `dist/` for Ubuntu/Debian.
+Installers are written to `release/`.
+
+**Windows users:** see [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md) for install, build and troubleshooting steps.
 
 ## Usage
 

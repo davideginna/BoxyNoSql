@@ -1,5 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { detectType } from '../utils/buildFilter';
+
+const PREVIEW_FIELDS = 4;
+const PREVIEW_STR_MAX = 28;
+
+// One-line rendition of a value for the collapsed document header. Returns the
+// same colour classes the expanded tree uses, so the preview reads as a
+// condensed version of what you get when you open the row.
+function previewValue(v: any): { text: string; cls: string } {
+  if (v === null || v === undefined) return { text: 'null', cls: 'tree-val-null' };
+  if (typeof v === 'boolean') return { text: String(v), cls: 'tree-val-bool' };
+  if (typeof v === 'number') return { text: String(v), cls: 'tree-val-num' };
+  if (typeof v === 'string') {
+    const t = v.length > PREVIEW_STR_MAX ? v.slice(0, PREVIEW_STR_MAX) + '…' : v;
+    return { text: `"${t}"`, cls: 'tree-val-str' };
+  }
+  if (typeof v === 'object' && '$oid' in v) return { text: `ObjectId(…${String(v.$oid).slice(-6)})`, cls: 'tree-val-oid' };
+  if (Array.isArray(v)) return { text: `Array[${v.length}]`, cls: 'tree-summary' };
+  return { text: `{${Object.keys(v).length}}`, cls: 'tree-summary' };
+}
 
 function ValueDisplay({ value }: { value: any }) {
   if (value === null) return <span className="tree-val-null">null</span>;
@@ -99,6 +118,16 @@ export default function DocumentTree({
   const id = rawId == null ? 'Document' : (typeof rawId === 'object' && '$oid' in rawId) ? rawId.$oid : String(rawId);
   const preview = id.length > 32 ? id.slice(0, 32) + '…' : id;
 
+  // First few non-_id fields, so a collapsed list says something about its
+  // documents instead of showing a column of identical-looking ObjectIds.
+  const previewFields = useMemo(
+    () => Object.entries(doc)
+      .filter(([k]) => k !== '_id')
+      .slice(0, PREVIEW_FIELDS)
+      .map(([k, v]) => ({ key: k, ...previewValue(v) })),
+    [doc]
+  );
+
   return (
     <div
       className={`doc-tree-item${selected ? ' doc-tree-selected' : ''}`}
@@ -112,6 +141,17 @@ export default function DocumentTree({
       >
         <span className="tree-chevron" onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>{open ? '▾' : '▸'}</span>
         <span className="doc-tree-id">{preview}</span>
+        {!open && previewFields.length > 0 && (
+          <span className="doc-tree-preview">
+            {previewFields.map(f => (
+              <span key={f.key} className="doc-preview-field">
+                <span className="tree-key">{f.key}</span>
+                <span className="tree-sep">: </span>
+                <span className={f.cls}>{f.text}</span>
+              </span>
+            ))}
+          </span>
+        )}
       </div>
       {open && (
         <div className="doc-tree-body">

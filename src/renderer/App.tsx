@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
 import { showConfirm, showInput, showAlert } from './dialog';
 import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
+import { ImportedConnection } from './utils/uriImport';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -232,6 +233,61 @@ function App() {
   const handleReorderFolders = async (fols: Folder[]) => {
     const updated = await inv('reorder-folders', fols);
     setFolders(updated);
+  };
+
+  // Bulk import from a Studio 3T .uri export: recreates the `3t.group` folder
+  // path (reusing folders that already exist) before saving each connection.
+  const handleImportConnections = async (items: ImportedConnection[]) => {
+    if (items.length === 0) return;
+    let nextFolders = folders;
+    let nextConnections = connections;
+    const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const resolveFolderPath = async (path: string[]): Promise<string | undefined> => {
+      let parentId: string | undefined;
+      for (const name of path) {
+        const existing = nextFolders.find(
+          f => f.parentId === parentId && f.name.toLowerCase() === name.toLowerCase()
+        );
+        if (existing) { parentId = existing.id; continue; }
+        const folder: Folder = {
+          id: newId(),
+          name,
+          order: nextFolders.filter(f => f.parentId === parentId).length,
+          parentId,
+        };
+        nextFolders = await inv('save-folder', folder);
+        parentId = folder.id;
+      }
+      return parentId;
+    };
+
+    let failed = 0;
+    for (const item of items) {
+      try {
+        const folderId = await resolveFolderPath(item.folderPath);
+        const conn: Connection = {
+          id: newId(),
+          name: item.name,
+          uri: item.uri,
+          database: item.database,
+          folderId,
+          color: item.color,
+          order: nextConnections.filter(c => c.folderId === folderId).length,
+        };
+        nextConnections = await inv('save-connection', conn);
+      } catch { failed++; }
+    }
+
+    setFolders(nextFolders);
+    setConnections(nextConnections);
+
+    const ok = items.length - failed;
+    await showAlert({
+      title: 'Import connections',
+      message: `Imported ${ok} connection${ok !== 1 ? 's' : ''}.`,
+      detail: failed > 0 ? `${failed} could not be saved.` : undefined,
+    });
   };
 
   // ── Databases ────────────────────────────────────────────────────────────────
@@ -489,6 +545,7 @@ function App() {
           onMoveConnection={handleMoveConnection}
           onMoveFolder={handleMoveFolder}
           onReorderFolders={handleReorderFolders}
+          onImportConnections={handleImportConnections}
           disableEsc={showConnModal}
           onClose={() => setShowConnManager(false)}
         />

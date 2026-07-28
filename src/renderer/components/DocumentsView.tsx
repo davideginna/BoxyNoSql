@@ -129,7 +129,9 @@ let condId = 0;
 export default function DocumentsView({ connectionId, database, collection }: DocumentsViewProps) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
-  const [showQB, setShowQB] = useState(true);
+  // Closed by default: an empty builder took ~20% of the width to show a
+  // placeholder. The toolbar Filter button opens it and carries the count.
+  const [showQB, setShowQB] = useState(false);
   const [matchAll, setMatchAll] = useState(true);
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [limit, setLimit] = useState(20);
@@ -486,7 +488,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const hasSelection = selectedIndices.size > 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+    <div className="docs-view">
       <div className="toolbar">
         <div className="view-toggle">
           <button className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')}>
@@ -503,39 +505,44 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         >
           <span className="toolbar-label"><Icon name="filter" size={13} /> Filter{conditions.length > 0 ? ` (${conditions.length})` : ''}</span>
         </button>
-        <span className="toolbar-label" style={{ fontSize: 12, color: '#888' }}>Limit:</span>
-        <input type="number" value={limit} onChange={e => setLimit(Number(e.target.value))} style={{ width: 60 }} />
+        <span className="toolbar-label toolbar-limit-label">Limit:</span>
+        <input type="number" className="toolbar-limit-input" value={limit} onChange={e => setLimit(Number(e.target.value))} />
         <button onClick={applyFilter} disabled={loading}>{loading ? '…' : <><Icon name="play" size={12} /> Run</>}</button>
         <button className="secondary" onClick={resetFilter}><Icon name="refresh" size={13} /> Reset</button>
         <button className="secondary" title="Add document (Ctrl+D)" onClick={openAddDoc}><Icon name="plus" size={13} /> Add</button>
+        {/* Paste creates documents, so it belongs next to Add — it is the one
+            bulk action that works with nothing selected. */}
+        <button className="secondary" title="Paste from clipboard (Ctrl+V)" onClick={handlePaste}><Icon name="pin" size={13} /> Paste</button>
         {viewMode === 'tree' && (
           <>
-            <div style={{ width: 1, background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
+            <div className="toolbar-divider" />
             <button className="secondary" title="Expand all" onClick={() => { setExpandTarget(true); setExpandTick(t => t + 1); }}><Icon name="expandAll" size={13} /></button>
             <button className="secondary" title="Collapse all" onClick={() => { setExpandTarget(false); setExpandTick(t => t + 1); }}><Icon name="collapseAll" size={13} /></button>
           </>
         )}
       </div>
 
-      {/* Bulk action bar */}
-      <div className={`bulk-action-bar${hasSelection ? ' bulk-action-bar--active' : ''}`}>
-        <span>{selectedIndices.size} selected</span>
-        <button className="secondary" onClick={handleBulkCopy} disabled={!hasSelection} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
-        <button className="secondary" onClick={handlePaste} title="Paste from clipboard (Ctrl+V)"><Icon name="pin" size={13} /> Paste</button>
-        <button style={hasSelection ? { background: 'var(--error)' } : {}} className={hasSelection ? '' : 'secondary'} onClick={handleBulkDelete} disabled={!hasSelection} title="Delete selected (Del)"><Icon name="trash" size={13} /> Delete</button>
-        <button className="secondary" onClick={() => setSelectedIndices(new Set())} disabled={!hasSelection}><Icon name="close" size={13} /> Deselect all</button>
-      </div>
+      {/* Bulk action bar — only while something is selected; with an empty
+          selection every button in it was disabled anyway. */}
+      {hasSelection && (
+        <div className="bulk-action-bar bulk-action-bar--active">
+          <span>{selectedIndices.size} selected</span>
+          <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
+          <button className="danger" onClick={handleBulkDelete} title="Delete selected (Del)"><Icon name="trash" size={13} /> Delete</button>
+          <button className="secondary" onClick={() => setSelectedIndices(new Set())}><Icon name="close" size={13} /> Deselect all</button>
+        </div>
+      )}
 
-      {error && <div style={{ padding: '6px 12px', color: '#f48771', fontSize: 12, background: '#2d1a1a' }}>{error}</div>}
+      {error && <div className="docs-error">{error}</div>}
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="docs-split">
 
         <div
-          style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}
+          className="docs-main"
           onContextMenu={e => { e.preventDefault(); setEmptyCtxMenu({ x: e.clientX, y: e.clientY }); }}
         >
           {documents.length === 0 && !loading && !error && (
-            <div style={{ padding: 24, color: '#888', textAlign: 'center' }}>No documents</div>
+            <div className="docs-empty">No documents</div>
           )}
 
           {viewMode === 'table' && keys.length > 0 && (
@@ -543,7 +550,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: 32, padding: '0 8px' }}>
+                    <th className="doc-check-cell">
                       <input
                         type="checkbox"
                         checked={documents.length > 0 && selectedIndices.size === documents.length}
@@ -566,7 +573,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                       onDoubleClick={() => openEdit(doc)}
                       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
                     >
-                      <td style={{ width: 32, padding: '0 8px' }} onClick={e => e.stopPropagation()}>
+                      <td className="doc-check-cell" onClick={e => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedIndices.has(idx)}
@@ -593,7 +600,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           )}
 
           {viewMode === 'tree' && (
-            <div className="tree-view-container" style={{ userSelect: 'none' }}>
+            <div className="tree-view-container">
               {documents.map((doc, idx) => (
                 <DocumentTree
                   key={idx}
@@ -719,10 +726,10 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               <div className="qb-panel-footer">
                 {hasFilter && (
                   <details className="qb-preview-details">
-                    <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <summary className="qb-preview-summary">
                       <span>Query preview</span>
                       <span
-                        style={{ fontSize: 10, color: 'var(--accent)', cursor: 'pointer', padding: '0 4px' }}
+                        className="qb-expand-btn"
                         onClick={e => { e.preventDefault(); setShowQueryModal(true); }}
                       ><Icon name="expand" size={11} /> expand</span>
                     </summary>
@@ -730,8 +737,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   </details>
                 )}
                 <div className="qb-footer-btns">
-                  <button className="secondary" style={{ fontSize: 11 }} onClick={resetFilter}>↺ Reset</button>
-                  <button style={{ fontSize: 11, flex: 1 }} onClick={applyFilter} disabled={loading}>
+                  <button className="secondary btn-xs" onClick={resetFilter}>↺ Reset</button>
+                  <button className="btn-xs grow" onClick={applyFilter} disabled={loading}>
                     {loading ? '…' : '▶ Run'}
                   </button>
                 </div>
@@ -743,13 +750,13 @@ export default function DocumentsView({ connectionId, database, collection }: Do
 
       <div className="status-bar">
         <span>{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}</span>
-        <span style={{ flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: 11 }}>
+        <span className="status-filter">
           {conditions.length > 0 ? JSON.stringify(buildFilter(conditions, matchAll)) : ''}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div className="status-pager">
           <button className="page-btn" onClick={() => goToPage(0)} disabled={page === 0 || loading}>«</button>
           <button className="page-btn" onClick={() => goToPage(page - 1)} disabled={page === 0 || loading}>‹</button>
-          <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+          <span className="status-range">
             {total === 0 ? '0 / 0' : `${page * limit + 1}–${Math.min((page + 1) * limit, total)} / ${total}`}
           </span>
           <button className="page-btn" onClick={() => goToPage(page + 1)} disabled={(page + 1) * limit >= total || loading}>›</button>
@@ -785,11 +792,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
             </div>
             <div className="modal-body">
-              <pre style={{
-                background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#cccccc',
-                fontFamily: 'Consolas, Monaco, monospace', fontSize: 13, padding: 12,
-                borderRadius: 4, overflow: 'auto', maxHeight: 500, margin: 0, whiteSpace: 'pre-wrap',
-              }}>
+              <pre className="code-block">
                 {JSON.stringify(buildFilter(conditions, matchAll), null, 2)}
               </pre>
             </div>
@@ -809,18 +812,18 @@ export default function DocumentsView({ connectionId, database, collection }: Do
             <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>Add document</h3>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button className="secondary" style={{ fontSize: 11, padding: '2px 8px' }}
+                <div className="modal-header-actions">
+                  <button className="secondary btn-xs"
                     onClick={() => setAddJson(formatJson(addJson))}>Format</button>
                   {addValid
-                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}><Icon name="close" size={11} /> {addValid}</span>
-                    : <span style={{ fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={11} /> Valid</span>}
+                    ? <span className="json-status invalid"><Icon name="close" size={11} /> {addValid}</span>
+                    : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
                   <button className="icon-btn" onClick={() => setShowAddDoc(false)}><Icon name="close" size={14} /></button>
                 </div>
               </div>
               <div className="modal-body">
-                {addError && <div style={{ color: '#f48771', marginBottom: 8, fontSize: 12 }}>{addError}</div>}
-                <div className="json-editor-wrap" style={{ height: 420, borderColor: addValid ? '#6b2b2b' : '#3c3c3c' }}>
+                {addError && <div className="modal-error">{addError}</div>}
+                <div className={`json-editor-wrap tall${addValid ? ' invalid' : ''}`}>
                   <pre
                     className="json-editor-hl"
                     aria-hidden="true"
@@ -842,7 +845,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                     }}
                   />
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                <div className="modal-hint">
                   Ctrl+Enter save · Esc close · Paste an array [ ] to insert multiple
                 </div>
               </div>
@@ -867,12 +870,12 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   Edit — {idToString(editingDoc._id)}
                   {isDirty && <span className="edit-dirty-badge">● modified</span>}
                 </h3>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button className="secondary" style={{ fontSize: 11, padding: '2px 8px' }}
+                <div className="modal-header-actions">
+                  <button className="secondary btn-xs"
                     onClick={() => setEditJson(formatJson(editJson))}>Format</button>
                   {jsonValid
-                    ? <span style={{ fontSize: 11, color: 'var(--error)' }}><Icon name="close" size={11} /> {jsonValid}</span>
-                    : <span style={{ fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={11} /> Valid</span>}
+                    ? <span className="json-status invalid"><Icon name="close" size={11} /> {jsonValid}</span>
+                    : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
                   <button className="icon-btn" onClick={() => closeEdit()}><Icon name="close" size={14} /></button>
                 </div>
               </div>
@@ -893,8 +896,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                 </div>
               )}
               <div className="modal-body">
-                {editError && <div style={{ color: '#f48771', marginBottom: 8, fontSize: 12 }}>{editError}</div>}
-                <div className="json-editor-wrap" style={{ height: diff && diff.length > 0 ? 340 : 420, borderColor: jsonValid ? '#6b2b2b' : '#3c3c3c' }}>
+                {editError && <div className="modal-error">{editError}</div>}
+                <div className={`json-editor-wrap ${diff && diff.length > 0 ? 'short' : 'tall'}${jsonValid ? ' invalid' : ''}`}>
                   <pre
                     className="json-editor-hl"
                     aria-hidden="true"
@@ -937,7 +940,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                     ))}
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                <div className="modal-hint">
                   Ctrl+Enter save · Ctrl+F find · Esc close
                 </div>
               </div>
@@ -956,8 +959,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           <div className="modal modal-wide" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setViewingDoc(null); }}>
             <div className="modal-header">
               <h3>View — {idToString(viewingDoc._id)}</h3>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="secondary" style={{ fontSize: 12 }}
+              <div className="modal-header-actions">
+                <button className="secondary btn-sm"
                   onClick={() => { openEdit(viewingDoc); setViewingDoc(null); }}>Edit (Ctrl+J)</button>
                 <button className="icon-btn" onClick={() => setViewingDoc(null)}><Icon name="close" size={14} /></button>
               </div>
@@ -980,15 +983,10 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); }
             }} tabIndex={-1}>
               <pre
-                style={{
-                  background: '#1e1e1e', border: '1px solid #3c3c3c', color: '#cccccc',
-                  fontFamily: 'Consolas, Monaco, monospace', fontSize: 13, padding: 12,
-                  borderRadius: 4, overflow: 'auto', maxHeight: 500, margin: 0,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                }}
+                className="code-block break-all"
                 dangerouslySetInnerHTML={{ __html: highlightText(viewText, viewFind) }}
               />
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <div className="modal-hint">
                 Ctrl+F find
               </div>
             </div>

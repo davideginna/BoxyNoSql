@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- **Import connections from a Studio 3T `.uri` export** (`utils/uriImport.ts` + `ImportConnectionsModal`): Import button in the connection manager parses the export file, maps `3t.group` to a (nested) folder path, `3t.defaultColor` to the connection color and `3t.connection.name` to the name, strips `3t.*` and empty query params from the stored URI, and shows a checklist preview that flags URIs already saved. Folders created during import are reused when they already exist and start expanded
+- **Windows install guide** (`INSTALL_WINDOWS.md`): installer / build-from-source / CI-artifact paths, plus the `npm run dev` cmd.exe caveat
 - **Cross-platform packaging**: Windows (`nsis`) electron-builder target + generated `build/icon.ico`; per-platform scripts (`electron:build:linux` / `:win` / `:all`); installers output to `release/` (no longer clobbers `dist/`)
 - **GitHub Actions release workflow** (`.github/workflows/release.yml`): ubuntu + windows matrix, builds + uploads installers on `v*` tags
 - **Connection manager overlay** (`ConnectionManagerModal`): all saved-connection and folder management (create/edit/delete, drag-drop, connect) moved into a dedicated modal; opened via sidebar **Manage** button or `Ctrl+M`. Sidebar now shows only connected databases
@@ -39,6 +41,7 @@
 - **Renderer build broken under Vite 8**: `vite-plugin-monaco-editor` required `esbuild` (no longer bundled by rolldown-based Vite) → added `esbuild` dev dependency
 - Monaco worker bundles were written to a bogus nested path inside `src/` (plugin joined two absolute paths); fixed via `customDistPath`
 - `linux.desktop` config rejected by electron-builder v26 (flat keys) → moved under `desktop.entry`
+- **Context-menu actions inside the connection manager closed the whole manager.** `ContextMenu` renders inside the manager's `.modal-overlay`, whose `onClick` dismisses it, so every entry click bubbled up and unmounted the manager — taking the just-opened `FolderEditModal` with it (right-click folder → "Edit (name & color)" looked like a no-op; the pencil button worked because it sits inside `.modal`, which stops propagation). `ContextMenu` now stops click/mousedown propagation at its root, and the nested `FolderEditModal` / `ImportConnectionsModal` backdrops stop theirs, so dismissing one no longer closes the manager behind it
 - Connection timeout lowered from 10s to 5s (`serverSelectionTimeoutMS` + `connectTimeoutMS` on `connect-db`); failures now show a styled, human-readable dialog (timeout / refused / auth / host-not-found) instead of a raw error string
 - Switching between connected connections showed stale databases: `handleSelectConnection` now reloads the selected connection's database list
 - **Production build broken**: `main.ts` loaded `../../renderer/index.html` but built layout is `dist/main/main.js` + `dist/renderer/index.html`, so packaged app showed a blank page. Path corrected to `../renderer/index.html`
@@ -56,6 +59,12 @@
 - Sidebar tree chevrons were 9px wide and hard to click: now 18×18 px with hover background, `cursor: pointer`, `border-radius`
 
 ### Changed
+- **Design tokens** in `index.css`: radius / type / spacing / motion scales plus `--font-ui` and `--font-mono`, and literal values across the stylesheet migrated onto them (69 of 71 `border-radius`, 83 of 86 `font-size`, all `Consolas` stacks, 43 of 56 `gap`). Values are unchanged — the point is that they are now editable from one place
+- **Keyboard focus is visible**: one `:focus-visible` ring driven by `--focus-ring`, including on the inputs that previously did `outline: none`. Hover/selection transitions are centralized and disabled under `prefers-reduced-motion`
+- **Collapsed documents show their content**: the tree view row now previews the first 4 non-`_id` fields with the same value colouring as the expanded tree, instead of showing only an ObjectId
+- **Bulk action bar appears only with a selection** (every button in it was disabled otherwise); Paste moved next to Add in the toolbar, since it is the one action that works with nothing selected
+- **Query builder panel starts closed** — it used ~20% of the width to show a placeholder; the toolbar Filter button opens it and shows the condition count
+- **`DocumentsView` / `IndexesView` inline styles moved to classes** (39 → 2 and 32 → 0; the 2 left are data-driven type colours). Several of the originals hardcoded dark-theme hex values (`#888`, `#f48771`, `#2d1a1a`, `#3c3c3c`, `#6b2b2b`) that rendered wrong in the light / hc / solarized themes — those now use tokens. Destructive buttons use a shared `.danger` class instead of an inline `background` override
 - Reverted emoji icons back to a unified monochrome SVG icon set (see `Icon.tsx`), now colorable by connection/theme
 - Sidebar scope narrowed to connected databases only; saved-connection/folder management lives in the connection manager overlay
 - Connection / folder color is shown via the colored icon in the overlay (color is edited in the connection or folder form, not via an inline swatch)

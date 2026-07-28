@@ -2,7 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
 import FolderEditModal from './FolderEditModal';
+import ImportConnectionsModal from './ImportConnectionsModal';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
+import { pickFile } from '../utils/fileImport';
+import { parseStudio3TExport, ImportedConnection } from '../utils/uriImport';
+import { showAlert } from '../dialog';
 
 interface Connection {
   id: string; name: string; uri: string; database?: string;
@@ -27,6 +31,7 @@ interface Props {
   onMoveConnection: (connId: string, folderId: string | undefined) => void;
   onMoveFolder: (folderId: string, newParentId: string | undefined) => void;
   onReorderFolders: (folders: Folder[]) => void;
+  onImportConnections: (items: ImportedConnection[]) => Promise<void> | void;
   onClose: () => void;
   disableEsc?: boolean;
 }
@@ -52,18 +57,48 @@ export default function ConnectionManagerModal(props: Props) {
     connections, folders, connectedIds, connectingIds,
     onConnect, onDisconnect, onAddConnection, onEditConnection, onDeleteConnection,
     onSaveConnection, onAddFolder, onSaveFolder, onDeleteFolder,
-    onMoveConnection, onMoveFolder, onReorderFolders, onClose, disableEsc,
+    onMoveConnection, onMoveFolder, onReorderFolders, onImportConnections, onClose, disableEsc,
   } = props;
 
+  // Parsed .uri file waiting for confirmation in ImportConnectionsModal.
+  const [importPreview, setImportPreview] = useState<{ items: ImportedConnection[]; fileName: string } | null>(null);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !disableEsc) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !disableEsc && !importPreview) onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [disableEsc, onClose]);
+  }, [disableEsc, importPreview, onClose]);
+
+  const handlePickUriFile = async () => {
+    const file = await pickFile('.uri,.txt');
+    if (!file) return;
+    try {
+      const items = parseStudio3TExport(await file.text());
+      if (items.length === 0) {
+        await showAlert({ title: 'Import connections', message: 'No connection URIs found in this file.' });
+        return;
+      }
+      setImportPreview({ items, fileName: file.name });
+    } catch (e: any) {
+      await showAlert({ title: 'Import failed', message: "Couldn't read the file.", detail: e.message, danger: true });
+    }
+  };
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(folders.map(f => f.id))
   );
+
+  // Folders created while the modal is open (import, "New folder") start
+  // expanded, otherwise their contents are invisible right after creation.
+  const knownFolderIds = useRef<Set<string>>(new Set(folders.map(f => f.id)));
+  useEffect(() => {
+    const added = folders.filter(f => !knownFolderIds.current.has(f.id)).map(f => f.id);
+    if (added.length === 0) return;
+    added.forEach(id => knownFolderIds.current.add(id));
+    setExpandedFolders(s => new Set([...s, ...added]));
+  }, [folders]);
   const [editFolder, setEditFolder] = useState<Folder | null>(null);
   const [folderCtxMenu, setFolderCtxMenu] = useState<{ x: number; y: number; folder: Folder } | null>(null);
   const [connCtxMenu, setConnCtxMenu] = useState<{ x: number; y: number; conn: Connection } | null>(null);
@@ -261,6 +296,9 @@ export default function ConnectionManagerModal(props: Props) {
         <div className="modal-header">
           <h3>Connections</h3>
           <div style={{ display: 'flex', gap: 6 }}>
+            <button className="secondary" title="Import connections from a Studio 3T .uri export" onClick={handlePickUriFile}>
+              <Icon name="import" size={14} /> Import
+            </button>
             <button className="secondary" title="New folder" onClick={() => onAddFolder()}><Icon name="folder" size={14} /> Folder</button>
             <button title="New connection" onClick={onAddConnection}><Icon name="plug" size={14} /> Connection</button>
           </div>
@@ -275,7 +313,10 @@ export default function ConnectionManagerModal(props: Props) {
           {connections.length === 0 && folders.length === 0 ? (
             <div className="conn-manager-empty">
               No saved connections yet.
-              <button onClick={onAddConnection} style={{ marginTop: 10 }}><Icon name="plug" size={14} /> New connection</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'center' }}>
+                <button onClick={onAddConnection}><Icon name="plug" size={14} /> New connection</button>
+                <button className="secondary" onClick={handlePickUriFile}><Icon name="import" size={14} /> Import .uri file</button>
+              </div>
             </div>
           ) : (
             <>
@@ -297,6 +338,15 @@ export default function ConnectionManagerModal(props: Props) {
       )}
       {connCtxMenu && (
         <ContextMenu x={connCtxMenu.x} y={connCtxMenu.y} items={connCtxItems} onClose={() => setConnCtxMenu(null)} />
+      )}
+      {importPreview && (
+        <ImportConnectionsModal
+          items={importPreview.items}
+          fileName={importPreview.fileName}
+          existingUris={new Set(connections.map(c => c.uri))}
+          onImport={async items => { await onImportConnections(items); setImportPreview(null); }}
+          onClose={() => setImportPreview(null)}
+        />
       )}
       {editFolder && (
         <FolderEditModal

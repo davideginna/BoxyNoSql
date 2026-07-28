@@ -72,26 +72,20 @@ function FieldSuggestInput({ value, onChange, suggestions, placeholder }: {
   const filtered = suggestions.filter(s => s.toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
+    <div ref={ref} className="field-suggest">
       <input
         value={filter}
         placeholder={placeholder}
         onChange={e => { setFilter(e.target.value); onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: 3, fontSize: 12 }}
+        className="idx-input"
       />
       {open && filtered.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500,
-          background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 4,
-          maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', marginTop: 2,
-        }}>
+        <div className="field-suggest-menu">
           {filtered.map(s => (
             <div key={s}
-              style={{ padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace', color: 'var(--tree-key)' }}
+              className="field-suggest-item"
               onMouseDown={() => { onChange(s); setFilter(s); setOpen(false); }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-              onMouseLeave={e => (e.currentTarget.style.background = '')}
             >{s}</div>
           ))}
         </div>
@@ -195,7 +189,7 @@ export default function IndexesView({ connectionId, database, collection }: Inde
     setFields(f => f.map(x => x.id === id ? { ...x, ...patch } : x));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+    <div className="idx-view">
       <div className="toolbar">
         <button onClick={() => { setShowCreate(v => !v); if (!showCreate) loadDocFields(); }}>
           {showCreate ? <><Icon name="close" size={13} /> Cancel</> : <><Icon name="plus" size={13} /> Create Index</>}
@@ -203,50 +197,50 @@ export default function IndexesView({ connectionId, database, collection }: Inde
         <button className="secondary" onClick={loadAll} disabled={loading}>↻ Refresh</button>
       </div>
 
-      {error && <div style={{ padding: '6px 12px', color: 'var(--error)', fontSize: 12 }}>{error}</div>}
+      {error && <div className="idx-error">{error}</div>}
 
       {showCreate && (
-        <div style={{ padding: 14, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div style={{ flex: 1 }}>
+        <div className="idx-create-panel">
+          <div className="idx-create-cols">
+            <div className="idx-create-fields">
               <div className="idx-section-label">Index Fields</div>
               {fields.map((f, i) => (
-                <div key={f.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+                <div key={f.id} className="idx-field-row">
+                  <span className="idx-field-num">{i + 1}.</span>
                   <FieldSuggestInput value={f.field} onChange={v => updateField(f.id, { field: v })} suggestions={docFields} placeholder="field name" />
                   <select
                     value={String(f.dir)}
                     onChange={e => updateField(f.id, { dir: isNaN(Number(e.target.value)) ? e.target.value as Direction : Number(e.target.value) as Direction })}
-                    style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '4px 6px', borderRadius: 3, fontSize: 12, flexShrink: 0 }}
+                    className="idx-select"
                   >
                     {DIR_OPTIONS.map(o => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
                   </select>
                   <button onClick={() => removeField(f.id)} disabled={fields.length === 1}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '2px 4px', fontSize: 14, flexShrink: 0 }}>×</button>
+                    className="icon-btn idx-remove-field">×</button>
                 </div>
               ))}
-              <button className="secondary" onClick={addField} style={{ fontSize: 12, padding: '3px 10px', marginTop: 2 }}>+ Add field</button>
+              <button className="secondary idx-add-field" onClick={addField}>+ Add field</button>
             </div>
 
-            <div style={{ minWidth: 220 }}>
+            <div className="idx-create-options">
               <div className="idx-section-label">Options</div>
               {[
                 { label: 'Unique', val: optUnique, set: setOptUnique },
                 { label: 'Sparse', val: optSparse, set: setOptSparse },
                 { label: 'Background (legacy)', val: optBackground, set: setOptBackground },
               ].map(({ label, val, set }) => (
-                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 6, cursor: 'pointer' }}>
+                <label key={label} className="idx-option-row">
                   <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} />{label}
                 </label>
               ))}
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, marginTop: 4 }}>Name (optional)</div>
+              <div className="idx-field-label">Name (optional)</div>
               <input value={optName} onChange={e => setOptName(e.target.value)} placeholder="auto-generated"
-                style={{ width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: 3, fontSize: 12, marginBottom: 10 }} />
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Preview</div>
-              <div style={{ fontFamily: 'monospace', fontSize: 11, background: 'var(--bg-primary)', padding: '5px 8px', borderRadius: 3, border: '1px solid var(--border)', color: 'var(--tree-key)', wordBreak: 'break-all', marginBottom: 10 }}>
+                className="idx-input idx-name-input" />
+              <div className="idx-field-label">Preview</div>
+              <div className="idx-preview">
                 {keyPreview || '{}'}
               </div>
-              <button onClick={handleCreate} disabled={creating || Object.keys(keyObj).length === 0} style={{ width: '100%' }}>
+              <button className="idx-create-btn" onClick={handleCreate} disabled={creating || Object.keys(keyObj).length === 0}>
                 {creating ? 'Creating…' : 'Create Index'}
               </button>
             </div>
@@ -254,22 +248,22 @@ export default function IndexesView({ connectionId, database, collection }: Inde
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {loading && <div style={{ padding: 16, color: 'var(--text-secondary)', textAlign: 'center' }}>Loading…</div>}
+      <div className="idx-list">
+        {loading && <div className="idx-placeholder">Loading…</div>}
         {!loading && indexes.length === 0 && (
-          <div style={{ padding: 16, color: 'var(--text-secondary)', textAlign: 'center' }}>No indexes</div>
+          <div className="idx-placeholder">No indexes</div>
         )}
         {!loading && indexes.length > 0 && (
-          <table className="ur-table" style={{ fontSize: 12 }}>
+          <table className="ur-table idx-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Key</th>
                 <th>Unique</th>
                 <th>Sparse</th>
-                <th style={{ textAlign: 'right' }}>Ops used</th>
+                <th className="idx-col-ops">Ops used</th>
                 <th>Since</th>
-                <th style={{ width: 44 }}></th>
+                <th className="idx-col-actions"></th>
               </tr>
             </thead>
             <tbody>
@@ -278,14 +272,14 @@ export default function IndexesView({ connectionId, database, collection }: Inde
                 const used = s && s.ops > 0;
                 return (
                   <tr key={idx.name}>
-                    <td style={{ fontFamily: 'monospace' }}>{idx.name}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{JSON.stringify(idx.key)}</td>
+                    <td className="mono">{idx.name}</td>
+                    <td className="mono">{JSON.stringify(idx.key)}</td>
                     <td>{idx.unique ? <Icon name="check" size={13} color="var(--success)" /> : ''}</td>
                     <td>{idx.sparse ? <Icon name="check" size={13} color="var(--success)" /> : ''}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: used ? 'var(--success)' : 'var(--text-secondary)' }}>
+                    <td className={`idx-col-ops${used ? ' used' : ''}`}>
                       {s ? formatOps(s.ops) : '—'}
                     </td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
+                    <td className="idx-col-since">
                       {s && s.since ? formatSince(s.since) : '—'}
                     </td>
                     <td>
@@ -293,9 +287,7 @@ export default function IndexesView({ connectionId, database, collection }: Inde
                         <button
                           title="Drop index"
                           onClick={() => handleDrop(idx.name)}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '3px 5px', borderRadius: 3, display: 'flex', alignItems: 'center' }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--error)'; (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-hover)'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                          className="icon-btn idx-drop-btn"
                         >
                           <IconTrash />
                         </button>

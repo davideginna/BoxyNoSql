@@ -47,6 +47,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
       ref={ref}
       className="ctx-menu"
       style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
+      // The menu is often rendered inside a modal overlay that closes on click.
+      // A click on a menu entry must not count as a click on what is behind it.
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
     >
       {items.map((item, i) =>
         item.separator ? (
