@@ -8,6 +8,11 @@ on:
 
 jobs:
   build:
+    # electron-builder publishes the installers to a GitHub Release itself when
+    # GH_TOKEN is set on a tag build. Without contents:write that POST returns
+    # 403 "Resource not accessible by integration" and fails the whole step.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:

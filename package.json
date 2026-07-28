@@ -52,6 +52,14 @@
   "build": {
     "appId": "com.boxynosql.app",
     "productName": "BoxyNoSql",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "davideginna",
+        "repo": "BoxyNoSql",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release"
     },
