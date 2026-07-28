@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Icon from './Icon';
+import { getCheckOnStartup, setCheckOnStartup } from '../utils/updates';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -20,8 +21,11 @@ function formatBuildDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? 'unknown' : d.toLocaleString();
 }
 
-export default function AboutModal({ onClose }: { onClose: () => void }) {
+export default function AboutModal({
+  onClose, onCheckUpdates,
+}: { onClose: () => void; onCheckUpdates: () => void }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [checkStartup, setCheckStartup] = useState(() => getCheckOnStartup());
 
   useEffect(() => {
     inv('get-app-info').then(setInfo).catch(() => setInfo(null));
@@ -79,6 +83,21 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
               {info ? `Electron ${info.electron} · Chromium ${info.chrome} · Node ${info.node}` : '—'}
             </dd>
           </dl>
+
+          <div className="update-check-row">
+            <button className="secondary" onClick={onCheckUpdates}>
+              <Icon name="download" size={14} style={{ marginRight: 6 }} />
+              Check for updates
+            </button>
+            <label>
+              <input
+                type="checkbox"
+                checked={checkStartup}
+                onChange={e => { setCheckStartup(e.target.checked); setCheckOnStartup(e.target.checked); }}
+              />
+              Check on startup
+            </label>
+          </div>
         </div>
 
         <div className="modal-footer">

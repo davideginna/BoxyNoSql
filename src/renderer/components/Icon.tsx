@@ -8,7 +8,7 @@ export type IconName =
   | 'save' | 'user' | 'eye' | 'tree' | 'moon' | 'sun' | 'bolt' | 'wave'
   | 'gear' | 'warn' | 'expand' | 'menu' | 'refresh' | 'close' | 'check'
   | 'chevronRight' | 'chevronDown' | 'arrowUp' | 'arrowDown' | 'arrowRight'
-  | 'expandAll' | 'collapseAll' | 'filter' | 'info';
+  | 'expandAll' | 'collapseAll' | 'filter' | 'info' | 'download';
 
 const P: Record<IconName, React.ReactNode> = {
   database: (<>
@@ -110,6 +110,11 @@ const P: Record<IconName, React.ReactNode> = {
   expandAll: (<><polyline points="7 13 12 18 17 13" /><polyline points="7 6 12 11 17 6" /></>),
   collapseAll: (<><polyline points="17 11 12 6 7 11" /><polyline points="17 18 12 13 7 18" /></>),
   filter: (<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />),
+  download: (<>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </>),
 };
 
 interface Props {

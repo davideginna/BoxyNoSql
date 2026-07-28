@@ -7,8 +7,13 @@ import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
 import SettingsModal from './components/SettingsModal';
 import AboutModal from './components/AboutModal';
+import UpdateModal from './components/UpdateModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
+import {
+  UpdateStatus, getCheckOnStartup, getSkippedVersion, setSkippedVersion, shouldShow,
+} from './utils/updates';
 import { showConfirm, showInput, showAlert } from './dialog';
+import { isTypingTarget } from './utils/dom';
 import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
 import { ImportedConnection } from './utils/uriImport';
 
@@ -110,6 +115,7 @@ function App() {
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light' | 'hc' | 'solarized'>(
     () => (localStorage.getItem('theme') as any) || 'dark'
   );
@@ -126,15 +132,86 @@ function App() {
     });
   }, []);
 
+  // ── Updates ──────────────────────────────────────────────────────────────────
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    inv('get-app-info').then((i: any) => setAppVersion(i?.version ?? '')).catch(() => {});
+
+    const off = (window as any).electron.on('update:status', (status: UpdateStatus) => {
+      if (shouldShow(status, getSkippedVersion())) setUpdateStatus(status);
+      else setUpdateStatus(null);
+    });
+
+    // Delayed so the first check never competes with loading the tree.
+    let timer: number | undefined;
+    if (getCheckOnStartup()) {
+      timer = window.setTimeout(() => inv('update:check', false).catch(() => {}), 3000);
+    }
+    return () => { off?.(); if (timer) clearTimeout(timer); };
+  }, []);
+
+  const checkForUpdates = useCallback(() => {
+    // A manual check reconsiders a version the user skipped earlier.
+    setSkippedVersion(null);
+    inv('update:check', true).catch(() => {});
+  }, []);
+
+  // ── Tree refresh ─────────────────────────────────────────────────────────────
+  // Re-reads the tree from the server, so collections another client created or
+  // dropped show up without reconnecting. Databases that vanished are evicted
+  // from the caches; every expanded database is re-listed.
+  // (Defined here rather than with the other database handlers below because the
+  // shortcut effect depends on it.)
+  const handleRefreshTree = useCallback(async () => {
+    const connId = selectedConnection;
+    if (!connId || !connectedIds.has(connId)) return;
+    setRefreshing(true);
+    try {
+      const dbs: string[] = await inv('list-databases', connId);
+      const live = new Set(dbs);
+      const expanded = [...expandedDbs].filter(db => live.has(db));
+      const loaded = await Promise.all(expanded.map(async db =>
+        [db, await inv('get-collections', connId, db)] as [string, string[]]
+      ));
+      setDatabases(dbs);
+      setExpandedDbs(new Set(expanded));
+      setCollections(prev => {
+        const next: Record<string, string[]> = {};
+        Object.entries(prev).forEach(([db, cols]) => { if (live.has(db)) next[db] = cols; });
+        loaded.forEach(([db, cols]) => { next[db] = cols; });
+        return next;
+      });
+    } catch (e: any) {
+      showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [selectedConnection, connectedIds, expandedDbs]);
+
+  const handleRefreshDb = useCallback(async (dbName: string) => {
+    if (!selectedConnection) return;
+    try {
+      const cols = await inv('get-collections', selectedConnection, dbName);
+      setCollections(prev => ({ ...prev, [dbName]: cols }));
+      setExpandedDbs(prev => new Set([...prev, dbName]));
+    } catch (e: any) {
+      showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
+    }
+  }, [selectedConnection]);
+
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
-  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || !!usersRolesDb;
+  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || !!usersRolesDb || !!updateStatus;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (isTypingTarget(e.target)) return;
       if (anyModalOpen) return;
       const mod = e.ctrlKey || e.metaKey;
+      if (e.key === 'F5' || (mod && (e.key === 'r' || e.key === 'R'))) {
+        e.preventDefault(); handleRefreshTree(); return;
+      }
       if (!mod) return;
       if (e.key === 'm' || e.key === 'M') { e.preventDefault(); setShowConnManager(true); }
       else if (e.key === ',') { e.preventDefault(); setShowSettings(true); }
@@ -146,7 +223,7 @@ function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [anyModalOpen, activeTab, tabs]);
+  }, [anyModalOpen, activeTab, tabs, handleRefreshTree]);
 
   // ── Connections ──────────────────────────────────────────────────────────────
   const handleSaveConnection = async (conn: Connection) => {
@@ -502,7 +579,18 @@ function App() {
 
   return (
     <div className="app-container">
-      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+      {updateStatus && (
+        <UpdateModal
+          status={updateStatus}
+          currentVersion={appVersion}
+          onDownload={() => inv('update:download')}
+          onInstall={() => inv('update:install')}
+          onOpenDownloadPage={() => { inv('update:open-download'); setUpdateStatus(null); }}
+          onSkip={v => { setSkippedVersion(v); setUpdateStatus(null); }}
+          onClose={() => setUpdateStatus(null)}
+        />
+      )}
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} onCheckUpdates={checkForUpdates} />}
       <DialogModal />
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
@@ -526,6 +614,9 @@ function App() {
         onSelectCollection={handleSelectCollection}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
+        onRefreshTree={handleRefreshTree}
+        onRefreshDb={handleRefreshDb}
+        refreshing={refreshing}
         onCreateDatabase={handleCreateDatabase}
         onCreateCollection={handleCreateCollection}
         onDropCollection={handleDropCollection}

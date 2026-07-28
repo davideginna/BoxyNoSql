@@ -7,3 +7,4 @@ connections.json
 
 # Studio 3T connection exports — contain credentials in clear text
 *.uri
+coverage/

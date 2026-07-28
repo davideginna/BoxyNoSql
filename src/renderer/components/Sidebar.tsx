@@ -32,6 +32,10 @@ interface SidebarProps {
   onSelectCollection: (db: string, col: string) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
+  /** Re-reads databases + the collections of every expanded database. */
+  onRefreshTree: () => void;
+  onRefreshDb: (db: string) => void;
+  refreshing: boolean;
   onCreateDatabase: () => void;
   onCreateCollection: (db: string) => void;
   onDropCollection: (db: string, col: string) => void;
@@ -63,7 +67,8 @@ export default function Sidebar(props: SidebarProps) {
     databases, expandedDbs, collections, selectedCollection,
     theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout,
     onSelectConnection, onDisconnect, onExpandDb, onSelectCollection,
-    onExpandAll, onCollapseAll, onCreateDatabase, onCreateCollection, onDropCollection,
+    onExpandAll, onCollapseAll, onRefreshTree, onRefreshDb, refreshing,
+    onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onDuplicateCollection, onCopyCollectionName,
     onClearCollection, onDropDatabase, onClearDatabase,
     onManageUsers, onImportDocuments, onImportCollection, onImportDatabase,
@@ -85,6 +90,10 @@ export default function Sidebar(props: SidebarProps) {
     return (
       <div className="conn-db-tree" style={{ borderLeftColor: color }}>
         <div className="db-tree-toolbar">
+          <button onClick={onRefreshTree} disabled={refreshing}
+            title="Refresh databases and collections (F5)">
+            <Icon name="refresh" size={13} className={refreshing ? 'spin' : undefined} /> Refresh
+          </button>
           <button onClick={onExpandAll} title="Expand all"><Icon name="expandAll" size={13} /> All</button>
           <button onClick={onCollapseAll} title="Collapse all"><Icon name="collapseAll" size={13} /> Collapse</button>
           <button onClick={onImportDatabase} title="Import database from JSON" style={{ marginLeft: 'auto' }}><Icon name="import" size={13} /> Import</button>
@@ -179,6 +188,7 @@ export default function Sidebar(props: SidebarProps) {
   };
 
   const dbCtxItems: ContextMenuEntry[] = dbCtxMenu ? [
+    { label: 'Refresh collections', icon: 'refresh', onClick: () => { onRefreshDb(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'New collection', icon: 'plus', onClick: () => { onCreateCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'Import collection…', icon: 'import', onClick: () => { onImportCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
     { separator: true },

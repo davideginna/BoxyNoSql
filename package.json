@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.9",
     "monaco-editor": "^0.45.0",
     "mongodb": "^6.3.0"
   },

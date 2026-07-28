@@ -3,6 +3,7 @@ import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
 import { showConfirm } from '../dialog';
+import { isTypingTarget } from '../utils/dom';
 import { buildFilter, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
 
 type ViewMode = 'table' | 'tree';
@@ -303,6 +304,20 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   // Global keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Inside a text field these keys belong to the field: Ctrl+C/V/X are the
+      // clipboard, Delete/Backspace delete characters — not documents.
+      if (isTypingTarget(e.target)) {
+        if (e.key === 'Escape') {
+          if (editingDoc) { e.preventDefault(); closeEdit(); }
+          else if (viewingDoc) { e.preventDefault(); setViewingDoc(null); }
+          else if (showAddDoc) { e.preventDefault(); setShowAddDoc(false); }
+        }
+        return;
+      }
+      if (showAddDoc) {
+        if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
+        return;
+      }
       if (editingDoc) {
         if (e.key === 'Escape') { e.preventDefault(); closeEdit(); return; }
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
@@ -344,7 +359,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedIndices, documents, editingDoc, viewingDoc, openEdit, openView, openAddDoc, closeEdit, handleBulkDelete, handleBulkCopy, handlePaste]);
+  }, [selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, openEdit, openView, openAddDoc, closeEdit, handleBulkDelete, handleBulkCopy, handlePaste]);
 
   // Find in edit textarea
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {

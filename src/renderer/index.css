@@ -1050,6 +1050,37 @@ button,
   border-left: 2px solid var(--error); padding-left: var(--space-4); margin-top: var(--space-1);
 }
 
+/* Spinner for a refresh in flight — reuses the connection spin keyframes. */
+.spin { animation: conn-spin 0.8s linear infinite; transform-origin: 50% 50%; }
+
+/* ── Update dialog ────────────────────────────────────────────────────────── */
+.update-line { font-size: var(--fs-md); color: var(--text-primary); margin: 0 0 var(--space-4); }
+.update-hint { font-size: var(--fs-sm); color: var(--text-secondary); margin: var(--space-4) 0 0; }
+/* Release notes arrive as raw markdown/plain text — keep the newlines, cap the
+   height so a long changelog can't push the buttons off-screen. */
+.update-notes {
+  white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-secondary);
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 12px;
+  max-height: 220px; overflow: auto;
+}
+.update-progress {
+  height: 8px; border-radius: var(--radius-md); overflow: hidden;
+  background: var(--bg-input); border: 1px solid var(--border);
+}
+.update-progress-bar {
+  height: 100%; background: var(--accent); transition: width 0.15s linear;
+}
+.update-check-row {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
+  margin-top: var(--space-5); flex-wrap: wrap;
+}
+.update-check-row label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); color: var(--text-secondary); cursor: pointer;
+}
+.update-check-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+
 /* ── About dialog ─────────────────────────────────────────────────────────── */
 .about-modal { width: 460px; max-width: 94vw; }
 .about-body { text-align: center; }

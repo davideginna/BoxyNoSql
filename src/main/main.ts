@@ -3,6 +3,7 @@ import path from 'path';
 import Store from 'electron-store';
 import { MongoClient, Db, ObjectId } from 'mongodb';
 import { serializeDoc } from './serialize';
+import { initUpdater } from './updater';
 
 declare const __dirname: string;
 
@@ -98,6 +99,41 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => { mainWindow = null; });
+
+  enableEditContextMenu(mainWindow);
+
+  // The renderer owns the update policy (check on startup, skipped versions);
+  // this only registers the IPC handlers and points them at the live window.
+  initUpdater(mainWindow);
+}
+
+/**
+ * Right-click menu for text fields. Electron ships no default context menu, so
+ * without this there is no way to cut/copy/paste with the mouse.
+ *
+ * The keyboard side needs nothing here: Blink handles Ctrl+C/X/V/Z inside
+ * editable fields by itself even with no application menu. Do *not* add a
+ * `before-input-event` handler calling `webContents.paste()` — that fires on
+ * top of Blink's own handling and pastes twice.
+ *
+ * Editable targets only; everywhere else the renderer draws its own context
+ * menus and a native one would pop up on top of them.
+ */
+function enableEditContextMenu(window: BrowserWindow) {
+  window.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable) return;
+    const flags = params.editFlags;
+    Menu.buildFromTemplate([
+      { role: 'undo', enabled: flags.canUndo },
+      { role: 'redo', enabled: flags.canRedo },
+      { type: 'separator' },
+      { role: 'cut', enabled: flags.canCut },
+      { role: 'copy', enabled: flags.canCopy },
+      { role: 'paste', enabled: flags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', enabled: flags.canSelectAll },
+    ]).popup({ window });
+  });
 }
 
 // Hide the default File/Edit/View/Window/Help menu (not used by this app)
