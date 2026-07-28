@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0] - 2026-07-28
+
+### Added
+- **Update check on startup** (`src/main/updater.ts` + `utils/updates.ts` + `UpdateModal`): 3 s after launch the app asks GitHub whether a newer version exists and, if so, shows the version, the release notes and a download button — silently doing nothing when it is already current or offline. Two backends, picked by `canAutoInstall()`: **electron-updater** where it can replace the running build (Windows NSIS, Linux AppImage — both read the `latest-*.yml` the release workflow publishes), which downloads with a progress bar and installs on restart (or on the next quit); and the plain **GitHub releases API** everywhere else — a `.deb` install or an unpackaged dev run — which only notifies and opens the download page. `.deb` is deliberately excluded from self-updating: it would need `pkexec dpkg -i` and a password prompt
+- About gained **Check for updates** (reports "you're up to date" and errors too, and reconsiders a skipped version) and a **Check on startup** toggle; "Skip this version" is remembered in `localStorage`
+- **Tree refresh** — a collection another client creates or drops was invisible until you reconnected, since nothing polls MongoDB. The sidebar toolbar gained a Refresh button (`F5` / `Ctrl+R`) that re-lists the databases plus the collections of every *expanded* database and evicts databases that vanished; the database context menu gained "Refresh collections" for one database
+- **Right-click menu in text fields**: Electron ships no default context menu, so cut/copy/paste with the mouse was simply unavailable. `enableEditContextMenu()` in `main.ts` pops a native undo/redo/cut/copy/paste/select-all menu, but only when `params.isEditable` — elsewhere the renderer draws its own menus and the two would stack
+
+### Fixed
+- **Global shortcuts stole keys from text fields.** `DocumentsView` binds its shortcuts on `window` and did not check where the event came from, so `Ctrl+V` (always) and `Ctrl+C` / `Delete` / `Backspace` (with documents selected) fired while you were typing — which is why `Delete` inside the Edit or Add-document editor tried to delete the *document* instead of a character, and why pasting text into a filter box did not work. Every window-level handler (`DocumentsView` and `App.tsx`) now bails out first via `isTypingTarget()` (`utils/dom.ts`), and `Escape` still closes the open editor from inside its textarea
+
+### Changed
+- `vitest.config.ts` moved to `test.projects` (**main** in `node`, **renderer** in `jsdom` with the jest-dom setup file). `environmentMatchGlobs` is a no-op on Vitest 4, so renderer tests had silently been running without a DOM
+
 ## [1.2.0] - 2026-07-28
 
 ### Added
