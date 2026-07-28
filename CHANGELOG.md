@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.0] - 2026-07-28
 
 ### Added
 - **Import connections from a Studio 3T `.uri` export** (`utils/uriImport.ts` + `ImportConnectionsModal`): Import button in the connection manager parses the export file, maps `3t.group` to a (nested) folder path, `3t.defaultColor` to the connection color and `3t.connection.name` to the name, strips `3t.*` and empty query params from the stored URI, and shows a checklist preview that flags URIs already saved. Folders created during import are reused when they already exist and start expanded
