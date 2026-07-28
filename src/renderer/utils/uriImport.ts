@@ -17,6 +17,10 @@ export interface ImportedConnection {
   folderPath: string[];
   color?: string;
   database?: string;
+  /** TLS settings recovered from `ssl`/`tls` and the `3t.*` certificate params. */
+  tls?: boolean;
+  tlsCertificateKeyFile?: string;
+  tlsServername?: string;
 }
 
 function rgbToHex(value: string): string | undefined {
@@ -78,12 +82,22 @@ export function parseStudio3TExport(text: string): ImportedConnection[] {
     const colorParam = params.get('3t.defaultColor');
     const database = databaseOf(line) || params.get('3t.databases')?.split(',')[0]?.trim() || undefined;
 
+    // `ssl=true` / `tls=true` stay in the URI (the driver understands them), but
+    // the certificate path and SNI only exist as 3t.* params, which are stripped
+    // — so they have to be lifted onto the connection itself.
+    const tlsOn = /^true$/i.test(params.get('tls') || '') || /^true$/i.test(params.get('ssl') || '');
+    const clientCert = params.get('3t.clientCertPath')?.trim() || undefined;
+    const sni = params.get('3t.sniName')?.trim() || undefined;
+
     out.push({
       name,
       uri: cleanUri(line, params),
       folderPath,
       color: colorParam ? rgbToHex(colorParam) : undefined,
       database,
+      tls: tlsOn || !!clientCert || undefined,
+      tlsCertificateKeyFile: clientCert,
+      tlsServername: sni,
     });
     lastComment = undefined;
   }

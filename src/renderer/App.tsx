@@ -6,6 +6,7 @@ import ConnectionManagerModal from './components/ConnectionManagerModal';
 import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
 import SettingsModal from './components/SettingsModal';
+import AboutModal from './components/AboutModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
 import { showConfirm, showInput, showAlert } from './dialog';
 import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
@@ -17,6 +18,12 @@ interface Connection {
   id: string; name: string; uri: string; database?: string;
   folderId?: string; color?: string; order?: number;
   iconDbColor?: string; iconColColor?: string;
+  tls?: boolean;
+  tlsCertificateKeyFile?: string;
+  tlsCertificateKeyFilePassword?: string;
+  tlsCAFile?: string;
+  tlsAllowInvalidCertificates?: boolean;
+  tlsServername?: string;
 }
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 interface Tab {
@@ -40,6 +47,10 @@ function friendlyConnError(raw: string): { message: string; detail: string } {
     message = "Host not found. Double-check the hostname in the connection URI.";
   } else if (lc.includes('authentication failed') || lc.includes('auth') || lc.includes('not authorized')) {
     message = 'Authentication failed. Check the username and password.';
+  } else if (lc.includes('self signed certificate') || lc.includes('self-signed certificate')) {
+    message = "The server's TLS certificate is not signed by a CA your machine trusts. Point the connection at the CA file (Edit → TLS / certificates), or tick \"Accept invalid / self-signed certificates\" if you accept the risk.";
+  } else if (lc.includes('certificate') || lc.includes('tls') || lc.includes('ssl')) {
+    message = 'TLS handshake failed. Check the client certificate, its password, the CA file and the SNI name in the TLS section.';
   } else if (lc.includes('econnreset') || lc.includes('socket')) {
     message = 'The connection dropped. The server may be unreachable or behind a firewall/VPN.';
   } else {
@@ -87,6 +98,7 @@ function App() {
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
   const [databases, setDatabases] = useState<string[]>([]);
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
+  const [collapsedConns, setCollapsedConns] = useState<Set<string>>(new Set());
   const [collections, setCollections] = useState<Record<string, string[]>>({});
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -94,6 +106,7 @@ function App() {
   const [showConnModal, setShowConnModal] = useState(false);
   const [showConnManager, setShowConnManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
@@ -115,7 +128,7 @@ function App() {
 
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
-  const anyModalOpen = showConnModal || showConnManager || showSettings || !!usersRolesDb;
+  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || !!usersRolesDb;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -152,8 +165,15 @@ function App() {
     setConnectedIds(s => { const n = new Set(s); n.delete(id); return n; });
   };
 
+  // Clicking the connection that is already open collapses its tree instead of
+  // doing nothing. Collapse is tracked separately from selection because open
+  // tabs keep loading through `selectedConnection` — clearing it would break them.
   const handleSelectConnection = async (id: string) => {
-    if (id === selectedConnection) return;
+    if (id === selectedConnection) {
+      setCollapsedConns(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+      return;
+    }
+    setCollapsedConns(s => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
     setSelectedConnection(id);
     if (connectedIds.has(id)) {
       setCollections({});
@@ -274,6 +294,9 @@ function App() {
           folderId,
           color: item.color,
           order: nextConnections.filter(c => c.folderId === folderId).length,
+          tls: item.tls,
+          tlsCertificateKeyFile: item.tlsCertificateKeyFile,
+          tlsServername: item.tlsServername,
         };
         nextConnections = await inv('save-connection', conn);
       } catch { failed++; }
@@ -479,11 +502,13 @@ function App() {
 
   return (
     <div className="app-container">
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
       <DialogModal />
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
         connections={connections}
         selectedConnection={selectedConnection}
+        collapsedConns={collapsedConns}
         connectedIds={connectedIds}
         connectingIds={connectingIds}
         databases={databases}
@@ -494,6 +519,7 @@ function App() {
         iconSettings={iconSettings}
         onOpenManager={() => setShowConnManager(true)}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenAbout={() => setShowAbout(true)}
         onSelectConnection={handleSelectConnection}
         onDisconnect={handleDisconnect}
         onExpandDb={handleExpandDb}

@@ -137,6 +137,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const [limit, setLimit] = useState(20);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  // Unfiltered totals come from collection metadata, so they are approximate.
+  const [totalEstimated, setTotalEstimated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Multi-select
@@ -177,6 +179,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       const result = await inv('get-documents', connectionId, database, collection, filter, lim, pg * lim);
       setDocuments(result.docs);
       setTotal(result.total);
+      setTotalEstimated(!!result.estimated);
     } catch (err: any) { setError(err.message); }
     setLoading(false);
   };
@@ -749,7 +752,9 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       </div>
 
       <div className="status-bar">
-        <span>{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}</span>
+        <span title={totalEstimated ? 'Approximate count from collection metadata — exact counts require a full scan' : undefined}>
+          {totalEstimated ? '≈' : ''}{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}
+        </span>
         <span className="status-filter">
           {conditions.length > 0 ? JSON.stringify(buildFilter(conditions, matchAll)) : ''}
         </span>

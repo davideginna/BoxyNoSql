@@ -22,7 +22,20 @@ function sanitizeUri(uri: string): string {
   return cleaned ? `${base}?${cleaned}` : base;
 }
 
-interface Connection {
+interface TlsSettings {
+  tls?: boolean;
+  /** PEM holding the client certificate and its private key (Studio 3T's `3t.clientCertPath`). */
+  tlsCertificateKeyFile?: string;
+  tlsCertificateKeyFilePassword?: string;
+  /** PEM with the CA chain — the fix for "self signed certificate in certificate chain". */
+  tlsCAFile?: string;
+  tlsAllowInvalidCertificates?: boolean;
+  tlsAllowInvalidHostnames?: boolean;
+  /** SNI to present, when it differs from the host in the URI (`3t.sniName`). */
+  tlsServername?: string;
+}
+
+interface Connection extends TlsSettings {
   id: string;
   name: string;
   uri: string;
@@ -134,6 +147,36 @@ ipcMain.handle('show-input', async (_, title: string, defaultValue = '') => {
   });
 });
 
+// ── App info ─────────────────────────────────────────────────────────────────
+// Build date is taken from the compiled main bundle's mtime: it is written by
+// the build that produced this app, so it survives packaging without needing a
+// value injected at compile time.
+ipcMain.handle('get-app-info', () => {
+  let buildDate: string | null = null;
+  try { buildDate = require('fs').statSync(__filename).mtime.toISOString(); } catch { /* ignore */ }
+  const pkg = (() => {
+    for (const p of [path.join(__dirname, '../../package.json'), path.join(__dirname, '../package.json')]) {
+      try { return require(p); } catch { /* try next */ }
+    }
+    return {};
+  })();
+  return {
+    name: 'BoxyNoSql',
+    version: app.getVersion(),
+    description: pkg.description ?? '',
+    author: typeof pkg.author === 'string' ? pkg.author : pkg.author?.name ?? '',
+    homepage: pkg.homepage ?? '',
+    license: pkg.license ?? '',
+    buildDate,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    v8: process.versions.v8,
+    platform: process.platform,
+    arch: process.arch,
+  };
+});
+
 // ── Connection management ────────────────────────────────────────────────────
 ipcMain.handle('get-connections', () => store.get('connections'));
 
@@ -184,15 +227,65 @@ ipcMain.handle('reorder-folders', (_, folders: Folder[]) => {
 // ── Connection management ─────────────────────────────────────────────────────
 const clients: Map<string, MongoClient> = new Map();
 
-ipcMain.handle('test-connection', async (_, uri: string) => {
+// Turns the stored TLS settings into MongoClient options. Files are checked up
+// front because the driver's own failure ("ENOENT") does not say which file.
+function buildTlsOptions(s: TlsSettings | undefined): Record<string, any> {
+  if (!s) return {};
+  const opts: Record<string, any> = {};
+  const requireFile = (p: string, label: string) => {
+    const resolved = p.trim();
+    if (!require('fs').existsSync(resolved)) throw new Error(`${label} not found: ${resolved}`);
+    return resolved;
+  };
+
+  const wantsTls = s.tls || !!s.tlsCertificateKeyFile || !!s.tlsCAFile;
+  if (!wantsTls) return {};
+  opts.tls = true;
+
+  if (s.tlsCertificateKeyFile) opts.tlsCertificateKeyFile = requireFile(s.tlsCertificateKeyFile, 'Client certificate');
+  if (s.tlsCertificateKeyFilePassword) opts.tlsCertificateKeyFilePassword = s.tlsCertificateKeyFilePassword;
+  if (s.tlsCAFile) opts.tlsCAFile = requireFile(s.tlsCAFile, 'CA file');
+  if (s.tlsAllowInvalidCertificates) opts.tlsAllowInvalidCertificates = true;
+  if (s.tlsAllowInvalidHostnames) opts.tlsAllowInvalidHostnames = true;
+  // Node's TLS `servername` — MongoClientOptions extends tls.ConnectionOptions.
+  if (s.tlsServername) opts.servername = s.tlsServername.trim();
+  return opts;
+}
+
+// Native file picker for certificate paths (renderer cannot read a File's path
+// since Electron 32).
+ipcMain.handle('pick-certificate-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Select certificate file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Certificates', extensions: ['pem', 'crt', 'cer', 'key', 'p12', 'pfx'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
+
+ipcMain.handle('test-connection', async (_, uri: string, tls?: TlsSettings) => {
   const log = (msg: string) => mainWindow?.webContents.send('test-log', msg);
   const clean = sanitizeUri(uri);
   let host = uri;
   try { host = new URL(clean).host; } catch {}
 
-  const client = new MongoClient(clean, { serverSelectionTimeoutMS: 5000 });
+  let tlsOptions: Record<string, any>;
+  try {
+    tlsOptions = buildTlsOptions(tls);
+  } catch (e: any) {
+    log(`✕ ${e.message}`);
+    return { success: false, error: e.message };
+  }
+
+  const client = new MongoClient(clean, { serverSelectionTimeoutMS: 5000, ...tlsOptions });
   try {
     log(`→ Parsing URI...`);
+    if (tlsOptions.tls) {
+      log(`→ TLS on${tlsOptions.tlsCertificateKeyFile ? ' · client certificate' : ''}${tlsOptions.tlsCAFile ? ' · custom CA' : ''}${tlsOptions.servername ? ` · SNI ${tlsOptions.servername}` : ''}${tlsOptions.tlsAllowInvalidCertificates ? ' · certificate validation OFF' : ''}`);
+    }
     log(`→ Connecting to ${host}`);
     await client.connect();
     log(`✓ TCP connection established`);
@@ -221,6 +314,7 @@ ipcMain.handle('connect-db', async (_, connectionId: string) => {
   const client = new MongoClient(sanitizeUri(connection.uri), {
     serverSelectionTimeoutMS: 5000,
     connectTimeoutMS: 5000,
+    ...buildTlsOptions(connection),
   });
   await client.connect();
   clients.set(connectionId, client);
@@ -334,11 +428,16 @@ ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, 
   if (!client) throw new Error('Not connected');
   const col = client.db(dbName).collection(collection);
   const mongoQuery = fromExtJSON(query);
+  // The page itself is cheap (skip+limit). The total is what costs: an unfiltered
+  // countDocuments is a full scan that grows with the collection and is re-run on
+  // every page change. With no filter the collection metadata already holds the
+  // number, so use it and tell the renderer the figure is an estimate.
+  const isUnfiltered = !mongoQuery || Object.keys(mongoQuery).length === 0;
   const [docs, total] = await Promise.all([
     col.find(mongoQuery).skip(skip).limit(limit).toArray(),
-    col.countDocuments(mongoQuery),
+    isUnfiltered ? col.estimatedDocumentCount() : col.countDocuments(mongoQuery),
   ]);
-  return { docs: docs.map(v => serializeDoc(v)), total };
+  return { docs: docs.map(v => serializeDoc(v)), total, estimated: isUnfiltered };
 });
 
 ipcMain.handle('update-document', async (_, connectionId: string, dbName: string, collection: string, docId: string, update: any) => {

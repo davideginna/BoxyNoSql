@@ -64,6 +64,30 @@ describe('parseStudio3TExport', () => {
     expect(c.color).toBeUndefined();
   });
 
+  it('lifts TLS settings out of the 3t.* params', () => {
+    const [c] = parseStudio3TExport(
+      'mongodb://u:p@host.example.it:27017/admin?ssl=true&3t.sniName=host.example.it' +
+      '&authSource=admin&3t.clientCertPath=/certs/client.pem&3t.sslTlsVersion=TLS'
+    );
+    expect(c.tls).toBe(true);
+    expect(c.tlsCertificateKeyFile).toBe('/certs/client.pem');
+    expect(c.tlsServername).toBe('host.example.it');
+    // ssl=true is understood by the driver, so it stays in the URI
+    expect(c.uri).toContain('ssl=true');
+    expect(c.uri).not.toContain('3t.');
+  });
+
+  it('infers tls from a client certificate even without ssl=true', () => {
+    const [c] = parseStudio3TExport('mongodb://h:27017/?3t.clientCertPath=/certs/c.pem');
+    expect(c.tls).toBe(true);
+  });
+
+  it('leaves tls undefined for plain connections', () => {
+    const [c] = parseStudio3TExport('mongodb://h:27017/?authSource=admin');
+    expect(c.tls).toBeUndefined();
+    expect(c.tlsCertificateKeyFile).toBeUndefined();
+  });
+
   it('labels duplicates by folder path', () => {
     const parsed = parseStudio3TExport(SAMPLE);
     expect(displayLabel(parsed[0])).toBe('CAST / svil / admin');

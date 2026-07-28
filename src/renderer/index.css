@@ -68,6 +68,10 @@
   --success:       #4ec9b0;
   --status-bg:     #2a5a78;
   --status-text:   #ffffff;
+  --accent-text:  #ffffff;
+  --val-oid:      #e74c3c;
+  --mark-bg:      #f5a623;
+  --mark-text:    #000000;
 }
 
 body.theme-light {
@@ -94,6 +98,10 @@ body.theme-light {
   --success:       #28a745;
   --status-bg:     #0066b8;
   --status-text:   #ffffff;
+  --accent-text:  #ffffff;
+  --val-oid:      #b31d28;
+  --mark-bg:      #ffd54f;
+  --mark-text:    #000000;
 }
 
 body.theme-hc {
@@ -120,6 +128,10 @@ body.theme-hc {
   --success:       #89d185;
   --status-bg:     #3794ff;
   --status-text:   #000000;
+  --accent-text:  #000000;
+  --val-oid:      #ffd700;
+  --mark-bg:      #ffd700;
+  --mark-text:    #000000;
 }
 
 /* Solarized — caldo, tonalità verde acqua/ocra su deep-teal */
@@ -147,6 +159,10 @@ body.theme-solarized {
   --success:       #859900;
   --status-bg:     #b58900;
   --status-text:   #002b36;
+  --accent-text:  #002b36;
+  --val-oid:      #cb4b16;
+  --mark-bg:      #b58900;
+  --mark-text:    #002b36;
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
@@ -267,18 +283,30 @@ button,
   flex-shrink: 0;
 }
 
+/* Buttons do not inherit `color`, so without this the icons fall back to the
+   UA default (near-black) and vanish in the dark / hc / solarized themes. */
 .sidebar-footer button {
   background: none;
   border: none;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 4px 8px;
   border-radius: var(--radius-md);
   font-size: var(--fs-lg);
-  opacity: 0.6;
 }
 
-.sidebar-footer button:hover { opacity: 1; background: var(--bg-hover); }
-.sidebar-footer button.active { opacity: 1; background: var(--bg-hover); }
+.sidebar-footer button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+/* Selected theme reads from the current theme's own accent. */
+.sidebar-footer button.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.sidebar-footer button.active:hover {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
 
 /* ── Icon buttons ─────────────────────────────────────────────────────────────── */
 .icon-btn {
@@ -745,7 +773,7 @@ button,
 }
 .toolbar input:focus { outline: none; border-color: var(--accent); }
 .toolbar button {
-  background: var(--accent); border: none; color: #fff;
+  background: var(--accent); border: none; color: var(--accent-text);
   padding: 5px 11px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-sm);
 }
 .toolbar button:hover { background: var(--accent-hover); }
@@ -760,7 +788,7 @@ button,
   background: var(--bg-secondary); border: none; color: var(--text-secondary);
   padding: 4px 11px; cursor: pointer; font-size: var(--fs-sm);
 }
-.view-toggle button.active { background: var(--accent); color: #fff; }
+.view-toggle button.active { background: var(--accent); color: var(--accent-text); }
 
 /* ── Document Table ──────────────────────────────────────────────────────────── */
 .document-table { flex: 1; overflow: auto; }
@@ -843,7 +871,7 @@ button,
 .tree-val-num  { color: var(--val-num); }
 .tree-val-bool { color: var(--val-bool); }
 .tree-val-null { color: var(--val-null); font-style: italic; }
-.tree-val-oid  { color: #e74c3c; }
+.tree-val-oid  { color: var(--val-oid); }
 
 /* ── Query Builder ───────────────────────────────────────────────────────────── */
 /* ── Query Builder panel (right side) ───────────────────────────────────────── */
@@ -882,7 +910,7 @@ button,
 .qb-cond-row2 { display: flex; align-items: center; gap: 5px; }
 .qb-type-badge {
   font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: var(--radius-xl);
-  color: #fff; flex-shrink: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--accent-text); flex-shrink: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
 }
 .qb-val-input {
   flex: 1; background: var(--bg-input); border: 1px solid var(--border);
@@ -967,6 +995,187 @@ button,
   white-space: pre-wrap;
 }
 .code-block.break-all { word-break: break-all; }
+
+/* ── Connection manager search ────────────────────────────────────────────── */
+.conn-search-bar {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-6) 0;
+}
+.conn-search-count { font-size: var(--fs-xs); color: var(--text-secondary); white-space: nowrap; }
+
+/* ── Connection form (tabbed: General / TLS / Appearance) ─────────────────── */
+.conn-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 var(--space-4); }
+.conn-tabs .ur-tab { display: inline-flex; align-items: center; gap: var(--space-3); }
+/* Fixed height so switching tabs does not resize the dialog under the cursor. */
+.conn-modal-body { min-height: 340px; display: flex; flex-direction: column; }
+.conn-test-row {
+  display: flex; align-items: center; gap: var(--space-5);
+  margin-top: auto; padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.conn-test-result { font-size: var(--fs-md); display: inline-flex; align-items: center; gap: var(--space-2); }
+.conn-test-result.ok { color: var(--success); }
+.conn-test-result.ko { color: var(--error); }
+.conn-wrap-toggle {
+  margin-left: auto; display: flex; align-items: center; gap: 5px;
+  font-size: var(--fs-sm); color: var(--text-secondary); cursor: pointer;
+}
+.conn-log {
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-4) var(--space-5);
+  font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-secondary);
+  max-height: 220px; overflow-y: auto; overflow-x: auto; line-height: 1.6;
+  margin-top: var(--space-4); white-space: pre;
+}
+.conn-log.wrap { overflow-x: hidden; white-space: pre-wrap; word-break: break-word; }
+.conn-log .log-ok { color: var(--success); }
+.conn-log .log-ko { color: var(--error); }
+.conn-log .log-pending { color: var(--accent); }
+
+.tls-badge {
+  font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--accent-text); background: var(--accent);
+  border-radius: var(--radius-xs); padding: 0 var(--space-2);
+}
+.tls-body { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+.tls-check {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-size: var(--fs-sm); color: var(--text-primary); cursor: pointer;
+}
+.tls-file-row { display: flex; gap: var(--space-3); align-items: center; }
+.tls-file-row input { flex: 1; }
+.tls-file-row button { padding: 5px 12px; font-size: var(--fs-sm); white-space: nowrap; }
+.tls-warning {
+  font-size: var(--fs-xs); color: var(--text-secondary);
+  border-left: 2px solid var(--error); padding-left: var(--space-4); margin-top: var(--space-1);
+}
+
+/* ── About dialog ─────────────────────────────────────────────────────────── */
+.about-modal { width: 460px; max-width: 94vw; }
+.about-body { text-align: center; }
+/* Real 3D cube — six faces, not a rotating sprite. --cube-size drives
+   everything, including the translateZ depth of each face. */
+.about-stage {
+  --cube-size: 78px;
+  perspective: 620px;
+  height: calc(var(--cube-size) * 2);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-4) 0 var(--space-5);
+}
+.about-cube {
+  position: relative;
+  width: var(--cube-size); height: var(--cube-size);
+  transform-style: preserve-3d;
+  animation: about-spin 9s linear infinite;
+}
+/* Brand colours, taken from logo.svg — deliberately not themed: this is the
+   logo, and it should read the same in every theme. */
+.about-stage {
+  --logo-yellow: #fdd76b;
+  --logo-red:    #e9543f;
+  --logo-green:  #357d5c;
+  --logo-purple: #524f7b;
+  --logo-ink:    #01121c;
+}
+.cube-face {
+  position: absolute; inset: 0;
+  border: 2px solid var(--logo-ink);
+  border-radius: 3px;
+  backface-visibility: visible;
+}
+.cube-front, .cube-back { background: var(--logo-yellow); }
+.cube-right, .cube-left { background: var(--logo-red); }
+.cube-top               { background: var(--logo-green); }
+.cube-bottom            { background: var(--logo-purple); }
+/* Carton seam across the lid, like the flat icon. */
+.cube-top {
+  background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--logo-ink) calc(50% - 1px), var(--logo-ink) calc(50% + 1px), transparent calc(50% + 1px));
+}
+/* Tape strip down the front face. */
+.cube-front {
+  background-image: linear-gradient(90deg, transparent calc(50% - 5px), color-mix(in srgb, var(--logo-ink) 22%, transparent) calc(50% - 5px), color-mix(in srgb, var(--logo-ink) 22%, transparent) calc(50% + 5px), transparent calc(50% + 5px));
+}
+
+.cube-front  { transform: translateZ(calc(var(--cube-size) / 2)); }
+.cube-back   { transform: rotateY(180deg) translateZ(calc(var(--cube-size) / 2)); }
+.cube-right  { transform: rotateY(90deg)  translateZ(calc(var(--cube-size) / 2)); }
+.cube-left   { transform: rotateY(-90deg) translateZ(calc(var(--cube-size) / 2)); }
+.cube-top    { transform: rotateX(90deg)  translateZ(calc(var(--cube-size) / 2)); }
+.cube-bottom { transform: rotateX(-90deg) translateZ(calc(var(--cube-size) / 2)); }
+
+@keyframes about-spin {
+  from { transform: rotateX(-24deg) rotateY(0deg); }
+  to   { transform: rotateX(-24deg) rotateY(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .about-cube { animation: none; transform: rotateX(-24deg) rotateY(-32deg); }
+}
+.about-title { font-size: 20px; font-weight: 600; letter-spacing: 0.02em; }
+.about-version {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
+  margin-top: var(--space-1); color: var(--text-secondary); font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.about-build { color: var(--text-secondary); opacity: 0.85; }
+.about-desc { margin-top: var(--space-3); color: var(--text-secondary); font-size: var(--fs-sm); }
+.about-grid {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-6);
+  margin-top: var(--space-6); text-align: left;
+  border-top: 1px solid var(--border); padding-top: var(--space-4);
+  font-size: var(--fs-sm);
+}
+.about-grid dt { color: var(--text-secondary); }
+.about-grid dd { color: var(--text-primary); overflow-wrap: anywhere; }
+.about-grid dd.mono { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.about-link { color: var(--accent); text-decoration: none; }
+.about-link:hover { text-decoration: underline; }
+
+/* ── Query terminal / Aggregation / Stats ─────────────────────────────────────
+   Extracted from inline styles that hardcoded dark-theme greys (#888, #3c3c3c,
+   #1e1e1e, #cccccc) and so ignored the active theme. */
+.pane-col { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.qt-hint { font-size: var(--fs-xs); color: var(--text-secondary); margin-left: var(--space-4); }
+.qt-meta { margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary); }
+.kbd {
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+  border-radius: var(--radius-sm); padding: 1px 5px; font-size: var(--fs-2xs);
+  font-family: var(--font-mono);
+}
+.kbd + .kbd { margin-left: var(--space-2); }
+.qt-editor-box {
+  display: flex; border: 1px solid var(--border);
+  margin: var(--space-4) var(--space-4) 0 var(--space-4);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+.qt-splitter {
+  height: 6px; cursor: row-resize; flex-shrink: 0; background: transparent;
+  transition: background var(--motion-fast) var(--ease);
+}
+.qt-splitter:hover { background: var(--accent); }
+.qt-results { flex: 1; overflow: auto; border-top: 1px solid var(--border); min-height: 0; }
+.pane-error { padding: 12px; color: var(--error); font-family: var(--font-mono); white-space: pre-wrap; }
+.pane-empty { padding: 12px; color: var(--text-secondary); font-size: var(--fs-sm); }
+.qt-raw {
+  margin: 0; padding: 12px; color: var(--text-primary); background: var(--bg-primary);
+  font-family: var(--font-mono); font-size: var(--fs-md);
+  white-space: pre-wrap; word-break: break-all;
+}
+.qt-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+
+.agg-stages { width: 400px; overflow-y: auto; padding-right: var(--space-4); }
+.agg-stage-num { font-size: var(--fs-sm); color: var(--text-secondary); }
+.agg-stage-actions { display: flex; gap: var(--space-2); }
+.agg-results { flex: 1; overflow: auto; border-left: 1px solid var(--border); }
+
+.stats-view { padding: 24px; }
+.stats-loading { padding: 24px; color: var(--text-secondary); }
+.stats-row { display: flex; padding: var(--space-4) 0; border-bottom: 1px solid var(--border); }
+.stats-label { color: var(--text-secondary); width: 200px; }
+.stats-value { font-family: var(--font-mono); }
+.stats-note { color: var(--text-secondary); font-size: var(--fs-sm); }
+.stats-heading { margin-bottom: var(--space-6); }
+.stats-heading.second { margin-top: 24px; }
 
 /* ── Indexes view ─────────────────────────────────────────────────────────── */
 .idx-view { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
@@ -1096,7 +1305,7 @@ button,
   outline: none; border-color: var(--accent);
 }
 .form-group button {
-  background: var(--accent); border: none; color: #fff;
+  background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
 .form-group button:hover { background: var(--accent-hover); }
@@ -1107,12 +1316,12 @@ button.secondary {
 button.secondary:hover { background: var(--bg-hover); }
 /* Destructive action — replaces an inline `background: var(--error)` override. */
 button.danger, .toolbar button.danger, .bulk-action-bar button.danger {
-  background: var(--error); border: none; color: #fff;
+  background: var(--error); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
 button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
 button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button) {
-  background: var(--accent); border: none; color: #fff;
+  background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
 
@@ -1132,7 +1341,7 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   color: var(--text-primary); padding: 5px 8px; border-radius: var(--radius-md); font-size: var(--fs-sm); flex: 1; min-width: 100px;
 }
 .ur-form button {
-  background: var(--accent); border: none; color: #fff;
+  background: var(--accent); border: none; color: var(--accent-text);
   padding: 5px 12px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap;
 }
 
@@ -1168,8 +1377,8 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
 
 /* ── Context Menu ────────────────────────────────────────────────────────────── */
 .ctx-menu {
-  background: #222;
-  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 4px;
   min-width: 180px;
@@ -1183,7 +1392,7 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   width: 100%;
   background: none;
   border: none;
-  color: #ddd;
+  color: var(--text-primary);
   padding: 5px 11px;
   font-size: 12.5px;
   cursor: pointer;
@@ -1192,15 +1401,15 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   gap: var(--space-3);
   white-space: nowrap;
 }
-.ctx-item:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #fff; }
-.ctx-item:disabled { color: #555; cursor: default; opacity: 0.6; }
-.ctx-shortcut { color: #666; font-size: var(--fs-xs); margin-left: auto; padding-left: 16px; }
-.ctx-item:hover .ctx-shortcut { color: #999; }
-.ctx-sep { height: 1px; background: rgba(255,255,255,0.09); margin: 3px 4px; }
+.ctx-item:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.ctx-item:disabled { color: var(--text-secondary); cursor: default; opacity: 0.5; }
+.ctx-shortcut { color: var(--text-secondary); font-size: var(--fs-xs); margin-left: auto; padding-left: 16px; }
+.ctx-item:hover .ctx-shortcut { color: var(--text-primary); }
+.ctx-sep { height: 1px; background: var(--border); margin: 3px 4px; }
 /* override global button rule inside ctx-menu */
-.ctx-menu button.ctx-item { background: none; color: #ddd; padding: 5px 11px; font-size: 12.5px; }
-.ctx-menu button.ctx-item:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #fff; }
-.ctx-menu button.ctx-item:disabled { background: none; color: #555; opacity: 0.6; }
+.ctx-menu button.ctx-item { background: none; color: var(--text-primary); padding: 5px 11px; font-size: 12.5px; }
+.ctx-menu button.ctx-item:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.ctx-menu button.ctx-item:disabled { background: none; color: var(--text-secondary); opacity: 0.5; }
 
 /* ── Find bar (in modals) ────────────────────────────────────────────────────── */
 .find-bar {
@@ -1232,15 +1441,15 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   cursor: pointer; padding: 2px 5px; border-radius: var(--radius-sm); font-size: var(--fs-xs);
 }
 .find-close:hover { color: var(--error); }
-.find-mark { background: #f5a623; color: #000; border-radius: var(--radius-xs); }
+.find-mark { background: var(--mark-bg); color: var(--mark-text); border-radius: var(--radius-xs); }
 
 /* JSON syntax highlighting — shared by view & edit modals */
-.jk { color: #9cdcfe; }              /* keys */
-.js { color: #ce9178; }              /* strings */
-.jn { color: #b5cea8; }              /* numbers */
-.jb { color: #569cd6; }              /* booleans */
-.jl { color: #c586c0; }              /* null */
-.jo { color: #4ec9b0; }              /* ObjectId / ISODate wrappers */
+.jk { color: var(--tree-key); }              /* keys */
+.js { color: var(--val-str); }              /* strings */
+.jn { color: var(--val-num); }              /* numbers */
+.jb { color: var(--val-bool); }              /* booleans */
+.jl { color: var(--val-null); }              /* null */
+.jo { color: var(--val-oid); }              /* ObjectId / ISODate wrappers */
 
 /* Layered editor: transparent textarea over highlighted <pre> */
 .json-editor-wrap {
@@ -1268,7 +1477,7 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
 .json-editor-hl {
   position: absolute;
   inset: 0;
-  color: #cccccc;
+  color: var(--text-primary);
   overflow: auto;
   pointer-events: none;
   background: transparent;
@@ -1276,18 +1485,18 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
 .json-editor-ta {
   position: relative;
   color: transparent;
-  caret-color: #ffffff;
+  caret-color: var(--text-primary);
   background: transparent;
   resize: none;
   outline: none;
   overflow: auto;
 }
-.json-editor-ta::selection { background: rgba(58, 108, 160, 0.5); color: transparent; }
+.json-editor-ta::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); color: transparent; }
 
 /* ── Edit diff panel ─────────────────────────────────────────────────────────── */
 .edit-dirty-badge {
   font-size: var(--fs-xs);
-  color: #f5a623;
+  color: var(--mark-bg);
   margin-left: 10px;
   font-weight: normal;
 }
@@ -1324,8 +1533,8 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
 .diff-entry.diff-changed { background: color-mix(in srgb, #f5a623 8%, transparent); }
 .diff-path { color: var(--tree-key); min-width: 120px; }
 .diff-vals { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; }
-.diff-old { color: #e74c3c; text-decoration: line-through; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diff-new { color: #2ecc71; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-old { color: var(--error); text-decoration: line-through; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-new { color: var(--success); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-arrow { color: var(--text-secondary); flex-shrink: 0; }
 
 /* ── Responsive toolbar ──────────────────────────────────────────────────────── */

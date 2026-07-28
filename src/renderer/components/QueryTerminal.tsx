@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import MonacoQueryEditor from './MonacoQueryEditor';
+import MonacoQueryEditor, { MonacoThemeName } from './MonacoQueryEditor';
 
 interface QueryTerminalProps {
   connectionId: string;
@@ -59,10 +59,12 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     localStorage.setItem('queryEditorHeight', String(editorHeight));
   }, [editorHeight]);
 
-  // Theme detection from body class
-  const theme: 'vs-dark' | 'vs' | 'hc-black' =
+  // Theme detection from body class — App re-renders this tree on theme change,
+  // so the value is recomputed and pushed into Monaco by its own effect.
+  const theme: MonacoThemeName =
     document.body.classList.contains('theme-light') ? 'vs'
     : document.body.classList.contains('theme-hc') ? 'hc-black'
+    : document.body.classList.contains('theme-solarized') ? 'boxy-solarized'
     : 'vs-dark';
 
   // Load sample fields from the current collection for context-aware suggestions
@@ -106,22 +108,22 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     : [];
 
   return (
-    <div className="tab-pane active" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <div className="tab-pane active pane-col">
       <div className="toolbar">
         <button onClick={handleRun} disabled={loading}>
           {loading ? 'Running...' : '▶ Run Query'}
         </button>
         <button className="secondary" onClick={handleClear}>Clear</button>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>
-          <kbd style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Ctrl+Space</kbd> suggestions ·
-          <kbd style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace', marginLeft: 4 }}>Ctrl+Enter</kbd> run
+        <span className="qt-hint">
+          <kbd className="kbd">Ctrl+Space</kbd> suggestions ·
+          <kbd className="kbd">Ctrl+Enter</kbd> run
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#888' }}>
+        <span className="qt-meta">
           {result.length > 0 && `${result.length} result${result.length !== 1 ? 's' : ''} · `}{database}.{collection}
         </span>
       </div>
-      <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-        <div style={{ flex: `0 0 ${editorHeight}px`, display: 'flex', border: '1px solid #3c3c3c', margin: '8px 8px 0 8px', borderRadius: 4, overflow: 'hidden' }}>
+      <div className="pane-col">
+        <div className="qt-editor-box" style={{ flex: `0 0 ${editorHeight}px` }}>
           <MonacoQueryEditor
             value={query}
             onChange={setQuery}
@@ -133,24 +135,16 @@ export default function QueryTerminal({ connectionId, database, collection, resu
         <div
           onMouseDown={startResize}
           title="Drag to resize"
-          style={{
-            height: 6, cursor: 'row-resize', flexShrink: 0,
-            background: 'transparent',
-            borderTop: '1px solid transparent',
-            borderBottom: '1px solid transparent',
-            transition: 'background 0.1s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          className="qt-splitter"
         />
-        <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #3c3c3c', minHeight: 0 }}>
+        <div className="qt-results">
           {error && (
-            <div style={{ padding: 12, color: '#f48771', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+            <div className="pane-error">
               Error: {error}
             </div>
           )}
           {!error && result.length === 0 && !loading && (
-            <div style={{ padding: 12, color: '#888', fontSize: 12 }}>No results</div>
+            <div className="pane-empty">No results</div>
           )}
           {!error && result.length > 0 && allObjects && (
             <div className="document-table">
@@ -162,7 +156,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
                   {result.map((doc, idx) => (
                     <tr key={idx}>
                       {keys.map(k => (
-                        <td key={k} style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                        <td key={k} className="qt-cell">
                           {renderCell(doc[k])}
                         </td>
                       ))}
@@ -173,7 +167,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
             </div>
           )}
           {!error && result.length > 0 && !allObjects && (
-            <pre style={{ margin: 0, padding: 12, color: '#cccccc', background: '#1e1e1e', fontFamily: 'Consolas, Monaco, monospace', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            <pre className="qt-raw">
               {JSON.stringify(result.length === 1 ? result[0] : result, null, 2)}
             </pre>
           )}

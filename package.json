@@ -1,9 +1,10 @@
 {
   "name": "boxynosql",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "BoxyNoSql — desktop NoSQL GUI client",
-  "homepage": "https://github.com/dginnasio/boxynosql",
+  "homepage": "https://github.com/davideginna/BoxyNoSql",
   "author": "Davide Ginnasio",
+  "license": "MIT",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"wait-on http://localhost:5173 dist/main/main.js && NODE_ENV=development electron .\"",

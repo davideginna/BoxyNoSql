@@ -124,8 +124,43 @@ interface Props {
   value: string;
   onChange: (v: string) => void;
   onRun?: () => void;
-  theme?: 'vs-dark' | 'vs' | 'hc-black';
+  theme?: MonacoThemeName;
   collectionSample?: string[];
+}
+
+export type MonacoThemeName = 'vs-dark' | 'vs' | 'hc-black' | 'boxy-solarized';
+
+// Monaco ships no solarized theme, so the editor fell back to vs-dark and stayed
+// blue-grey inside an otherwise teal UI. Defined once, on first use.
+let solarizedDefined = false;
+function ensureSolarizedTheme() {
+  if (solarizedDefined) return;
+  solarizedDefined = true;
+  monaco.editor.defineTheme('boxy-solarized', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: '', foreground: 'eee8d5', background: '002b36' },
+      { token: 'comment', foreground: '586e75', fontStyle: 'italic' },
+      { token: 'string', foreground: '2aa198' },
+      { token: 'number', foreground: 'd33682' },
+      { token: 'keyword', foreground: '859900' },
+      { token: 'identifier', foreground: 'eee8d5' },
+      { token: 'delimiter', foreground: '93a1a1' },
+    ],
+    colors: {
+      'editor.background': '#002b36',
+      'editor.foreground': '#eee8d5',
+      'editorLineNumber.foreground': '#586e75',
+      'editorLineNumber.activeForeground': '#b58900',
+      'editorCursor.foreground': '#b58900',
+      'editor.selectionBackground': '#0d5766',
+      'editor.lineHighlightBackground': '#073642',
+      'editorSuggestWidget.background': '#073642',
+      'editorSuggestWidget.border': '#0d4a58',
+      'editorSuggestWidget.selectedBackground': '#0d5766',
+    },
+  });
 }
 
 export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-dark', collectionSample }: Props) {
@@ -138,6 +173,7 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
 
   useEffect(() => {
     registerCompletions();
+    ensureSolarizedTheme();
     if (!hostRef.current) return;
     const editor = monaco.editor.create(hostRef.current, {
       value,
@@ -202,7 +238,7 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
   }, [value]);
 
   // Theme update
-  useEffect(() => { monaco.editor.setTheme(theme); }, [theme]);
+  useEffect(() => { ensureSolarizedTheme(); monaco.editor.setTheme(theme); }, [theme]);
 
   // Sample-field completions (per-collection)
   useEffect(() => {

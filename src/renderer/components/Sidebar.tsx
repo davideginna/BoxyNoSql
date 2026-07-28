@@ -13,6 +13,8 @@ interface Connection {
 interface SidebarProps {
   connections: Connection[];
   selectedConnection: string | null;
+  /** Connected connections whose database tree the user folded away. */
+  collapsedConns: Set<string>;
   connectedIds: Set<string>;
   connectingIds: Set<string>;
   databases: string[];
@@ -23,6 +25,7 @@ interface SidebarProps {
   iconSettings: IconSettings;
   onOpenManager: () => void;
   onOpenSettings: () => void;
+  onOpenAbout: () => void;
   onSelectConnection: (id: string) => void;
   onDisconnect: (id: string) => void;
   onExpandDb: (db: string) => void;
@@ -56,9 +59,9 @@ function ColIcon({ color }: { color?: string }) {
 
 export default function Sidebar(props: SidebarProps) {
   const {
-    connections, selectedConnection, connectedIds, connectingIds,
+    connections, selectedConnection, collapsedConns, connectedIds, connectingIds,
     databases, expandedDbs, collections, selectedCollection,
-    theme, iconSettings, onOpenManager, onOpenSettings,
+    theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout,
     onSelectConnection, onDisconnect, onExpandDb, onSelectCollection,
     onExpandAll, onCollapseAll, onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onDuplicateCollection, onCopyCollectionName,
@@ -95,7 +98,7 @@ export default function Sidebar(props: SidebarProps) {
             onChange={e => setDbSearch(prev => ({ ...prev, [connId]: e.target.value }))}
           />
           {dbSearch[connId] && (
-            <button className="db-search-clear" onClick={() => setDbSearch(prev => ({ ...prev, [connId]: '' }))}><Icon name="close" size={12} /></button>
+            <button className="icon-btn db-search-clear" onClick={() => setDbSearch(prev => ({ ...prev, [connId]: '' }))}><Icon name="close" size={12} /></button>
           )}
         </div>
         {filteredDbs.map(db => (
@@ -149,6 +152,7 @@ export default function Sidebar(props: SidebarProps) {
 
   const renderConnectedConn = (conn: Connection) => {
     const isSelected = selectedConnection === conn.id;
+    const isOpen = isSelected && !collapsedConns.has(conn.id);
     const isConnecting = connectingIds.has(conn.id);
     const connColor = conn.color || DEFAULT_CONNECTION_COLOR;
     return (
@@ -158,6 +162,7 @@ export default function Sidebar(props: SidebarProps) {
           style={{ borderLeftColor: connColor }}
           onClick={() => onSelectConnection(conn.id)}
         >
+          <span className="tree-chevron"><Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} /></span>
           <span className="conn-dot" style={{ background: connColor }} />
           <span className="name">{conn.name}</span>
           {isConnecting && <span className="conn-connecting-label"><span className="conn-spinner" />Connecting…</span>}
@@ -168,7 +173,7 @@ export default function Sidebar(props: SidebarProps) {
             )}
           </div>
         </div>
-        {isSelected && !isConnecting && renderDbTree(conn, connColor)}
+        {isOpen && !isConnecting && renderDbTree(conn, connColor)}
       </div>
     );
   };
@@ -221,7 +226,8 @@ export default function Sidebar(props: SidebarProps) {
         <button className={theme === 'light' ? 'active' : ''} onClick={() => onThemeChange('light')} title="Light"><Icon name="sun" size={15} /></button>
         <button className={theme === 'hc' ? 'active' : ''} onClick={() => onThemeChange('hc')} title="High contrast"><Icon name="bolt" size={15} /></button>
         <button className={theme === 'solarized' ? 'active' : ''} onClick={() => onThemeChange('solarized')} title="Solarized"><Icon name="wave" size={15} /></button>
-        <button onClick={onOpenSettings} title="Appearance settings" style={{ marginLeft: 'auto' }}><Icon name="gear" size={15} /></button>
+        <button onClick={onOpenAbout} title="About BoxyNoSql" style={{ marginLeft: 'auto' }}><Icon name="info" size={15} /></button>
+        <button onClick={onOpenSettings} title="Appearance settings"><Icon name="gear" size={15} /></button>
       </div>
 
       {dbCtxMenu && (

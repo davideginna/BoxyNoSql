@@ -8,7 +8,7 @@ export type IconName =
   | 'save' | 'user' | 'eye' | 'tree' | 'moon' | 'sun' | 'bolt' | 'wave'
   | 'gear' | 'warn' | 'expand' | 'menu' | 'refresh' | 'close' | 'check'
   | 'chevronRight' | 'chevronDown' | 'arrowUp' | 'arrowDown' | 'arrowRight'
-  | 'expandAll' | 'collapseAll' | 'filter';
+  | 'expandAll' | 'collapseAll' | 'filter' | 'info';
 
 const P: Record<IconName, React.ReactNode> = {
   database: (<>
@@ -28,6 +28,11 @@ const P: Record<IconName, React.ReactNode> = {
     <path d="M9 2v6M15 2v6" />
     <path d="M6 8h12v3a6 6 0 0 1-12 0z" />
     <path d="M12 17v5" />
+  </>),
+  info: (<>
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="11" x2="12" y2="16" />
+    <line x1="12" y1="8" x2="12" y2="8" />
   </>),
   plus: (<><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>),
   edit: (<>

@@ -188,7 +188,9 @@ export default function MainContent({
           const tabStyle = isActive ? {
             background: `color-mix(in srgb, ${color} 35%, var(--bg-primary))`,
             borderTopColor: color,
-            color: '#fff',
+            // The tint is mixed with --bg-primary, so the theme's own text
+            // colour is the readable one — white was unreadable in light theme.
+            color: 'var(--text-primary)',
           } : {
             background: `color-mix(in srgb, ${color} 12%, var(--bg-secondary))`,
             borderTopColor: 'transparent',

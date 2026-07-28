@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.0] - 2026-07-28
+
+### Added
+- `Alt+E` edits the focused connection in the manager (shown in its context menu and on the pencil's tooltip), alongside the existing `Enter` to connect/disconnect
+- **Search in the connection manager**: contains-match on the connection name **and** on every host in its URI, so `mongo02` or `10.157` find a connection whose name says nothing about the machine. Folders holding a match are auto-expanded while searching (a hit inside a collapsed folder would read as no result) and the header shows `N of M`
+- **TLS / certificate connections**: connections carry `tls`, `tlsCertificateKeyFile` (+ password), `tlsCAFile`, `tlsAllowInvalidCertificates` and `tlsServername` (SNI); the connection form is now tabbed (General / TLS / Appearance) and the TLS tab edits them, with a native file picker (`pick-certificate-file` IPC — the renderer cannot read a `File`'s path since Electron 32). Certificate paths are checked before connecting so a wrong path says which file is missing, and `test-connection` logs the TLS setup it is using. The `.uri` importer lifts `ssl`/`tls`, `3t.clientCertPath` and `3t.sniName` onto the connection
+- **About dialog** (sidebar `?`): app version, build date (mtime of the shipped main bundle), author, license, repository, platform and Electron/Chromium/Node versions, from a new `get-app-info` IPC — plus the logo rebuilt as a spinning 3D box in the brand colours
+- Connection errors now explain TLS failures: "self signed certificate in certificate chain" points at the CA file field and the accept-invalid checkbox
+
+### Changed
+- Connection-manager folders now start **collapsed** — with several imported groups an all-open tree buried the connections. Folders created afterwards (import, "New folder") still open by themselves
+- **Unfiltered document totals use `estimatedDocumentCount()`** instead of `countDocuments({})`. The page itself was always paginated (`skip`+`limit`); the total was the slow part — a full scan re-run on every page change (200k docs locally: find 4 ms, `countDocuments({})` 48 ms, estimate 2 ms; the gap grows with collection size and latency). Filtered counts stay exact; approximate totals are shown as `≈N total`
+- Monaco gets a real solarized theme (`boxy-solarized`) instead of falling back to `vs-dark` inside a teal UI
+- `package.json`: `homepage` pointed at a repository that does not exist (`dginnasio/boxynosql`) → corrected to `davideginna/BoxyNoSql`; added the missing `"license": "MIT"`
+
+### Fixed
+- **Text colours ignored the theme in several places.** Hardcoded values outside the theme blocks — the whole context menu (`#222` background, `#ddd`/`#fff`/`#555` text), the JSON syntax highlighter (`.jk`/`.js`/`.jn`/`.jb`/`.jl`/`.jo` on the VS Code dark palette), `.tree-val-oid`, the layered JSON editor (`#cccccc`, white caret), diff colours, the find highlight, and every `color: #fff` on accent-filled buttons — now resolve through per-theme tokens (`--accent-text`, `--val-oid`, `--mark-bg`/`--mark-text` added to all four themes). Remaining inline styles in `QueryTerminal`, `AggregationBuilder` and `StatsView` moved to themed classes
+- Active tab label was hardcoded white over a tint mixed with `--bg-primary`, which was unreadable in the light theme
+- Clear-search buttons (`.db-search-clear`, sidebar and connection manager) rendered as filled accent buttons: the class was missing from the catch-all `button:not(...)` exclusion list, so the generic rule won
+- **Clicking an already-open connection in the sidebar did nothing**, so its database tree could not be folded away — `handleSelectConnection` returned early when the id was already selected. A second click now collapses the tree (and a third re-expands it), with a chevron on the row showing the state. Collapse is tracked separately from selection: clearing `selectedConnection` would have broken the open tabs, which load their data through it
+- **Theme switch buttons were invisible in three of the four themes.** `.sidebar-footer button` set `background: none; border: none` but no `color`, and buttons do not inherit `color` — so the icons fell back to the UA default (near-black), disappearing against the dark, high-contrast and solarized backgrounds. They now use `--text-secondary`, brighten to `--text-primary` on hover, and the selected theme is marked with the current theme's own `--accent` plus an accent-tinted background (the previous `--bg-hover` highlight was nearly invisible in hc and solarized)
+
 ## [1.1.0] - 2026-07-28
 
 ### Added

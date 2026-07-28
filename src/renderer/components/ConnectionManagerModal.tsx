@@ -86,9 +86,11 @@ export default function ConnectionManagerModal(props: Props) {
     }
   };
 
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(folders.map(f => f.id))
-  );
+  // Folders start collapsed: with many imported groups an all-open tree buries
+  // the connections. Folders created later (import, "New folder") still open,
+  // see the effect below.
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
+  const [search, setSearch] = useState('');
 
   // Folders created while the modal is open (import, "New folder") start
   // expanded, otherwise their contents are invisible right after creation.
@@ -162,7 +164,22 @@ export default function ConnectionManagerModal(props: Props) {
 
   const getRootFolders = () => [...folders].filter(f => !f.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const getChildFolders = (parentId: string) => [...folders].filter(f => f.parentId === parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const rootConns = connections.filter(c => !c.folderId);
+
+  // Contains-match on the connection name and on every host in its URI, so
+  // "mongo02" or "10.157" find a connection whose name says nothing about it.
+  const query = search.trim().toLowerCase();
+  const matchesQuery = (c: Connection) => {
+    if (!query) return true;
+    if (c.name.toLowerCase().includes(query)) return true;
+    return parseUriInfo(c.uri).hosts.some(h => h.toLowerCase().includes(query));
+  };
+  const matchingConns = connections.filter(matchesQuery);
+  // A folder survives the filter when it, or any folder below it, holds a match.
+  const folderHasMatch = (folderId: string): boolean =>
+    matchingConns.some(c => c.folderId === folderId) ||
+    getChildFolders(folderId).some(f => folderHasMatch(f.id));
+
+  const rootConns = matchingConns.filter(c => !c.folderId);
 
   const getSiblings = (folder: Folder) =>
     [...folders].filter(f => f.parentId === folder.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -197,6 +214,7 @@ export default function ConnectionManagerModal(props: Props) {
         onDoubleClick={() => { if (!isConnected && !isConnecting) onConnect(conn.id); }}
         onKeyDown={e => {
           if (e.key === 'Enter' && !isConnecting) { e.preventDefault(); isConnected ? onDisconnect(conn.id) : onConnect(conn.id); }
+          else if (e.altKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); onEditConnection(conn); }
         }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setConnCtxMenu({ x: e.clientX, y: e.clientY, conn }); }}
       >
@@ -231,9 +249,12 @@ export default function ConnectionManagerModal(props: Props) {
   };
 
   const renderFolder = (folder: Folder): React.ReactNode => {
-    const isOpen = expandedFolders.has(folder.id);
+    if (query && !folderHasMatch(folder.id)) return null;
+    // While searching the tree is expanded regardless: a match hidden inside a
+    // collapsed folder would look like no result at all.
+    const isOpen = query ? true : expandedFolders.has(folder.id);
     const childFolders = getChildFolders(folder.id);
-    const folderConns = connections.filter(c => c.folderId === folder.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const folderConns = matchingConns.filter(c => c.folderId === folder.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const siblings = getSiblings(folder);
     const sibIdx = siblings.findIndex(f => f.id === folder.id);
     return (
@@ -284,7 +305,7 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'Connect', icon: 'play', disabled: connectedIds.has(connCtxMenu.conn.id) || connectingIds.has(connCtxMenu.conn.id), onClick: () => { onConnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { label: 'Disconnect', icon: 'power', disabled: !connectedIds.has(connCtxMenu.conn.id), onClick: () => { onDisconnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { separator: true },
-    { label: 'Edit', icon: 'edit', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { label: 'Edit', icon: 'edit', shortcut: 'Alt+E', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
@@ -304,13 +325,33 @@ export default function ConnectionManagerModal(props: Props) {
           </div>
         </div>
 
+        <div className="conn-search-bar">
+          <input
+            className="db-search-input"
+            placeholder="Search by name or host…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape' && search) { e.stopPropagation(); setSearch(''); } }}
+          />
+          {search && (
+            <>
+              <span className="conn-search-count">{matchingConns.length} of {connections.length}</span>
+              <button className="icon-btn db-search-clear" title="Clear search" onClick={() => setSearch('')}>
+                <Icon name="close" size={12} />
+              </button>
+            </>
+          )}
+        </div>
+
         <div
           className="modal-body conn-manager-body"
           onDragOver={e => { e.preventDefault(); setDragOver('root'); }}
           onDragLeave={() => setDragOver(null)}
           onDrop={() => handleDrop(undefined)}
         >
-          {connections.length === 0 && folders.length === 0 ? (
+          {query && matchingConns.length === 0 ? (
+            <div className="conn-manager-empty">No connection matches “{search}”.</div>
+          ) : connections.length === 0 && folders.length === 0 ? (
             <div className="conn-manager-empty">
               No saved connections yet.
               <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'center' }}>

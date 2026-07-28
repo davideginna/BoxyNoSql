@@ -58,12 +58,12 @@ export default function AggregationBuilder({ connectionId, database, collection,
         </button>
       </div>
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div className="pipeline-stages" style={{ width: 400, overflowY: 'auto', paddingRight: 8 }}>
+        <div className="pipeline-stages agg-stages">
           {stages.map((stage, index) => (
             <div key={index} className="pipeline-stage">
               <div className="pipeline-stage-header">
-                <span style={{ fontSize: 12, color: '#888' }}>Stage {index + 1}</span>
-                <div style={{ display: 'flex', gap: 4 }}>
+                <span className="agg-stage-num">Stage {index + 1}</span>
+                <div className="agg-stage-actions">
                   <select
                     value={stage.stage}
                     onChange={e => updateStage(index, 'stage', e.target.value)}
@@ -89,9 +89,9 @@ export default function AggregationBuilder({ connectionId, database, collection,
             </div>
           ))}
         </div>
-        <div style={{ flex: 1, overflow: 'auto', borderLeft: '1px solid #3c3c3c' }}>
+        <div className="agg-results">
           {error && (
-            <div style={{ padding: 12, color: '#f48771', fontFamily: 'monospace' }}>
+            <div className="pane-error">
               Error: {error}
             </div>
           )}
