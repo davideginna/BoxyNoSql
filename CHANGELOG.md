@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.2] - 2026-07-29
+
+### Added
+- **Keyboard shortcuts cheat sheet (F1)** — overlay listing every shortcut registered across the app, also reachable from a sidebar icon
+- **Guided first run**: the welcome screen offers "Add a connection" and a one-click `mongodb://localhost:27017` quick connect when no connection is saved yet; once connections exist, it lists the last 10 used (with folder and color) for one-click reconnect when nothing is currently connected
+- **CSV/TSV import** with a column-to-field mapping step (type auto-detected per column: string/number/boolean/date/ObjectId), from the database context menu (new collection) and the collection context menu (append), alongside the existing JSON/NDJSON import
+
+### Changed
+- Connection manager: "Duplicate" renamed to "Clone", now also available as a dedicated row icon (not just the context menu); added an X button to close the window
+
 ## [1.4.0] - 2026-07-29
 
 ### Added
