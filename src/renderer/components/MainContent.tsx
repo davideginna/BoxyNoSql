@@ -6,6 +6,7 @@ import QueryTerminal from './QueryTerminal';
 import AggregationBuilder from './AggregationBuilder';
 import IndexesView from './IndexesView';
 import StatsView from './StatsView';
+import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
 
 interface Tab {
   id: string;
@@ -19,18 +20,39 @@ interface Tab {
 interface Connection {
   id: string; name: string; uri: string;
   folderId?: string; color?: string; order?: number;
+  lastConnectedAt?: number;
 }
+
+interface Folder { id: string; name: string; color?: string; }
 
 interface MainContentProps {
   tabs: Tab[];
   activeTab: string | null;
   selectedConnection: string | null;
   connections: Connection[];
+  folders: Folder[];
   onOpenTab: (type: Tab['type'], title: string, dbName?: string, collection?: string) => void;
   onCloseTab: (tabId: string) => void;
   onSwitchTab: (tabId: string) => void;
   onChangeTabType: (tabId: string, type: Tab['type']) => void;
   activeTabData: Tab | undefined;
+  onAddConnection: () => void;
+  onQuickConnect: () => void;
+  onOpenConnections: () => void;
+  onConnect: (id: string) => void;
+  hasConnectedConnections: boolean;
+}
+
+function formatRelativeTime(ts: number): string {
+  const diffMs = Date.now() - ts;
+  const min = Math.round(diffMs / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(ts).toLocaleDateString();
 }
 
 const VIEW_TYPES: { type: Tab['type']; label: string; icon: IconName }[] = [
@@ -45,8 +67,9 @@ const TAB_HEIGHT = 32;
 const MAX_ROWS = 3;
 
 export default function MainContent({
-  tabs, activeTab, selectedConnection, connections,
-  onOpenTab: _onOpenTab, onCloseTab, onSwitchTab, onChangeTabType, activeTabData
+  tabs, activeTab, selectedConnection, connections, folders,
+  onOpenTab: _onOpenTab, onCloseTab, onSwitchTab, onChangeTabType, activeTabData,
+  onAddConnection, onQuickConnect, onOpenConnections, onConnect, hasConnectedConnections,
 }: MainContentProps) {
   // Per-tab result buffers keyed by tabId so they survive tab switching
   const [aggregationResults, setAggregationResults] = useState<Record<string, any[]>>({});
@@ -135,11 +158,67 @@ export default function MainContent({
   }, [tabs.length]);
 
   if (!activeTabData) {
+    const isFirstRun = connections.length === 0;
+    const recent = connections
+      .filter(c => c.lastConnectedAt)
+      .sort((a, b) => (b.lastConnectedAt ?? 0) - (a.lastConnectedAt ?? 0))
+      .slice(0, 10);
     return (
       <div className="main-content">
         <div className="welcome-screen">
           <h1>BoxyNoSql</h1>
-          <p>Select a collection from the sidebar to get started</p>
+          {isFirstRun ? (
+            <>
+              <p>Connect to a MongoDB server to get started</p>
+              <div className="welcome-actions">
+                <button onClick={onAddConnection}><Icon name="plug" size={14} /> Add a connection</button>
+                <button className="secondary" onClick={onQuickConnect}>
+                  <Icon name="play" size={14} /> Quick connect: mongodb://localhost:27017
+                </button>
+              </div>
+            </>
+          ) : !hasConnectedConnections ? (
+            recent.length > 0 ? (
+              <>
+                <p>Not connected to any server — pick a recent connection</p>
+                <div className="welcome-recent">
+                  {recent.map(c => {
+                    const folder = c.folderId ? folders.find(f => f.id === c.folderId) : undefined;
+                    const connColor = c.color || DEFAULT_CONNECTION_COLOR;
+                    return (
+                      <button
+                        key={c.id}
+                        className="welcome-recent-item"
+                        style={{ '--recent-border': connColor } as CSSProperties}
+                        onClick={() => onConnect(c.id)}
+                      >
+                        <Icon name="plug" size={14} color={connColor} />
+                        <span className="welcome-recent-name">{c.name}</span>
+                        {folder && (
+                          <span className="welcome-recent-folder" style={{ color: folder.color || undefined }}>
+                            <Icon name="folder" size={11} color={folder.color || undefined} /> {folder.name}
+                          </span>
+                        )}
+                        <span className="welcome-recent-time">{formatRelativeTime(c.lastConnectedAt!)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="welcome-actions">
+                  <button className="secondary" onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>Not connected to any server</p>
+                <div className="welcome-actions">
+                  <button onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
+                </div>
+              </>
+            )
+          ) : (
+            <p>Select a collection from the sidebar to get started</p>
+          )}
         </div>
       </div>
     );

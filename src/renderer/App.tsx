@@ -7,6 +7,7 @@ import UsersRolesModal from './components/UsersRolesModal';
 import DialogModal from './components/DialogModal';
 import SettingsModal from './components/SettingsModal';
 import AboutModal from './components/AboutModal';
+import ShortcutsModal from './components/ShortcutsModal';
 import UpdateModal from './components/UpdateModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
 import {
@@ -14,7 +15,8 @@ import {
 } from './utils/updates';
 import { showConfirm, showInput, showAlert } from './dialog';
 import { isTypingTarget } from './utils/dom';
-import { pickFile, parseDocs, parseDatabaseFile } from './utils/fileImport';
+import { pickFile, parseDocs, parseDatabaseFile, parseCsv } from './utils/fileImport';
+import ImportCsvModal from './components/ImportCsvModal';
 import { ImportedConnection } from './utils/uriImport';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
@@ -29,6 +31,7 @@ interface Connection {
   tlsCAFile?: string;
   tlsAllowInvalidCertificates?: boolean;
   tlsServername?: string;
+  lastConnectedAt?: number;
 }
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 interface Tab {
@@ -112,6 +115,10 @@ function App() {
   const [showConnManager, setShowConnManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [csvImport, setCsvImport] = useState<{
+    dbName: string; colName?: string; headers: string[]; rows: string[][]; fileName: string;
+  } | null>(null);
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
@@ -203,9 +210,10 @@ function App() {
 
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
-  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || !!usersRolesDb || !!updateStatus;
+  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRolesDb || !!updateStatus || !!csvImport;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F1') { e.preventDefault(); setShowShortcuts(true); return; }
       if (isTypingTarget(e.target)) return;
       if (anyModalOpen) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -276,12 +284,21 @@ function App() {
       setCollections({});
       setExpandedDbs(new Set());
       setShowConnManager(false);
+      setConnections(await inv('touch-connection', connectionId));
     } catch (e: any) {
       const conn = connections.find(c => c.id === connectionId);
       const { message, detail } = friendlyConnError(e?.message || String(e));
       showAlert({ title: `Can't connect to ${conn?.name || 'server'}`, message, detail, danger: true });
     }
     finally { setConnectingIds(s => { const n = new Set(s); n.delete(connectionId); return n; }); }
+  };
+
+  const handleQuickConnect = async () => {
+    const id = Date.now().toString();
+    const conn: Connection = { id, name: 'Local', uri: 'mongodb://localhost:27017', order: connections.length };
+    const updated = await inv('save-connection', conn);
+    setConnections(updated);
+    await handleConnect(id);
   };
 
   const handleDisconnect = async (connectionId: string) => {
@@ -550,6 +567,46 @@ function App() {
     } catch (e: any) { alert('Import failed: ' + e.message); }
   };
 
+  const handleImportCsvDocuments = async (dbName: string, colName: string) => {
+    if (!selectedConnection) return;
+    const file = await pickFile('.csv,.tsv');
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { headers, rows } = parseCsv(text);
+      setCsvImport({ dbName, colName, headers, rows, fileName: file.name });
+    } catch (e: any) { showAlert({ title: 'Import failed', message: e.message, danger: true }); }
+  };
+
+  const handleImportCsvCollection = async (dbName: string) => {
+    if (!selectedConnection) return;
+    const file = await pickFile('.csv,.tsv');
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { headers, rows } = parseCsv(text);
+      setCsvImport({ dbName, headers, rows, fileName: file.name });
+    } catch (e: any) { showAlert({ title: 'Import failed', message: e.message, danger: true }); }
+  };
+
+  const handleCsvImportConfirm = async (docs: any[], colName: string) => {
+    if (!csvImport || !selectedConnection) return;
+    try {
+      if (csvImport.colName) {
+        const result = await inv('insert-documents', selectedConnection, csvImport.dbName, colName, docs);
+        showAlert({ title: 'Import complete', message: `Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${csvImport.dbName}.${colName}` });
+      } else {
+        const result = await inv('import-collection', selectedConnection, csvImport.dbName, colName, docs);
+        await refreshCollections(csvImport.dbName);
+        showAlert({ title: 'Import complete', message: `Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${csvImport.dbName}.${colName}` });
+      }
+    } catch (e: any) {
+      showAlert({ title: 'Import failed', message: e.message, danger: true });
+    } finally {
+      setCsvImport(null);
+    }
+  };
+
   const handleClearCollection = async (dbName: string, colName: string) => {
     if (!await showConfirm({ title: 'Clear Collection', message: `Delete ALL documents in "${colName}"? This cannot be undone.`, danger: true, confirmText: 'Clear' })) return;
     try {
@@ -596,6 +653,17 @@ function App() {
         />
       )}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} onCheckUpdates={checkForUpdates} />}
+      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+      {csvImport && (
+        <ImportCsvModal
+          fileName={csvImport.fileName}
+          headers={csvImport.headers}
+          rows={csvImport.rows}
+          defaultColName={csvImport.colName}
+          onImport={handleCsvImportConfirm}
+          onClose={() => setCsvImport(null)}
+        />
+      )}
       <DialogModal />
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
@@ -613,6 +681,7 @@ function App() {
         onOpenManager={() => setShowConnManager(true)}
         onOpenSettings={() => setShowSettings(true)}
         onOpenAbout={() => setShowAbout(true)}
+        onOpenShortcuts={() => setShowShortcuts(true)}
         onSelectConnection={handleSelectConnection}
         onDisconnect={handleDisconnect}
         onExpandDb={handleExpandDb}
@@ -635,6 +704,8 @@ function App() {
         onImportDocuments={handleImportDocuments}
         onImportCollection={handleImportCollection}
         onImportDatabase={handleImportDatabase}
+        onImportCsvDocuments={handleImportCsvDocuments}
+        onImportCsvCollection={handleImportCsvCollection}
         onThemeChange={setTheme}
       />
       <div className="sidebar-resize-handle" onMouseDown={onResizeStart} />
@@ -643,11 +714,17 @@ function App() {
         activeTab={activeTab}
         selectedConnection={selectedConnection}
         connections={connections}
+        folders={folders}
         onOpenTab={openTab}
         onCloseTab={closeTab}
         onSwitchTab={setActiveTab}
         onChangeTabType={changeTabType}
         activeTabData={tabs.find(t => t.id === activeTab)}
+        onAddConnection={() => { setEditingConn(null); setShowConnModal(true); }}
+        onQuickConnect={handleQuickConnect}
+        onOpenConnections={() => setShowConnManager(true)}
+        onConnect={handleConnect}
+        hasConnectedConnections={connectedIds.size > 0}
       />
       {showConnManager && (
         <ConnectionManagerModal

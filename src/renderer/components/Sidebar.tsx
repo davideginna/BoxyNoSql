@@ -26,6 +26,7 @@ interface SidebarProps {
   onOpenManager: () => void;
   onOpenSettings: () => void;
   onOpenAbout: () => void;
+  onOpenShortcuts: () => void;
   onSelectConnection: (id: string) => void;
   onDisconnect: (id: string) => void;
   onExpandDb: (db: string) => void;
@@ -49,6 +50,8 @@ interface SidebarProps {
   onImportDocuments: (db: string, col: string) => void;
   onImportCollection: (db: string) => void;
   onImportDatabase: () => void;
+  onImportCsvDocuments: (db: string, col: string) => void;
+  onImportCsvCollection: (db: string) => void;
   onThemeChange: (t: 'dark' | 'light' | 'hc' | 'solarized') => void;
   style?: React.CSSProperties;
 }
@@ -65,13 +68,14 @@ export default function Sidebar(props: SidebarProps) {
   const {
     connections, selectedConnection, collapsedConns, connectedIds, connectingIds,
     databases, expandedDbs, collections, selectedCollection,
-    theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout,
+    theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout, onOpenShortcuts,
     onSelectConnection, onDisconnect, onExpandDb, onSelectCollection,
     onExpandAll, onCollapseAll, onRefreshTree, onRefreshDb, refreshing,
     onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onDuplicateCollection, onCopyCollectionName,
     onClearCollection, onDropDatabase, onClearDatabase,
     onManageUsers, onImportDocuments, onImportCollection, onImportDatabase,
+    onImportCsvDocuments, onImportCsvCollection,
     onThemeChange, style,
   } = props;
 
@@ -191,6 +195,7 @@ export default function Sidebar(props: SidebarProps) {
     { label: 'Refresh collections', icon: 'refresh', onClick: () => { onRefreshDb(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'New collection', icon: 'plus', onClick: () => { onCreateCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'Import collection…', icon: 'import', onClick: () => { onImportCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
+    { label: 'Import collection from CSV/TSV…', icon: 'import', onClick: () => { onImportCsvCollection(dbCtxMenu.db); setDbCtxMenu(null); } },
     { separator: true },
     { label: 'Clear database', icon: 'clear', onClick: () => { onClearDatabase(dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'Drop database', icon: 'trash', onClick: () => { onDropDatabase(dbCtxMenu.db); setDbCtxMenu(null); } },
@@ -203,6 +208,7 @@ export default function Sidebar(props: SidebarProps) {
     { label: 'Duplicate', icon: 'duplicate', shortcut: 'Ctrl+D', onClick: () => { onDuplicateCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { label: 'Rename', icon: 'edit', shortcut: 'F2', onClick: () => { onRenameCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { label: 'Import documents…', icon: 'import', onClick: () => { onImportDocuments(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
+    { label: 'Import CSV/TSV…', icon: 'import', onClick: () => { onImportCsvDocuments(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { separator: true },
     { label: 'Clear collection', icon: 'clear', onClick: () => { onClearCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
     { label: 'Drop collection', icon: 'trash', shortcut: 'Del', onClick: () => { onDropCollection(colCtxMenu.db, colCtxMenu.col); setColCtxMenu(null); } },
@@ -236,7 +242,8 @@ export default function Sidebar(props: SidebarProps) {
         <button className={theme === 'light' ? 'active' : ''} onClick={() => onThemeChange('light')} title="Light"><Icon name="sun" size={15} /></button>
         <button className={theme === 'hc' ? 'active' : ''} onClick={() => onThemeChange('hc')} title="High contrast"><Icon name="bolt" size={15} /></button>
         <button className={theme === 'solarized' ? 'active' : ''} onClick={() => onThemeChange('solarized')} title="Solarized"><Icon name="wave" size={15} /></button>
-        <button onClick={onOpenAbout} title="About BoxyNoSql" style={{ marginLeft: 'auto' }}><Icon name="info" size={15} /></button>
+        <button onClick={onOpenShortcuts} title="Keyboard shortcuts (F1)" style={{ marginLeft: 'auto' }}><Icon name="keyboard" size={15} /></button>
+        <button onClick={onOpenAbout} title="About BoxyNoSql"><Icon name="info" size={15} /></button>
         <button onClick={onOpenSettings} title="Appearance settings"><Icon name="gear" size={15} /></button>
       </div>
 

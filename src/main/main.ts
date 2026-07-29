@@ -44,6 +44,7 @@ interface Connection extends TlsSettings {
   folderId?: string;
   color?: string;
   order?: number;
+  lastConnectedAt?: number;
 }
 
 interface Folder {
@@ -220,6 +221,14 @@ ipcMain.handle('save-connection', (_, connection: Connection) => {
   const connections = store.get('connections');
   const idx = connections.findIndex(c => c.id === connection.id);
   if (idx >= 0) connections[idx] = connection; else connections.push(connection);
+  store.set('connections', connections);
+  return connections;
+});
+
+ipcMain.handle('touch-connection', (_, id: string) => {
+  const connections = store.get('connections');
+  const idx = connections.findIndex(c => c.id === id);
+  if (idx >= 0) connections[idx] = { ...connections[idx], lastConnectedAt: Date.now() };
   store.set('connections', connections);
   return connections;
 });

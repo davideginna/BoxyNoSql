@@ -243,6 +243,7 @@ export default function ConnectionManagerModal(props: Props) {
               onClick={e => { e.stopPropagation(); onConnect(conn.id); }}><Icon name="play" size={12} /> Connect</button>
           )}
           <button title="Edit" onClick={e => { e.stopPropagation(); onEditConnection(conn); }}><Icon name="edit" size={14} /></button>
+          <button title="Clone" onClick={e => { e.stopPropagation(); onDuplicateConnection(conn); }}><Icon name="duplicate" size={14} /></button>
           <button title="Delete" onClick={e => { e.stopPropagation(); onDeleteConnection(conn.id); }}><Icon name="trash" size={14} /></button>
         </div>
       </div>
@@ -307,7 +308,7 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'Disconnect', icon: 'power', disabled: !connectedIds.has(connCtxMenu.conn.id), onClick: () => { onDisconnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Edit', icon: 'edit', shortcut: 'Alt+E', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
-    { label: 'Duplicate', icon: 'duplicate', onClick: () => { onDuplicateConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { label: 'Clone', icon: 'duplicate', onClick: () => { onDuplicateConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
@@ -327,6 +328,7 @@ export default function ConnectionManagerModal(props: Props) {
             </button>
             <button className="secondary" title="New folder" onClick={() => onAddFolder()}><Icon name="folder" size={14} /> Folder</button>
             <button title="New connection" onClick={onAddConnection}><Icon name="plug" size={14} /> Connection</button>
+            <button className="icon-btn" title="Close" onClick={onClose}><Icon name="close" size={15} /></button>
           </div>
         </div>
 
