@@ -24,6 +24,7 @@ interface Props {
   onAddConnection: () => void;
   onEditConnection: (conn: Connection) => void;
   onDeleteConnection: (id: string) => void;
+  onDuplicateConnection: (conn: Connection) => void;
   onSaveConnection: (conn: Connection) => void;
   onAddFolder: (parentId?: string) => void;
   onSaveFolder: (f: Folder) => void;
@@ -55,7 +56,7 @@ function parseUriInfo(uri: string): { hosts: string[]; replicaSet?: string; srv:
 export default function ConnectionManagerModal(props: Props) {
   const {
     connections, folders, connectedIds, connectingIds,
-    onConnect, onDisconnect, onAddConnection, onEditConnection, onDeleteConnection,
+    onConnect, onDisconnect, onAddConnection, onEditConnection, onDeleteConnection, onDuplicateConnection,
     onSaveConnection, onAddFolder, onSaveFolder, onDeleteFolder,
     onMoveConnection, onMoveFolder, onReorderFolders, onImportConnections, onClose, disableEsc,
   } = props;
@@ -306,6 +307,7 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'Disconnect', icon: 'power', disabled: !connectedIds.has(connCtxMenu.conn.id), onClick: () => { onDisconnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Edit', icon: 'edit', shortcut: 'Alt+E', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { label: 'Duplicate', icon: 'duplicate', onClick: () => { onDuplicateConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
