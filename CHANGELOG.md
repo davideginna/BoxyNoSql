@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0] - 2026-07-29
+
+### Added
+- **Connection string breakdown**: the connection form now parses the URI into individual fields (scheme, hosts, replicaSet, directConnection, appName, compressors, auth, options) alongside the raw string, kept in sync both ways
+- **Duplicate connection** — the connection manager's right-click menu gained a "Duplicate" action, cloning the connection with a `(copy)` suffix instead of requiring the URI to be re-entered by hand
+- Line numbers in the query/aggregation Monaco editor
+
+### Fixed
+- Tab bar contrast in the active/inactive tab labels
+
 ## [1.3.0] - 2026-07-28
 
 ### Added
