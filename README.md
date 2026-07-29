@@ -20,6 +20,16 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Per-tab persistent state: switching between collections/views keeps filters and results
 - ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊
 
+## Screenshots
+
+| | |
+|---|---|
+| **Documents — tree view** ![Documents tree view](assets/screenshots/documents-tree.png) | **Documents — table view** ![Documents table view](assets/screenshots/documents-table.png) |
+| **Query terminal** ![Query terminal](assets/screenshots/query-terminal.png) | **Aggregation pipeline builder** ![Aggregation pipeline builder](assets/screenshots/aggregation.png) |
+| **Connection manager** ![Connection manager](assets/screenshots/connections.png) | **Connection string breakdown** ![Connection string breakdown](assets/screenshots/connection-breakdown.png) |
+
+*(Dark theme shown; light, high-contrast and solarized are also available. Sample data, no real servers or data pictured.)*
+
 ## Roadmap
 
 Planned, not shipped. 🔥 = high impact, low effort.
