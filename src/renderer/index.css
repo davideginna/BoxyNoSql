@@ -72,6 +72,16 @@
   --val-oid:      #e74c3c;
   --mark-bg:      #f5a623;
   --mark-text:    #000000;
+  /* Label of an *idle* tab. Deliberately between --text-secondary and
+     --text-primary: it has to stay legible on top of the connection-colour
+     tint the tab bar mixes into --bg-secondary, which --text-secondary is
+     too weak for (≈3.3:1). See the ── Tabs ── block. */
+  --tab-text-idle:#b9b9b9;
+  /* Ink for chips whose background is a fixed, theme-independent data colour
+     (query-builder type badges). Black in every theme because the backgrounds
+     it sits on are the same in every theme — --accent-text is not, and white
+     on the yellow "ARRAY" badge measured 1.66:1. */
+  --badge-ink:    #000000;
 }
 
 body.theme-light {
@@ -102,6 +112,8 @@ body.theme-light {
   --val-oid:      #b31d28;
   --mark-bg:      #ffd54f;
   --mark-text:    #000000;
+  --tab-text-idle:#4d4d4d;
+  --badge-ink:    #000000;
 }
 
 body.theme-hc {
@@ -132,6 +144,8 @@ body.theme-hc {
   --val-oid:      #ffd700;
   --mark-bg:      #ffd700;
   --mark-text:    #000000;
+  --tab-text-idle:#e0e0e0;
+  --badge-ink:    #000000;
 }
 
 /* Solarized — caldo, tonalità verde acqua/ocra su deep-teal */
@@ -163,6 +177,8 @@ body.theme-solarized {
   --val-oid:      #cb4b16;
   --mark-bg:      #b58900;
   --mark-text:    #002b36;
+  --tab-text-idle:#c3c9c0;
+  --badge-ink:    #000000;
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
@@ -398,8 +414,13 @@ button,
 
 .conn-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); flex-shrink: 0; }
 .sidebar .connection-item .actions { opacity: 1; }
+/* Ghost pill. `background` needs !important like the rest: without it the
+   catch-all `button:not(…)` rule fills it with --accent and the --error label
+   drops to 1.25–1.89:1 depending on the theme. Same story for
+   .manager-conn-btn below. */
 .sidebar-disconnect-btn {
   font-size: var(--fs-2xs) !important; color: var(--error) !important;
+  background: none !important;
   border: 1px solid color-mix(in srgb, var(--error) 45%, transparent) !important;
   border-radius: var(--radius-md) !important; padding: 2px 7px !important; white-space: nowrap;
 }
@@ -420,7 +441,8 @@ button,
 }
 .conn-manager-resize:hover { background: color-mix(in srgb, var(--accent) 40%, transparent); }
 .manager-conn-btn {
-  font-size: var(--fs-xs) !important; border-radius: var(--radius-md) !important; padding: 2px 9px !important; white-space: nowrap;
+  font-size: var(--fs-xs) !important; background: none !important;
+  border-radius: var(--radius-md) !important; padding: 2px 9px !important; white-space: nowrap;
 }
 .conn-action-connect.manager-conn-btn {
   color: var(--success) !important;
@@ -578,9 +600,13 @@ button,
 .folder-header .actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── Color picker ────────────────────────────────────────────────────────────── */
+/* NOTE: .color-dot / .color-picker-popup / .color-swatch below are unreferenced
+   — superseded by .cp-* (ColorPickerPopup) and .color-swatch-btn. Kept, but the
+   dark-theme literals they carried (a white hairline, a white selected ring)
+   are now theme variables so reviving them cannot reintroduce the bug. */
 .color-dot {
   width: 10px; height: 10px; border-radius: var(--radius-pill); flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
 }
 .color-picker-popup {
   position: absolute;
@@ -600,7 +626,7 @@ button,
   border: 2px solid transparent;
 }
 .color-swatch:hover { transform: scale(1.2); }
-.color-swatch.selected { border-color: white; }
+.color-swatch.selected { border-color: var(--text-primary); }
 
 /* ── DB tree ─────────────────────────────────────────────────────────────────── */
 .db-tree-toolbar {
@@ -686,14 +712,23 @@ button,
   flex-shrink: 0;
   align-content: flex-start;
 }
+/* `--tab-tint` is the only thing MainContent sets inline: the connection's
+   colour (or var(--accent) when it has none). Everything derived from it lives
+   here so the tint can be re-mixed per theme and so :hover still works — an
+   inline `background` would out-rank every rule below.
+   The tint percentages are deliberately low: the label sits on the *mixture*,
+   so the further the background travels towards an arbitrary user-picked hue,
+   the less headroom --text-primary has. 22%/10% keeps every combination of the
+   preset palette (plus pure white and pure black) above 5:1 in all four themes,
+   while the 2px top border carries the connection colour at full strength. */
 .tab {
   height: 32px;
   padding: 0 10px 0 8px;
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--tab-tint, var(--accent)) 10%, var(--bg-secondary));
   border: none;
   border-right: 1px solid var(--border);
   border-top: 2px solid transparent;
-  color: var(--text-secondary);
+  color: var(--tab-text-idle);
   cursor: pointer;
   font-size: var(--fs-sm);
   display: flex;
@@ -703,15 +738,26 @@ button,
   flex-shrink: 0;
   transition: background 0.1s;
 }
-.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tab.active { color: var(--text-primary); }
+.tab:hover {
+  background: color-mix(in srgb, var(--tab-tint, var(--accent)) 10%, var(--bg-hover));
+  color: var(--text-primary);
+}
+/* Declared after :hover on purpose — equal specificity, so the active tab keeps
+   its own background while the pointer is over it. */
+.tab.active {
+  background: color-mix(in srgb, var(--tab-tint, var(--accent)) 22%, var(--bg-primary));
+  border-top-color: var(--tab-tint, var(--accent));
+  color: var(--text-primary);
+}
 .tab-dot {
   width: 8px; height: 8px; border-radius: var(--radius-pill); flex-shrink: 0; opacity: 0.8;
 }
 .tab.active .tab-dot { opacity: 1; }
 .tab-title { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+/* Inherit rather than re-pick a colour: the × sits on the same tinted tab
+   background as the label, so whatever is legible there is legible here. */
 .close-btn {
-  color: var(--text-secondary); cursor: pointer; font-size: var(--fs-xs);
+  color: inherit; cursor: pointer; font-size: var(--fs-xs);
   padding: 1px 3px; border-radius: var(--radius-xs); line-height: 1;
 }
 .close-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
@@ -908,9 +954,13 @@ button,
 .qb-del-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: var(--fs-sm); padding: 0 2px; flex-shrink: 0; }
 .qb-del-btn:hover { color: var(--error); }
 .qb-cond-row2 { display: flex; align-items: center; gap: 5px; }
+/* Background comes from TYPE_COLORS (buildFilter.ts) and is the same in every
+   theme, so the ink must be too — --accent-text flips to white in dark/light
+   and gave 1.66:1 on the yellow ARRAY badge and 2.10:1 on the green BOOLEAN
+   one. --badge-ink is ≥4.5:1 against all seven type colours. */
 .qb-type-badge {
   font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: var(--radius-xl);
-  color: var(--accent-text); flex-shrink: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--badge-ink); flex-shrink: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
 }
 .qb-val-input {
   flex: 1; background: var(--bg-input); border: 1px solid var(--border);
@@ -985,6 +1035,12 @@ button,
 .json-status.valid { color: var(--success); }
 .modal-error { color: var(--error); margin-bottom: var(--space-4); font-size: var(--fs-sm); }
 .modal-hint { font-size: var(--fs-xs); color: var(--text-secondary); margin-top: var(--space-2); }
+/* Section blurb above the first control. The global `* { margin: 0 }` reset
+   means it needs its own gap, or it sits flush against the first label. */
+.modal-intro {
+  font-size: var(--fs-xs); color: var(--text-secondary);
+  margin-bottom: var(--space-6); line-height: 1.5;
+}
 .json-editor-wrap.tall { height: 420px; }
 .json-editor-wrap.short { height: 340px; }
 .json-editor-wrap.invalid { border-color: color-mix(in srgb, var(--error) 55%, var(--border)); }
@@ -1049,6 +1105,78 @@ button,
   font-size: var(--fs-xs); color: var(--text-secondary);
   border-left: 2px solid var(--error); padding-left: var(--space-4); margin-top: var(--space-1);
 }
+
+/* ── Connection string + its field breakdown ──────────────────────────────────
+   The General tab is now tall enough to overflow a short screen, so the dialog
+   caps itself and the body scrolls instead of pushing the footer off-screen. */
+.conn-modal { display: flex; flex-direction: column; max-height: 88vh; }
+.conn-modal .conn-modal-body { flex: 1; overflow-y: auto; }
+
+.conn-uri-row { display: flex; gap: var(--space-3); align-items: center; }
+.conn-uri-row input { flex: 1; min-width: 0; }
+/* `button.secondary` is declared further down, so these need the extra class to
+   win on padding rather than relying on source order. */
+.conn-uri-row button.secondary {
+  padding: 6px 12px; font-size: var(--fs-sm); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+
+/* Read-only means "look, don't type" — dimmed, but still selectable and copyable. */
+.form-group input.ro, .form-group select:disabled {
+  background: var(--bg-primary); color: var(--text-secondary); cursor: default;
+}
+.form-group input.ro:focus { border-color: var(--border); }
+
+.conn-parts {
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5) var(--space-1);
+  margin-bottom: 14px; background: var(--bg-primary);
+}
+.conn-parts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4); margin-bottom: var(--space-4);
+}
+.conn-parts-title { font-size: var(--fs-sm); color: var(--text-secondary); }
+.conn-parts-head button.secondary {
+  padding: 4px 10px; font-size: var(--fs-sm); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+.conn-parts-hint {
+  font-size: var(--fs-xs); color: var(--text-secondary); margin-bottom: var(--space-4);
+}
+.conn-parts-hint code { font-family: var(--font-mono); }
+.conn-parts-error {
+  font-size: var(--fs-xs); color: var(--error);
+  margin: 0 0 var(--space-4);
+}
+.conn-parts-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 var(--space-4);
+}
+.conn-parts-grid.two { grid-template-columns: repeat(2, 1fr); }
+/* Sub-tabs *inside* the breakdown panel (Server / Auth / Options). Deliberately
+   not a second .ur-tab strip: smaller, uppercase, pill-shaped and with no
+   underline, so they read as one level below the General/TLS/Appearance tabs
+   instead of competing with them. Listed in the catch-all `button:not(…)` rule
+   further down, or the accent fill would swallow all three. */
+.conn-subtabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+.conn-subtab {
+  background: none; border: 1px solid transparent; color: var(--text-secondary);
+  cursor: pointer; padding: 3px 10px; border-radius: var(--radius-md);
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+.conn-subtab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.conn-subtab.active {
+  color: var(--text-primary); background: var(--bg-hover); border-color: var(--border);
+}
+/* Last, so it wins over .active: a tab holding the field that blocks Save is
+   flagged even while you are looking at another one. */
+.conn-subtab.has-error { color: var(--error); }
+.conn-host-row { display: flex; gap: var(--space-3); align-items: center; margin-bottom: var(--space-2); }
+.conn-host-row input { flex: 1; min-width: 0; }
+.conn-host-row input.conn-port { flex: 0 0 110px; }
+.conn-pwd-row { display: flex; gap: var(--space-2); align-items: center; }
+.conn-pwd-row input { flex: 1; min-width: 0; }
 
 /* Spinner for a refresh in flight — reuses the connection spin keyframes. */
 .spin { animation: conn-spin 0.8s linear infinite; transform-origin: 50% 50%; }
@@ -1351,7 +1479,14 @@ button.danger, .toolbar button.danger, .bulk-action-bar button.danger {
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
 button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
-button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button) {
+/* Default "primary action" look. This selector carries one :not() per class, so
+   its specificity is enormous (≈0,18,1) — it beats .tab, .tab.active and every
+   other single/double-class rule above, no matter where they sit in the file.
+   Any chrome button that styles itself MUST be listed here or it silently gets
+   an accent fill plus --accent-text ink: that is how the tab label became white
+   on a near-white background in the light theme (1.32:1) and near-black on
+   near-black in hc/solarized. */
+button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button) {
   background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
@@ -1486,9 +1621,9 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
 .json-editor-wrap {
   position: relative;
   width: 100%;
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: #1e1e1e;
+  background: var(--bg-primary);
   overflow: hidden;
 }
 .json-editor-hl,
@@ -1523,6 +1658,43 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   overflow: auto;
 }
 .json-editor-ta::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); color: transparent; }
+
+/* Line-number gutter — a sibling of the textarea, so the numbers are not part of
+   its value and can never be selected or copied with the JSON. `user-select` and
+   `pointer-events` cover a document-level drag; the opaque background hides the
+   text that scrolls underneath it. Font metrics and vertical padding are copied
+   from the two layers above, which is what keeps the rows aligned. */
+.json-editor-gutter {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: calc(var(--gutter-digits, 2) * 1ch + var(--space-4) * 2);
+  margin: 0;
+  padding: 12px var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+  box-sizing: border-box;
+  text-align: right;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+/* Same offset on both layers, so the JSON starts to the right of the gutter. */
+.json-editor-wrap.with-gutter .json-editor-hl,
+.json-editor-wrap.with-gutter .json-editor-ta {
+  padding-left: calc(var(--gutter-digits, 2) * 1ch + var(--space-4) * 2 + 12px);
+}
+.editor-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-xs); color: var(--text-secondary);
+  cursor: pointer; white-space: nowrap; user-select: none;
+}
 
 /* ── Edit diff panel ─────────────────────────────────────────────────────────── */
 .edit-dirty-badge {
@@ -1559,9 +1731,12 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.view-togg
   border-bottom: 1px solid var(--border);
 }
 .diff-entry:last-child { border-bottom: none; }
-.diff-entry.diff-added  { background: color-mix(in srgb, #2ecc71 8%, transparent); }
-.diff-entry.diff-removed { background: color-mix(in srgb, #e74c3c 8%, transparent); }
-.diff-entry.diff-changed { background: color-mix(in srgb, #f5a623 8%, transparent); }
+/* Row tints track the theme's own semantic colours; the literals these
+   replaced were the dark palette's green/red/amber and stayed off-key in
+   light and solarized. */
+.diff-entry.diff-added  { background: color-mix(in srgb, var(--success) 8%, transparent); }
+.diff-entry.diff-removed { background: color-mix(in srgb, var(--error) 8%, transparent); }
+.diff-entry.diff-changed { background: color-mix(in srgb, var(--mark-bg) 8%, transparent); }
 .diff-path { color: var(--tree-key); min-width: 120px; }
 .diff-vals { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; }
 .diff-old { color: var(--error); text-decoration: line-through; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

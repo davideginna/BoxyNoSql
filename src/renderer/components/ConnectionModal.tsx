@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { showConfirm } from '../dialog';
+import {
+  parseMongoUri, buildMongoUri, findPartsProblem, EMPTY_PARTS, OPTION_SPEC,
+  MongoUriParts, MongoHost, OptionGroup, OptionKey,
+} from '../utils/mongoUri';
 import ColorEditor from './ColorEditor';
 import Icon from './Icon';
 
@@ -14,6 +18,15 @@ interface Connection {
   tlsAllowInvalidCertificates?: boolean;
   tlsServername?: string;
 }
+
+// Sub-tabs of the breakdown panel, in display order. Grouped by what you are
+// actually doing: reaching the server, proving who you are, tuning the driver.
+const PART_TABS: readonly (readonly [OptionGroup, string])[] = [
+  ['server', 'Server'],
+  ['auth', 'Auth'],
+  ['options', 'Options'],
+];
+const PART_TAB_LABEL: Record<OptionGroup, string> = { server: 'Server', auth: 'Auth', options: 'Options' };
 
 interface ConnectionModalProps {
   connection: Connection | null;
@@ -48,6 +61,15 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
   const [allowInvalidCerts, setAllowInvalidCerts] = useState(false);
   const [servername, setServername] = useState('');
   const [tab, setTab] = useState<'general' | 'tls' | 'appearance'>('general');
+  // 'string' → the URI is what the user types and the breakdown is a read-only
+  // lens on it. 'fields' → the breakdown is the source of truth and the URI is
+  // regenerated from it, so whatever was pasted no longer counts.
+  const [uriMode, setUriMode] = useState<'string' | 'fields'>('string');
+  const [fields, setFields] = useState<MongoUriParts>(EMPTY_PARTS);
+  const [partTab, setPartTab] = useState<OptionGroup>('server');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | undefined>(undefined);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -56,6 +78,11 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
   const initial = useRef({ name: '', uri: 'mongodb://localhost:27017', database: '', color: '', iconDbColor: '', iconColColor: '' });
 
   useEffect(() => {
+    // A different connection means a different URI: back to the string as the
+    // source of truth, whatever the previous one was being edited as.
+    setUriMode('string');
+    setShowPassword(false);
+    setPartTab('server');
     if (connection) {
       setName(connection.name);
       setUri(connection.uri);
@@ -76,6 +103,94 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
       };
     }
   }, [connection]);
+
+  // In 'string' mode the breakdown follows the URI; in 'fields' mode the URI
+  // follows the breakdown, so everything downstream (test, save) keeps reading
+  // a single `uri` and needs no changes.
+  const parsed = useMemo(() => parseMongoUri(uri), [uri]);
+  const view = uriMode === 'fields' ? fields : (parsed ?? EMPTY_PARTS);
+  const problem = uriMode === 'fields' ? findPartsProblem(fields) : null;
+  const fieldsError = problem?.message ?? null;
+  const editingFields = uriMode === 'fields';
+
+  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+
+  // Unlocking on its own must not touch the URI: rebuilding it here would
+  // reorder the query params of an untouched connection and make the form look
+  // dirty before the user typed anything.
+  const unlockFields = () => {
+    setFields(parsed ?? EMPTY_PARTS);
+    setUriMode('fields');
+  };
+
+  // Every field edit regenerates the URI, so `uri` stays the single value the
+  // rest of the form (test, save) reads.
+  const applyFields = (updater: (f: MongoUriParts) => MongoUriParts) => {
+    const next = updater(fields);
+    setFields(next);
+    setUri(buildMongoUri(next));
+  };
+
+  const setField = <K extends keyof MongoUriParts>(key: K, value: MongoUriParts[K]) =>
+    applyFields(f => ({ ...f, [key]: value }));
+  const setHost = (index: number, patch: Partial<MongoHost>) =>
+    applyFields(f => ({ ...f, hosts: f.hosts.map((h, i) => (i === index ? { ...h, ...patch } : h)) }));
+  const addHost = () => applyFields(f => ({ ...f, hosts: [...f.hosts, { host: '', port: '' }] }));
+  const removeHost = (index: number) =>
+    applyFields(f => (f.hosts.length > 1 ? { ...f, hosts: f.hosts.filter((_, i) => i !== index) } : f));
+
+  // One control per known query option, driven by the table in `mongoUri.ts`:
+  // a select for enumerations, a three-state select for booleans (the empty
+  // entry writes nothing at all, so the driver default keeps applying), a
+  // number box for pool sizes and timeouts.
+  const renderOption = (key: OptionKey) => {
+    const spec = OPTION_SPEC[key];
+    const value = view[key];
+    const locked = !editingFields;
+
+    if (spec.kind === 'bool' || spec.kind === 'enum') {
+      const known = spec.kind === 'bool' ? ['true', 'false'] : (spec.values ?? []);
+      // A value the list does not know (a mechanism a newer driver added) is
+      // shown as its own entry instead of silently reading as "not set".
+      const values = value && !known.includes(value) ? [value, ...known] : known;
+      return (
+        <div className="form-group" key={key}>
+          <label>{spec.label}</label>
+          <select
+            aria-label={spec.label} value={value} disabled={locked}
+            onChange={e => setField(key, e.target.value)}
+          >
+            <option value="">— not set —</option>
+            {values.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+      );
+    }
+
+    return (
+      <div className="form-group" key={key}>
+        <label>{spec.label}</label>
+        <input
+          type={spec.kind === 'number' ? 'number' : 'text'}
+          min={spec.kind === 'number' ? 0 : undefined}
+          step={spec.kind === 'number' ? 1 : undefined}
+          aria-label={spec.label} value={value} readOnly={locked}
+          className={locked ? 'ro' : undefined}
+          placeholder={spec.placeholder ?? '—'}
+          onChange={e => setField(key, e.target.value)}
+        />
+      </div>
+    );
+  };
+
+  const copyUri = async () => {
+    try {
+      await navigator.clipboard.writeText(uri);
+      setCopied(true);
+      window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard denied — the field is selectable anyway */ }
+  };
 
   const isDirty = () =>
     name !== initial.current.name || uri !== initial.current.uri || database !== initial.current.database ||
@@ -164,8 +279,8 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
   const tlsOn = tls || !!certFile.trim() || !!caFile.trim();
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1800 }} onClick={attemptClose}>
-      <div className="modal" style={{ width: 720 }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 1800 }}>
+      <div className="modal conn-modal" style={{ width: 720 }}>
         <div className="modal-header">
           <h3>{connection ? 'Edit Connection' : 'New Connection'}</h3>
           <button className="icon-btn" onClick={attemptClose}><Icon name="close" size={15} /></button>
@@ -192,13 +307,198 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
               </div>
               <div className="form-group">
                 <label>Connection String</label>
-                <input
-                  type="text" value={uri}
-                  onChange={e => setUri(e.target.value)}
-                  onPaste={handleUriPaste}
-                  placeholder="mongodb://localhost:27017"
-                />
+                <div className="conn-uri-row">
+                  <input
+                    type="text" value={uri}
+                    readOnly={editingFields}
+                    className={editingFields ? 'ro' : undefined}
+                    onChange={e => setUri(e.target.value)}
+                    onPaste={handleUriPaste}
+                    placeholder="mongodb://localhost:27017"
+                  />
+                  <button
+                    className="secondary" onClick={copyUri} disabled={!uri}
+                    title="Copy the whole connection string"
+                  >
+                    <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               </div>
+
+              <div className="conn-parts">
+                <div className="conn-parts-head">
+                  <span className="conn-parts-title">
+                    {editingFields ? 'Fields (source of truth)' : 'Parsed from the connection string'}
+                  </span>
+                  {editingFields ? (
+                    <button className="secondary" onClick={() => setUriMode('string')}
+                      title="Go back to editing the string — the fields stay as they are">
+                      <Icon name="close" size={13} /> Done
+                    </button>
+                  ) : (
+                    <button className="secondary" onClick={unlockFields}
+                      title="Unlock the fields — from then on they build the connection string">
+                      <Icon name="edit" size={13} /> Edit fields
+                    </button>
+                  )}
+                </div>
+
+                {!editingFields && !parsed && uri.trim() && (
+                  <div className="conn-parts-hint">Not a <code>mongodb://</code> URI — nothing to break down.</div>
+                )}
+                {editingFields && (
+                  <div className="conn-parts-hint">
+                    These fields now build the connection string above; whatever was pasted there no longer counts.
+                  </div>
+                )}
+
+                {/* Subordinate to the General/TLS/Appearance strip above: pills,
+                    not underlined tabs, and a size down. */}
+                <div className="conn-subtabs">
+                  {PART_TABS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={`conn-subtab ${partTab === id ? 'active' : ''}${problem?.group === id ? ' has-error' : ''}`}
+                      onClick={() => setPartTab(id)}
+                    >
+                      {label}
+                      {problem?.group === id && <Icon name="warn" size={11} />}
+                    </button>
+                  ))}
+                </div>
+
+                {partTab === 'server' && (
+                  <>
+                    <div className="conn-parts-grid">
+                      <div className="form-group">
+                        <label>Scheme</label>
+                        <select aria-label="Scheme" value={view.scheme} disabled={!editingFields}
+                          onChange={e => setField('scheme', e.target.value as MongoUriParts['scheme'])}>
+                          <option value="mongodb">mongodb</option>
+                          <option value="mongodb+srv">mongodb+srv</option>
+                        </select>
+                      </div>
+                      {renderOption('replicaSet')}
+                      {renderOption('directConnection')}
+                    </div>
+
+                    <div className="form-group">
+                      <label>{view.hosts.length > 1 ? 'Hosts' : 'Host'}</label>
+                      {view.hosts.map((h, i) => (
+                        <div className="conn-host-row" key={i}>
+                          <input type="text" value={h.host} readOnly={!editingFields}
+                            aria-label={`Host ${i + 1}`}
+                            className={!editingFields ? 'ro' : undefined} placeholder="localhost"
+                            onChange={e => setHost(i, { host: e.target.value })} />
+                          <input type="text" value={view.scheme === 'mongodb+srv' ? '' : h.port}
+                            readOnly={!editingFields || view.scheme === 'mongodb+srv'}
+                            aria-label={`Port ${i + 1}`}
+                            className={!editingFields || view.scheme === 'mongodb+srv' ? 'ro conn-port' : 'conn-port'}
+                            placeholder={view.scheme === 'mongodb+srv' ? 'from DNS' : '27017'}
+                            onChange={e => setHost(i, { port: e.target.value })} />
+                          {editingFields && (
+                            <>
+                              <button className="icon-btn" onClick={addHost} title="Add a host">
+                                <Icon name="plus" size={14} />
+                              </button>
+                              <button className="icon-btn" onClick={() => removeHost(i)}
+                                disabled={view.hosts.length === 1} title="Remove this host">
+                                <Icon name="trash" size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="conn-parts-grid two">
+                      {renderOption('appName')}
+                      {renderOption('compressors')}
+                    </div>
+                  </>
+                )}
+
+                {partTab === 'auth' && (
+                  <>
+                    <div className="conn-parts-grid">
+                      <div className="form-group">
+                        <label>Username</label>
+                        <input type="text" value={view.username} readOnly={!editingFields}
+                          aria-label="Username"
+                          className={!editingFields ? 'ro' : undefined} placeholder="—"
+                          onChange={e => setField('username', e.target.value)} />
+                      </div>
+                      <div className="form-group">
+                        <label>Password</label>
+                        <div className="conn-pwd-row">
+                          <input type={showPassword ? 'text' : 'password'} value={view.password}
+                            readOnly={!editingFields} className={!editingFields ? 'ro' : undefined} placeholder="—"
+                            aria-label="Password"
+                            onChange={e => setField('password', e.target.value)} />
+                          <button className="icon-btn" onClick={() => setShowPassword(v => !v)}
+                            title={showPassword ? 'Hide password' : 'Show password'}>
+                            <Icon name="eye" size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Auth database (URI path)</label>
+                        <input type="text" value={view.database} readOnly={!editingFields}
+                          aria-label="Auth database"
+                          className={!editingFields ? 'ro' : undefined} placeholder="—"
+                          onChange={e => setField('database', e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="conn-parts-grid two">
+                      {renderOption('authSource')}
+                      {renderOption('authMechanism')}
+                    </div>
+                  </>
+                )}
+
+                {partTab === 'options' && (
+                  <>
+                    <div className="conn-parts-grid">
+                      {renderOption('readPreference')}
+                      {renderOption('readConcernLevel')}
+                      {renderOption('w')}
+                      {renderOption('journal')}
+                      {renderOption('retryWrites')}
+                      {renderOption('retryReads')}
+                      {renderOption('connectTimeoutMS')}
+                      {renderOption('socketTimeoutMS')}
+                      {renderOption('serverSelectionTimeoutMS')}
+                      {renderOption('maxPoolSize')}
+                      {renderOption('minPoolSize')}
+                    </div>
+
+                    {/* Whatever has no field of its own, verbatim. Last, and
+                        hidden while locked and empty so the panel stays quiet. */}
+                    {(editingFields || view.options) && (
+                      <div className="form-group">
+                        <label>Other options</label>
+                        <input type="text" value={view.options} readOnly={!editingFields}
+                          aria-label="Other options"
+                          className={!editingFields ? 'ro' : undefined}
+                          placeholder="heartbeatFrequencyMS=10000&maxStalenessSeconds=90"
+                          onChange={e => setField('options', e.target.value)} />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Outside the panels on purpose: the field at fault may live on
+                    a tab that is not open, and a disabled Save with no visible
+                    reason is worse than a long message. */}
+                {problem && (
+                  <div className="conn-parts-error" role="alert">
+                    {problem.message}
+                    {partTab !== problem.group && <> — see the <b>{PART_TAB_LABEL[problem.group]}</b> tab.</>}
+                  </div>
+                )}
+              </div>
+
               <div className="form-group">
                 <label>Default Database (optional)</label>
                 <input type="text" value={database} onChange={e => setDatabase(e.target.value)} placeholder="mydb" />
@@ -275,7 +575,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
           {/* Test lives outside the tabs: it exercises URI + TLS together, and
               its log is what you read while fixing either of them. */}
           <div className="conn-test-row">
-            <button onClick={handleTest} disabled={testing}>
+            <button onClick={handleTest} disabled={testing || !!fieldsError}>
               {testing ? 'Testing…' : 'Test Connection'}
             </button>
             {testResult && !testing && (
@@ -306,7 +606,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
         </div>
         <div className="modal-footer">
           <button className="secondary" onClick={attemptClose}>Cancel</button>
-          <button onClick={handleSubmit} disabled={!name || !uri}>Save</button>
+          <button onClick={handleSubmit} disabled={!name || !uri || !!fieldsError}>Save</button>
         </div>
       </div>
     </div>

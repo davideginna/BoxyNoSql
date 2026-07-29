@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
@@ -119,6 +119,90 @@ function highlightText(text: string, query: string): string {
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
+// Line numbers are a pure UI preference, so they live in localStorage next to
+// `theme` / `sidebarWidth`, and they are shared by every JSON editor.
+const LINE_NUMBERS_KEY = 'docLineNumbers';
+export const loadLineNumbers = () => localStorage.getItem(LINE_NUMBERS_KEY) !== 'false';
+export const saveLineNumbers = (on: boolean) => localStorage.setItem(LINE_NUMBERS_KEY, String(on));
+
+interface JsonEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  taRef?: React.RefObject<HTMLTextAreaElement>;
+  lineNumbers: boolean;
+  className?: string;
+}
+
+/**
+ * Layered JSON editor: a highlighted <pre> under a transparent <textarea>, plus
+ * an optional line-number gutter.
+ *
+ * The gutter is a *sibling* of the textarea, never part of its value, so the
+ * numbers cannot end up in a selection or on the clipboard — that is structural,
+ * not something a selection handler has to patch. `user-select: none` and
+ * `pointer-events: none` (in index.css) are belt and braces for a document-level
+ * drag or Ctrl+A outside the field.
+ *
+ * Neither layer wraps (`white-space: pre` + horizontal scroll), so one `\n` is
+ * exactly one visual row and the numbering can never drift.
+ */
+function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, className = '' }: JsonEditorProps) {
+  const hlRef = useRef<HTMLPreElement>(null);
+  const gutterRef = useRef<HTMLPreElement>(null);
+  const lines = value.split('\n').length;
+
+  // The textarea owns the scroll position; the other layers only follow it.
+  const follow = (scrollTop: number, scrollLeft: number) => {
+    if (hlRef.current) { hlRef.current.scrollTop = scrollTop; hlRef.current.scrollLeft = scrollLeft; }
+    if (gutterRef.current) gutterRef.current.scrollTop = scrollTop;
+  };
+  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) =>
+    follow(e.currentTarget.scrollTop, e.currentTarget.scrollLeft);
+
+  // Toggling the gutter mounts it at scrollTop 0 and shifts the text padding, so
+  // re-read the textarea — still the source of truth — instead of guessing.
+  useLayoutEffect(() => {
+    const ta = taRef?.current;
+    if (ta) follow(ta.scrollTop, ta.scrollLeft);
+  }, [lineNumbers]);
+
+  return (
+    <div
+      className={`json-editor-wrap${lineNumbers ? ' with-gutter' : ''}${className ? ' ' + className : ''}`}
+      // Width of the gutter, in monospace glyphs: the digit count of the last
+      // line. Both the gutter and the text layers offset by it, so they stay
+      // aligned however long the document gets.
+      style={{ '--gutter-digits': `${String(lines).length}` } as React.CSSProperties}
+    >
+      <pre
+        ref={hlRef}
+        className="json-editor-hl"
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: highlightJson(value) + '\n' }}
+      />
+      <textarea
+        ref={taRef}
+        className="json-editor-ta"
+        value={value}
+        spellCheck={false}
+        wrap="off"
+        onChange={e => onChange(e.target.value)}
+        onScroll={syncScroll}
+        onKeyDown={onKeyDown}
+      />
+      {lineNumbers && (
+        // One text node laid out by the same `<pre>` rules as the highlight
+        // layer — same font, size, line-height and padding — so the rows line up
+        // by construction. The trailing "\n" mirrors the one above.
+        <pre ref={gutterRef} className="json-editor-gutter" aria-hidden="true">
+          {Array.from({ length: lines }, (_, i) => i + 1).join('\n') + '\n'}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function idToString(id: any): string {
   if (id === null || id === undefined) return '';
   if (typeof id === 'object' && '$oid' in id) return id.$oid;
@@ -173,6 +257,10 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const viewFindRef = useRef<HTMLInputElement>(null);
   const editFindRef = useRef<HTMLInputElement>(null);
+  // Line-number gutter, shared by the add and edit editors and remembered.
+  const [lineNumbers, setLineNumbers] = useState(loadLineNumbers);
+
+  useEffect(() => { saveLineNumbers(lineNumbers); }, [lineNumbers]);
 
   const loadDocuments = async (filter: any, lim: number, pg: number) => {
     setLoading(true); setError(null);
@@ -835,6 +923,11 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                 <div className="modal-header-actions">
                   <button className="secondary btn-xs"
                     onClick={() => setAddJson(formatJson(addJson))}>Format</button>
+                  <label className="editor-toggle" title="Show line numbers">
+                    <input type="checkbox" checked={lineNumbers}
+                      onChange={e => setLineNumbers(e.target.checked)} />
+                    Line numbers
+                  </label>
                   {addValid
                     ? <span className="json-status invalid"><Icon name="close" size={11} /> {addValid}</span>
                     : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
@@ -843,28 +936,17 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               </div>
               <div className="modal-body">
                 {addError && <div className="modal-error">{addError}</div>}
-                <div className={`json-editor-wrap tall${addValid ? ' invalid' : ''}`}>
-                  <pre
-                    className="json-editor-hl"
-                    aria-hidden="true"
-                    dangerouslySetInnerHTML={{ __html: highlightJson(addJson) + '\n' }}
-                  />
-                  <textarea
-                    ref={addTextareaRef}
-                    className="json-editor-ta"
-                    value={addJson}
-                    spellCheck={false}
-                    onChange={e => { setAddJson(e.target.value); setAddError(null); }}
-                    onScroll={e => {
-                      const pre = (e.currentTarget.previousSibling as HTMLElement);
-                      if (pre) { pre.scrollTop = e.currentTarget.scrollTop; pre.scrollLeft = e.currentTarget.scrollLeft; }
-                    }}
-                    onKeyDown={e => {
-                      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleAddSave(); }
-                      if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
-                    }}
-                  />
-                </div>
+                <JsonEditor
+                  className={`tall${addValid ? ' invalid' : ''}`}
+                  value={addJson}
+                  taRef={addTextareaRef}
+                  lineNumbers={lineNumbers}
+                  onChange={v => { setAddJson(v); setAddError(null); }}
+                  onKeyDown={e => {
+                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleAddSave(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
+                  }}
+                />
                 <div className="modal-hint">
                   Ctrl+Enter save · Esc close · Paste an array [ ] to insert multiple
                 </div>
@@ -893,6 +975,11 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                 <div className="modal-header-actions">
                   <button className="secondary btn-xs"
                     onClick={() => setEditJson(formatJson(editJson))}>Format</button>
+                  <label className="editor-toggle" title="Show line numbers">
+                    <input type="checkbox" checked={lineNumbers}
+                      onChange={e => setLineNumbers(e.target.checked)} />
+                    Line numbers
+                  </label>
                   {jsonValid
                     ? <span className="json-status invalid"><Icon name="close" size={11} /> {jsonValid}</span>
                     : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
@@ -917,28 +1004,17 @@ export default function DocumentsView({ connectionId, database, collection }: Do
               )}
               <div className="modal-body">
                 {editError && <div className="modal-error">{editError}</div>}
-                <div className={`json-editor-wrap ${diff && diff.length > 0 ? 'short' : 'tall'}${jsonValid ? ' invalid' : ''}`}>
-                  <pre
-                    className="json-editor-hl"
-                    aria-hidden="true"
-                    dangerouslySetInnerHTML={{ __html: highlightJson(editJson) + '\n' }}
-                  />
-                  <textarea
-                    ref={editTextareaRef}
-                    className="json-editor-ta"
-                    value={editJson}
-                    spellCheck={false}
-                    onChange={e => { setEditJson(e.target.value); setEditError(null); }}
-                    onScroll={e => {
-                      const pre = (e.currentTarget.previousSibling as HTMLElement);
-                      if (pre) { pre.scrollTop = e.currentTarget.scrollTop; pre.scrollLeft = e.currentTarget.scrollLeft; }
-                    }}
-                    onKeyDown={e => {
-                      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
-                      if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
-                    }}
-                  />
-                </div>
+                <JsonEditor
+                  className={`${diff && diff.length > 0 ? 'short' : 'tall'}${jsonValid ? ' invalid' : ''}`}
+                  value={editJson}
+                  taRef={editTextareaRef}
+                  lineNumbers={lineNumbers}
+                  onChange={v => { setEditJson(v); setEditError(null); }}
+                  onKeyDown={e => {
+                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
+                    if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
+                  }}
+                />
                 {diff && diff.length > 0 && (
                   <div className="edit-diff-panel">
                     <div className="edit-diff-title">Changes ({diff.length})</div>

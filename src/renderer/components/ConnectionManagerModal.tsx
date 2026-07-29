@@ -310,9 +310,12 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
 
+  // No backdrop-click dismissal here or in the modals opened from this one: a
+  // stray click outside must not throw away a half-filled form or an import
+  // selection. Close via the footer/X button or Esc.
   return (
-    <div className="modal-overlay" style={{ zIndex: 1500 }} onClick={onClose}>
-      <div className="modal conn-manager-modal" style={{ width }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 1500 }}>
+      <div className="modal conn-manager-modal" style={{ width }}>
         <div className="conn-manager-resize" onMouseDown={startResize} title="Drag to resize" />
         <div className="modal-header">
           <h3>Connections</h3>

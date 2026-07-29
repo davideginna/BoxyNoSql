@@ -48,8 +48,8 @@ export default function ImportConnectionsModal({ items, fileName, existingUris, 
   };
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1700 }} onClick={e => { e.stopPropagation(); if (!busy) onClose(); }}>
-      <div className="modal import-uri-modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 1700 }}>
+      <div className="modal import-uri-modal">
         <div className="modal-header">
           <h3>Import connections</h3>
           <span className="import-uri-file"><Icon name="import" size={13} /> {fileName}</span>
