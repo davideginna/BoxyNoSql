@@ -232,6 +232,11 @@ function App() {
     setShowConnModal(false);
   };
 
+  const handleDuplicateConnection = async (conn: Connection) => {
+    const updated = await inv('save-connection', { ...conn, id: Date.now().toString(), name: `${conn.name} (copy)` });
+    setConnections(updated);
+  };
+
   const handleDeleteConnection = async (id: string) => {
     if (!await showConfirm({ message: 'Delete this connection?', danger: true, confirmText: 'Delete' })) return;
     const remaining = await inv('delete-connection', id);
@@ -655,6 +660,7 @@ function App() {
           onAddConnection={() => { setEditingConn(null); setShowConnModal(true); }}
           onEditConnection={c => { setEditingConn(c); setShowConnModal(true); }}
           onDeleteConnection={handleDeleteConnection}
+          onDuplicateConnection={handleDuplicateConnection}
           onSaveConnection={handleSaveConnection}
           onAddFolder={handleAddFolder}
           onSaveFolder={handleSaveFolder}

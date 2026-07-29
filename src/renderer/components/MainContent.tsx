@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon, { IconName } from './Icon';
 import DocumentsView from './DocumentsView';
@@ -185,16 +185,12 @@ export default function MainContent({
         {tabs.map(tab => {
           const color = tab.connectionId ? (connColorMap[tab.connectionId] || 'var(--accent)') : 'var(--accent)';
           const isActive = activeTab === tab.id;
-          const tabStyle = isActive ? {
-            background: `color-mix(in srgb, ${color} 35%, var(--bg-primary))`,
-            borderTopColor: color,
-            // The tint is mixed with --bg-primary, so the theme's own text
-            // colour is the readable one — white was unreadable in light theme.
-            color: 'var(--text-primary)',
-          } : {
-            background: `color-mix(in srgb, ${color} 12%, var(--bg-secondary))`,
-            borderTopColor: 'transparent',
-          };
+          // Only the raw connection colour crosses into CSS. Every mix, the
+          // label colour and the hover state are theme-aware rules in
+          // index.css (── Tabs ──) — an inline `background` here would beat
+          // `.tab:hover`, and an inline `color` would hide the fact that the
+          // catch-all `button:not(…)` rule was overriding `.tab`'s own.
+          const tabStyle = { '--tab-tint': color } as CSSProperties;
           return (
             <button
               key={tab.id}

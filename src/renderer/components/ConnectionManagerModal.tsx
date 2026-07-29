@@ -24,6 +24,7 @@ interface Props {
   onAddConnection: () => void;
   onEditConnection: (conn: Connection) => void;
   onDeleteConnection: (id: string) => void;
+  onDuplicateConnection: (conn: Connection) => void;
   onSaveConnection: (conn: Connection) => void;
   onAddFolder: (parentId?: string) => void;
   onSaveFolder: (f: Folder) => void;
@@ -55,7 +56,7 @@ function parseUriInfo(uri: string): { hosts: string[]; replicaSet?: string; srv:
 export default function ConnectionManagerModal(props: Props) {
   const {
     connections, folders, connectedIds, connectingIds,
-    onConnect, onDisconnect, onAddConnection, onEditConnection, onDeleteConnection,
+    onConnect, onDisconnect, onAddConnection, onEditConnection, onDeleteConnection, onDuplicateConnection,
     onSaveConnection, onAddFolder, onSaveFolder, onDeleteFolder,
     onMoveConnection, onMoveFolder, onReorderFolders, onImportConnections, onClose, disableEsc,
   } = props;
@@ -306,13 +307,17 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'Disconnect', icon: 'power', disabled: !connectedIds.has(connCtxMenu.conn.id), onClick: () => { onDisconnect(connCtxMenu.conn.id); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Edit', icon: 'edit', shortcut: 'Alt+E', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { label: 'Duplicate', icon: 'duplicate', onClick: () => { onDuplicateConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
 
+  // No backdrop-click dismissal here or in the modals opened from this one: a
+  // stray click outside must not throw away a half-filled form or an import
+  // selection. Close via the footer/X button or Esc.
   return (
-    <div className="modal-overlay" style={{ zIndex: 1500 }} onClick={onClose}>
-      <div className="modal conn-manager-modal" style={{ width }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 1500 }}>
+      <div className="modal conn-manager-modal" style={{ width }}>
         <div className="conn-manager-resize" onMouseDown={startResize} title="Drag to resize" />
         <div className="modal-header">
           <h3>Connections</h3>

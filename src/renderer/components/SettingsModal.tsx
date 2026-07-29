@@ -85,7 +85,7 @@ export default function SettingsModal({ settings, onChange, onClose }: Props) {
           <button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button>
         </div>
         <div className="modal-body">
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 0 }}>
+          <p className="modal-intro">
             Icon colors in the database tree. Per-connection overrides live in each connection's form.
           </p>
           <IconColorRow
