@@ -310,6 +310,24 @@ Aprire tab Aggregation su `testdb.orders`:
 
 ---
 
+## 9b. Test: Schema explorer
+
+Aprire la tab Schema su `testdb.users`:
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 9b.1 | Aprire la tab | Non parte nessun campionamento da solo, messaggio che invita ad analizzare |
+| 9b.2 | Analyze con sample 500 | Elenco campi con tipi, percentuale di presenza ed esempi |
+| 9b.3 | Campo `nickname` (solo 1 doc su 4 nel seed) | Percentuale bassa e barra corta — si vede che è opzionale |
+| 9b.4 | Campo `profile` | Compaiono anche `profile.level` e `profile.bio` |
+| 9b.5 | Campo `tags` | Tipo `array`, non viene sceso dentro |
+| 9b.6 | Collection con un campo di tipi misti | Due chip colorati con le percentuali |
+| 9b.7 | Cambiare sample a 5000 su `logs` (50k) | Campiona di più, tempi accettabili |
+| 9b.8 | Cambiare collection e tornare | La tabella si azzera, serve un nuovo Analyze |
+| 9b.9 | Collection vuota | "No documents in the sample" |
+
+---
+
 ## 10. Test: Indexes
 
 Aprire tab Indexes su `testdb.users`:

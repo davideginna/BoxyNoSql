@@ -946,6 +946,25 @@ button,
 .fields-menu-foot { display: flex; gap: var(--space-3); border-top: 1px solid var(--border); padding-top: 6px; }
 .fields-menu-foot button { flex: 1; }
 
+/* ── Schema explorer ─────────────────────────────────────────────────────────── */
+.schema-body { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+.schema-path { font-family: var(--font-mono); color: var(--text-primary); }
+.schema-types { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.schema-type-chip {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--badge-ink);
+  border-radius: var(--radius-md); padding: 1px 6px; white-space: nowrap;
+}
+.schema-presence { display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-xs); }
+.schema-bar {
+  flex: 0 0 70px; height: 6px; background: var(--bg-input);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+.schema-bar-fill { display: block; height: 100%; background: var(--accent); }
+.schema-examples {
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-secondary);
+  max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ── Command palette ─────────────────────────────────────────────────────────── */
 .cp-overlay { align-items: flex-start !important; padding-top: 12vh; }
 .cp-panel {

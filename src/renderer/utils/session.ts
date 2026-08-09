@@ -1,6 +1,6 @@
 interface Tab {
   id: string;
-  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats';
+  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats' | 'schema';
   title: string;
   collection?: string;
   database?: string;

@@ -47,7 +47,7 @@ interface Connection {
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 interface Tab {
   id: string;
-  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats';
+  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats' | 'schema';
   title: string; collection?: string; database?: string; connectionId?: string;
 }
 

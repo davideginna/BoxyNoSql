@@ -17,7 +17,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
 - ✅ Aggregation pipeline builder with a Monaco editor per stage, completions, stage templates and a document counter per stage
 - ✅ Index management (create/drop) with usage stats
-- ✅ Collection stats
+- ✅ Collection stats and a schema explorer (sampled field list with types, presence and example values)
 - ✅ Copy a collection or a whole database across connections, with a confirmation naming both ends and an automatic refresh of the target
 - ✅ Import from JSON / NDJSON at three levels (document, collection, full database)
 - ✅ Export to JSON / NDJSON / CSV through a native save dialog: the current filtered+sorted view, the whole collection, or a query/aggregation result
@@ -48,7 +48,6 @@ Planned, not shipped. 🔥 = high impact, low effort.
 
 ### Data & safety
 
-- ⬜ **Schema explorer** — sample a collection and list every field with its types, how many documents have it, and example values
 - ⬜ **Lint** — `npm run check` typechecks main + renderer and runs the tests; a linter is still missing from it
 
 ### Comfort & discoverability

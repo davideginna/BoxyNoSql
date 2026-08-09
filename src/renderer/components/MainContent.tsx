@@ -5,12 +5,13 @@ import DocumentsView from './DocumentsView';
 import QueryTerminal from './QueryTerminal';
 import AggregationBuilder from './AggregationBuilder';
 import IndexesView from './IndexesView';
+import SchemaView from './SchemaView';
 import StatsView from './StatsView';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
 
 interface Tab {
   id: string;
-  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats';
+  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats' | 'schema';
   title: string;
   collection?: string;
   database?: string;
@@ -60,6 +61,7 @@ const VIEW_TYPES: { type: Tab['type']; label: string; icon: IconName }[] = [
   { type: 'documents', label: 'Documents', icon: 'doc' },
   { type: 'query', label: 'Query', icon: 'search' },
   { type: 'aggregation', label: 'Aggregation', icon: 'gear' },
+  { type: 'schema', label: 'Schema', icon: 'tree' },
   { type: 'indexes', label: 'Indexes', icon: 'tabs' },
   { type: 'stats', label: 'Stats', icon: 'stats' },
 ];
@@ -249,6 +251,8 @@ export default function MainContent({
           result={aggregationResults[id] || []}
           setResult={r => setAggregationResults(prev => ({ ...prev, [id]: r }))}
         />;
+      case 'schema':
+        return <SchemaView connectionId={connId} database={database} collection={collection} />;
       case 'indexes':
         return <IndexesView connectionId={connId} database={database} collection={collection} />;
       case 'stats':
