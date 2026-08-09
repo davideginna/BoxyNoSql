@@ -409,6 +409,18 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 | 13c.5 | Esc con la barra Find aperta nell'editor | Chiude prima la Find, un secondo Esc chiude l'editor |
 | 13c.6 | Esc su popover Fields / History / menu contestuale / modale Query preview | Si chiudono |
 
+### Command palette (Ctrl+P)
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13c.28 | Ctrl+P | Si apre con connessioni, db, collection già listate e le azioni |
+| 13c.29 | Digitare `usr` | Trova `users` (match a sottosequenza), la migliore in cima |
+| 13c.30 | Digitare `f5` | Trova "Refresh tree" per keyword, che non viene mostrata |
+| 13c.31 | ↑/↓ | Sposta la selezione, gira in tondo agli estremi |
+| 13c.32 | Invio / click | Esegue e chiude; su una collection apre la tab |
+| 13c.33 | Ctrl+P mentre si scrive in un campo | Si apre lo stesso |
+| 13c.34 | Esc | Chiude senza fare nulla |
+
 ### Alt+Enter esegue
 
 | # | Azione | Risultato atteso |

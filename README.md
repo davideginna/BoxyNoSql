@@ -6,7 +6,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 
 - ✅ Connection management (saved in `~/.config/BoxyNoSql/connections.json`)
 - ✅ Folder organization with drag & drop, color coding
-- ✅ Database/collection tree view with search
+- ✅ Database/collection tree view with search, plus a command palette (`Ctrl+P`) over connections, databases, collections and actions
 - ✅ Document viewer (tree + table), multi-select, bulk copy/paste/delete
 - ✅ Paginated document browsing with configurable limit
 - ✅ Server-side sort (click a column, shift-click for a second key) and per-collection field visibility
@@ -44,7 +44,6 @@ Planned, not shipped. 🔥 = high impact, low effort.
 ### Productivity
 
 - ⬜ **Explain plan** — run `explain()` on the current query or pipeline and see index usage, documents examined and stage timings
-- ⬜ **Command palette (Ctrl+P)** — jump to any database, collection or action by typing its name, without walking the tree
 - ⬜ **Bulk field edit** — set, rename or unset a field on the whole selection instead of opening documents one at a time
 
 ### Data & safety

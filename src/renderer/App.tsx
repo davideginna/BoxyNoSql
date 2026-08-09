@@ -21,6 +21,9 @@ import ToastHost from './components/ToastHost';
 import { copiedMessage, pasteConfirm, type TransferItem } from './utils/transfer';
 import { impactLine, type DropImpact } from './utils/destructive';
 import { isTypingTarget } from './utils/dom';
+import CommandPalette from './components/CommandPalette';
+import { folderPathLabel } from './utils/connectionPath';
+import type { PaletteItem } from './utils/palette';
 import { pickFile, parseDocs, parseDatabaseFile, parseCsv } from './utils/fileImport';
 import ImportCsvModal from './components/ImportCsvModal';
 import { ImportedConnection } from './utils/uriImport';
@@ -292,10 +295,16 @@ function App() {
 
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
+  const [showPalette, setShowPalette] = useState(false);
   const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRoles || !!updateStatus || !!csvImport;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setShowShortcuts(true); return; }
+      // Ctrl+P opens from anywhere, typing included: jumping somewhere else is
+      // exactly what you do while your hands are in a field.
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault(); setShowPalette(v => !v); return;
+      }
       if (isTypingTarget(e.target)) return;
       if (anyModalOpen) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -314,6 +323,60 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [anyModalOpen, activeTab, tabs, handleRefreshTree]);
+
+  /**
+   * Everything the palette can jump to. Collections come from what the tree has
+   * already listed — filling the list would otherwise mean listing every
+   * database of every connection on each keystroke.
+   */
+  const paletteItems = (): PaletteItem[] => {
+    const items: PaletteItem[] = [];
+    for (const conn of connections) {
+      const path = folderPathLabel(conn.folderId, folders);
+      const connected = connectedIds.has(conn.id);
+      items.push({
+        id: `conn:${conn.id}`,
+        kind: 'connection',
+        label: conn.name,
+        sublabel: [path, connected ? 'connected' : 'not connected'].filter(Boolean).join(' · '),
+        keywords: conn.uri,
+        run: () => { if (connected) setSelectedConnection(conn.id); else handleConnect(conn.id); },
+      });
+      for (const db of databases[conn.id] || []) {
+        items.push({
+          id: `db:${conn.id}:${db}`,
+          kind: 'database',
+          label: db,
+          sublabel: conn.name,
+          run: () => { setSelectedConnection(conn.id); handleExpandDb(conn.id, db); },
+        });
+        for (const col of collections[conn.id]?.[db] || []) {
+          items.push({
+            id: `col:${conn.id}:${db}:${col}`,
+            kind: 'collection',
+            label: col,
+            sublabel: `${conn.name} / ${db}`,
+            run: () => handleSelectCollection(conn.id, db, col),
+          });
+        }
+      }
+    }
+    const action = (id: string, label: string, keywords: string, run: () => void): PaletteItem =>
+      ({ id: `action:${id}`, kind: 'action', label, keywords, run });
+    items.push(
+      action('new-connection', 'New connection', 'add server create', () => { setEditingConn(null); setShowConnModal(true); }),
+      action('manage-connections', 'Manage connections', 'ctrl+m servers folders', () => setShowConnManager(true)),
+      action('refresh', 'Refresh tree', 'f5 reload databases collections', () => handleRefreshTree()),
+      action('settings', 'Appearance settings', 'ctrl+, icons colors theme', () => setShowSettings(true)),
+      action('shortcuts', 'Keyboard shortcuts', 'f1 keys cheat sheet', () => setShowShortcuts(true)),
+      action('about', 'About BoxyNoSql', 'version update', () => setShowAbout(true)),
+      action('theme-dark', 'Theme: dark', 'appearance', () => setTheme('dark')),
+      action('theme-light', 'Theme: light', 'appearance', () => setTheme('light')),
+      action('theme-hc', 'Theme: high contrast', 'appearance accessibility', () => setTheme('hc')),
+      action('theme-solarized', 'Theme: solarized', 'appearance', () => setTheme('solarized')),
+    );
+    return items;
+  };
 
   // ── Connections ──────────────────────────────────────────────────────────────
   const handleSaveConnection = async (conn: Connection) => {
@@ -912,6 +975,7 @@ function App() {
       )}
       <DialogModal />
       <ToastHost />
+      {showPalette && <CommandPalette items={paletteItems()} onClose={() => setShowPalette(false)} />}
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
         connections={connections}

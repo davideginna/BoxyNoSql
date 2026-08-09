@@ -12,6 +12,9 @@ const GROUPS: ShortcutGroup[] = [
     title: 'Global',
     items: [
       { keys: ['F1'], label: 'Show this cheat sheet' },
+      { keys: ['Ctrl', 'P'], label: 'Command palette — jump to a connection, database, collection or action' },
+      { keys: ['Alt', 'Enter'], label: 'Run the current filter, query or pipeline' },
+      { keys: ['Esc'], label: 'Cancel / close whatever is open' },
       { keys: ['F5'], label: 'Refresh the database/collection tree' },
       { keys: ['Ctrl', 'R'], label: 'Refresh the database/collection tree' },
       { keys: ['Ctrl', 'M'], label: 'Open the connection manager' },
@@ -38,6 +41,7 @@ const GROUPS: ShortcutGroup[] = [
   {
     title: 'Query editor',
     items: [
+      { keys: ['Alt', 'Enter'], label: 'Run the query' },
       { keys: ['Ctrl', 'Enter'], label: 'Run the query' },
       { keys: ['Ctrl', 'Space'], label: 'Show completions' },
     ],
