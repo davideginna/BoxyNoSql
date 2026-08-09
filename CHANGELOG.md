@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.1] - 2026-08-09
+
+### Fixed
+- **The installers were ~8× bigger than the app.** `build.files` was `dist/**/*`, and `dist/` still held the output of a 1.0.0 build from back when electron-builder wrote there — a whole `linux-unpacked` tree and a 297 MB `.deb`. Every release packed those into its own `app.asar`, so each build carried the previous one inside it. The file list is now explicit (`dist/main`, `dist/renderer`, `package.json`), which also keeps a stale build directory from ever being packaged again, and `node_modules/monaco-editor` is excluded because Vite already bundles Monaco and its workers into `dist/renderer`. AppImage 837 MB → 126 MB, `.deb` 759 MB → 99 MB, `app.asar` 1.2 GB → 27 MB
+
 ## [1.5.0] - 2026-08-09
 
 ### Added
