@@ -45,10 +45,6 @@ Planned, not shipped. 🔥 = high impact, low effort.
 
 - ⬜ **Explain plan** — run `explain()` on the current query or pipeline and see index usage, documents examined and stage timings
 
-### Data & safety
-
-- ⬜ **Lint** — `npm run check` typechecks main + renderer and runs the tests; a linter is still missing from it
-
 ### Comfort & discoverability
 
 - ⬜ **Large collections without the freeze** — virtualized rows and streamed pages so a big result set scrolls instead of locking the UI
@@ -64,7 +60,7 @@ npm install
 ```bash
 npm run dev    # start Vite + tsc watchers
 npm start      # open Electron (after dev server is up)
-npm run check  # typecheck main + renderer, then run the tests
+npm run check  # typecheck main + renderer, lint, then run the tests
 ```
 
 ### Keyboard

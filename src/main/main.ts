@@ -90,9 +90,9 @@ function resolveIcon(): string | undefined {
   ];
   for (const p of candidates) {
     try {
-      require('fs').accessSync(p);
+      fs.accessSync(p);
       return p;
-    } catch {}
+    } catch { /* not at this path, try next candidate */ }
   }
   return undefined;
 }
@@ -210,9 +210,11 @@ ipcMain.handle('show-input', async (_, title: string, defaultValue = '') => {
 // value injected at compile time.
 ipcMain.handle('get-app-info', () => {
   let buildDate: string | null = null;
-  try { buildDate = require('fs').statSync(__filename).mtime.toISOString(); } catch { /* ignore */ }
+  try { buildDate = fs.statSync(__filename).mtime.toISOString(); } catch { /* ignore */ }
   const pkg = (() => {
     for (const p of [path.join(__dirname, '../../package.json'), path.join(__dirname, '../package.json')]) {
+      // Dynamic path with a try/next fallback — needs require(), a static import can't do either.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       try { return require(p); } catch { /* try next */ }
     }
     return {};
@@ -299,7 +301,7 @@ function buildTlsOptions(s: TlsSettings | undefined): Record<string, any> {
   const opts: Record<string, any> = {};
   const requireFile = (p: string, label: string) => {
     const resolved = p.trim();
-    if (!require('fs').existsSync(resolved)) throw new Error(`${label} not found: ${resolved}`);
+    if (!fs.existsSync(resolved)) throw new Error(`${label} not found: ${resolved}`);
     return resolved;
   };
 

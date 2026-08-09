@@ -20,6 +20,7 @@
 - **Schema explorer** — a Schema tab that samples the collection and lists every field with its types, how many of the sampled documents have it and a few example values
 - **Command palette (`Ctrl+P`)** — fuzzy jump to any connection, database, collection or action without walking the tree
 - `npm run check` — typecheck main + renderer and run the tests in one command
+- **Lint** — ESLint 9 (flat config, `typescript-eslint` + `eslint-plugin-react-hooks`) covering both `src/main` and `src/renderer`, wired into `npm run check` via a new `npm run lint`
 
 ### Changed
 - **Escape cancels everywhere.** Handlers now form a stack, so a confirmation opened on top of a modal takes one Escape and closes only itself, and a modal that is busy writing swallows the key instead of letting it through. Escape also closes the document editor (through the same "discard changes?" path as its Cancel button), the add/view modals, the query preview and the popovers

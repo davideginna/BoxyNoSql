@@ -5,20 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run check          # typecheck main + renderer, then the whole test suite — run this before calling a change done
+npm run check          # typecheck main + renderer, lint, then the whole test suite — run this before calling a change done
 npm install            # install deps (CI uses `npm ci --legacy-peer-deps`)
 npm run dev            # watch main + renderer AND launch Electron (concurrently + wait-on) — one command, no separate start needed
 npm start              # start Electron only (against an existing build / dev server)
 npm run build          # compile main (tsc) + renderer (vite)
 npm run build:main     # compile src/main → dist/main via tsconfig.main.json
 npm run build:renderer # bundle src/renderer → dist/renderer via vite
+npm run lint            # eslint over src/main + src/renderer (flat config, eslint.config.js)
 npm run electron:build:linux # build + package .deb + AppImage  → release/
 npm run electron:build:win   # build + package NSIS installer   → release/
 npm run electron:build:all   # both platforms in one run
 npm run electron:build:dir   # build unpackaged app dir (no installer)
 ```
 
-`npm run check` chains `typecheck:main` (`tsc -p tsconfig.main.json --noEmit`), `typecheck:renderer` (`tsc -p tsconfig.json`) and `vitest run`. There is still no linter; `tsc -p tsconfig.main.json` typechecks the main process as a side effect of `build:main`, while the renderer is only typechecked by an explicit `npx tsc -p tsconfig.json` (Vite does not typecheck).
+`npm run check` chains `typecheck:main` (`tsc -p tsconfig.main.json --noEmit`), `typecheck:renderer` (`tsc -p tsconfig.json`), `lint` (`eslint .`) and `vitest run`. `tsc -p tsconfig.main.json` typechecks the main process as a side effect of `build:main`, while the renderer is only typechecked by an explicit `npx tsc -p tsconfig.json` (Vite does not typecheck). Lint is ESLint 9 flat config (`eslint.config.js`, root) with `typescript-eslint` (non-type-checked `recommended` — type-checked rules would fight the intentionally-untyped IPC boundary) and `eslint-plugin-react-hooks` on the renderer only; `src/main` gets `globals.node`, `src/renderer` gets `globals.browser` + JSX. `react-hooks/exhaustive-deps` is a warning, not an error — several effects intentionally omit a dep and say why in a comment. `no-empty` allows empty `catch {}` (the codebase's standard best-effort/swallow pattern for localStorage, clipboard, drag-data parsing) and `@typescript-eslint/no-unused-expressions` allows the `cond ? a() : b();` / `cond && b();` statement idiom used for Set-toggle helpers; both are rule *options*, not blanket disables. `no-unused-vars` is off — `tsc`'s `noUnusedLocals`/`noUnusedParameters` (`tsconfig.json`, renderer only — `tsconfig.main.json` doesn't set them) already catch it with full type information for the renderer, and the few unused bindings the rule finds in `src/main` are the deliberate destructuring-to-omit idiom (`const { v, ...opts } = idx`, dropping an index's `v` field before re-creating it elsewhere) or a discarded `catch (e)` binding, not bugs. `no-explicit-any` is off — the IPC boundary is untyped by design.
 
 Tests (Vitest):
 

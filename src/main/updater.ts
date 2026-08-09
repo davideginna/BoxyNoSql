@@ -44,6 +44,8 @@ let downloadUrl = '';
 
 function readPackageJson(): any {
   for (const p of [path.join(__dirname, '../../package.json'), path.join(__dirname, '../package.json')]) {
+    // Dynamic path with a try/next fallback — needs require(), a static import can't do either.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     try { return require(p); } catch { /* try next */ }
   }
   return {};
@@ -136,7 +138,8 @@ function normalizeNotes(notes: unknown): string {
 
 function getAutoUpdater() {
   // Required lazily: pulling it in on an unpackaged run logs noisy warnings and
-  // it is never used there.
+  // it is never used there. A static import would load it unconditionally.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { autoUpdater } = require('electron-updater');
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
