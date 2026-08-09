@@ -946,6 +946,22 @@ button,
 .fields-menu-foot { display: flex; gap: var(--space-3); border-top: 1px solid var(--border); padding-top: 6px; }
 .fields-menu-foot button { flex: 1; }
 
+/* ── Bulk field edit ─────────────────────────────────────────────────────────── */
+.bulk-edit-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.bulk-op-toggle { align-self: flex-start; }
+.bulk-value-row { display: flex; gap: var(--space-3); }
+.bulk-value-row select { flex: 0 0 110px; }
+.bulk-value-row input { flex: 1; min-width: 0; }
+.bulk-edit-preview {
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 8px 10px; margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--text-primary); white-space: pre-wrap; word-break: break-word;
+}
+.bulk-edit-error {
+  border: 1px solid var(--error); border-radius: var(--radius-md);
+  padding: 8px 10px; font-size: var(--fs-sm); color: var(--error);
+}
+
 /* ── Schema explorer ─────────────────────────────────────────────────────────── */
 .schema-body { flex: 1; overflow: auto; display: flex; flex-direction: column; }
 .schema-path { font-family: var(--font-mono); color: var(--text-primary); }

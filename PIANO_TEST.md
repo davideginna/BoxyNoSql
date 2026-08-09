@@ -206,6 +206,27 @@ Aprire `testdb.users` (Table view salvo dove indicato):
 
 ---
 
+## 7b. Test: Bulk field edit
+
+Selezionare più documenti in `testdb.users`:
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 7b.1 | Nessuna selezione | Il bottone "Edit field" non c'è (la barra compare solo con selezione) |
+| 7b.2 | Selezione + Edit field | Modale con Set/Rename/Unset e il conteggio dei documenti |
+| 7b.3 | Set `city` = `Milano` (String) | Preview mostra `{"$set": {"city": "Milano"}}`; conferma e i documenti si aggiornano |
+| 7b.4 | Set con tipo Number e valore non numerico | Errore nel modale, Apply disabilitato |
+| 7b.5 | Set tipo Date `2026-08-09` | Il campo diventa una data vera (non stringa) |
+| 7b.6 | Set tipo JSON `{"a":1}` | Sottodocumento |
+| 7b.7 | Rename `city` → `town` | Preview `$rename`; i valori restano per documento |
+| 7b.8 | Rename verso lo stesso nome | Errore, Apply disabilitato |
+| 7b.9 | Unset `town` | Preview `$unset`, campo rimosso |
+| 7b.10 | Campo `_id` in qualsiasi operazione | Rifiutato |
+| 7b.11 | Dopo Apply | Toast con quanti documenti aggiornati e lista ricaricata |
+| 7b.12 | Connessione read-only | Bottone disabilitato |
+
+---
+
 ## 8. Test: Query Terminal
 
 Aprire tab Query su `testdb.users`:

@@ -422,3 +422,90 @@ describe('DocumentsView — read-only connection', () => {
     expect(screen.getByRole('button', { name: /Paste/ })).toBeEnabled();
   });
 });
+
+describe('DocumentsView — bulk field edit', () => {
+  // `showConfirm` falls back to window.confirm with no DialogModal mounted.
+  beforeEach(() => { window.confirm = () => true; });
+
+  const selectAll = async () => {
+    await showTable();
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);   // header checkbox
+    return screen.getByRole('button', { name: /Edit field/ });
+  };
+
+  // Scoped to the modal: the view behind it has its own selects and inputs.
+  const openBulkEdit = async () => {
+    fireEvent.click(await selectAll());
+    const heading = await screen.findByRole('heading', { name: /Edit field on 1 document/ });
+    return within(heading.closest('.modal') as HTMLElement);
+  };
+
+  it('offers the button only while something is selected', async () => {
+    view();
+    await showTable();
+    expect(screen.queryByRole('button', { name: /Edit field/ })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    expect(screen.getByRole('button', { name: /Edit field/ })).toBeInTheDocument();
+  });
+
+  it('shows the update document before it runs', async () => {
+    view();
+    const modal = await openBulkEdit();
+
+    fireEvent.change(modal.getByPlaceholderText('field name'), { target: { value: 'status' } });
+    fireEvent.change(modal.getByPlaceholderText('value'), { target: { value: 'paid' } });
+
+    expect(modal.getByText(/"\$set"/)).toBeInTheDocument();
+    expect(modal.getByText(/"paid"/)).toBeInTheDocument();
+  });
+
+  it('sends the update for the selected ids', async () => {
+    view();
+    const modal = await openBulkEdit();
+
+    fireEvent.change(modal.getByPlaceholderText('field name'), { target: { value: 'age' } });
+    // The field input is a combobox too (it has a datalist), so pick the type
+    // select by what it currently shows.
+    fireEvent.change(modal.getByDisplayValue('String'), { target: { value: 'number' } });
+    fireEvent.change(modal.getByPlaceholderText('value'), { target: { value: '30' } });
+    fireEvent.click(modal.getByRole('button', { name: /Apply to 1 document/ }));
+
+    await waitFor(() => expect(invoke.mock.calls.some(c => c[0] === 'bulk-update-documents')).toBe(true));
+    const call = invoke.mock.calls.find(c => c[0] === 'bulk-update-documents')!;
+    expect(call.slice(1)).toEqual(['c1', 'db', 'col', [OID], { $set: { age: 30 } }]);
+  });
+
+  it('blocks the apply button while the form is not valid', async () => {
+    view();
+    const modal = await openBulkEdit();
+
+    // No field name yet.
+    expect(modal.getByRole('button', { name: /Apply to/ })).toBeDisabled();
+    expect(modal.getByText(/Choose a field/)).toBeInTheDocument();
+
+    fireEvent.change(modal.getByPlaceholderText('field name'), { target: { value: '_id' } });
+    expect(modal.getByText(/`_id` cannot be changed/)).toBeInTheDocument();
+    expect(modal.getByRole('button', { name: /Apply to/ })).toBeDisabled();
+  });
+
+  it('switches to unset without asking for a value', async () => {
+    view();
+    const modal = await openBulkEdit();
+
+    fireEvent.change(modal.getByPlaceholderText('field name'), { target: { value: 'temp' } });
+    fireEvent.click(modal.getByRole('button', { name: 'Unset' }));
+
+    expect(modal.queryByPlaceholderText('value')).toBeNull();
+    expect(modal.getByText(/"\$unset"/)).toBeInTheDocument();
+  });
+
+  it('is disabled on a read-only connection', async () => {
+    render(<DocumentsView connectionId="c1" database="db" collection="col" readOnly />);
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: /Table/ }));
+    fireEvent.click((await screen.findAllByRole('checkbox'))[0]);
+
+    expect(screen.getByRole('button', { name: /Edit field/ })).toBeDisabled();
+  });
+});

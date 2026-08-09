@@ -16,6 +16,7 @@
 - **Read-only connections** — a per-connection flag that refuses every write in the main process, not just in the UI: 18 write handlers check it, and the query terminal gets a proxied `db` whose write methods throw. Copying *from* a read-only connection is allowed, copying *to* one is not
 - **Toasts** — non-blocking status messages. Copying a database or collection now says what went on the clipboard and from which connection
 - **Node tooltips in the sidebar** — a connection shows its folder path inline, and every connection/database/collection carries a tooltip with connection, folder, server and path, so two connections holding a `testdb` are no longer indistinguishable. The server line shows `user@host`, never the password
+- **Bulk field edit** — set, rename or unset a field across the selected documents, with the update document shown before it runs
 - **Schema explorer** — a Schema tab that samples the collection and lists every field with its types, how many of the sampled documents have it and a few example values
 - **Command palette (`Ctrl+P`)** — fuzzy jump to any connection, database, collection or action without walking the tree
 - `npm run check` — typecheck main + renderer and run the tests in one command

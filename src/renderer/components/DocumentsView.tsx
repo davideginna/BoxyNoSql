@@ -12,6 +12,8 @@ import {
   type SortKey, type SortDir,
 } from '../utils/docTable';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
+import BulkEditModal from './BulkEditModal';
+import { showToast } from '../toast';
 import { previewLabel, type QueryEntry } from '../utils/queryHistory';
 
 type ViewMode = 'table' | 'tree';
@@ -293,6 +295,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [hiddenFields, setHiddenFields] = useState<string[]>([]);
   const [showFieldsMenu, setShowFieldsMenu] = useState(false);
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   useEffect(() => { saveLineNumbers(lineNumbers); }, [lineNumbers]);
   useEffect(() => { saveWrap(editWrap); }, [editWrap]);
@@ -525,6 +528,22 @@ export default function DocumentsView({ connectionId, database, collection, acti
     const text = docs.length === 1 ? JSON.stringify(docs[0], null, 2) : JSON.stringify(docs, null, 2);
     navigator.clipboard.writeText(text);
   }, [selectedIndices, documents]);
+
+  /**
+   * One field across the selection. Typed confirmation is deliberately not
+   * used here — this is reversible per field, unlike a drop — but the update
+   * document is shown in the modal before it runs.
+   */
+  const applyBulkEdit = async (update: Record<string, any>, description: string) => {
+    const ids = [...selectedIndices].map(i => documents[i]).filter(Boolean).map(d => idToString(d._id));
+    if (!await showConfirm({ title: 'Edit field', message: `${description}?`, confirmText: 'Apply' })) return;
+    try {
+      const res = await inv('bulk-update-documents', connectionId, database, collection, ids, update);
+      setShowBulkEdit(false);
+      showToast({ message: `${res.modifiedCount} document${res.modifiedCount === 1 ? '' : 's'} updated`, kind: 'success' });
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+    } catch (err: any) { setError(err.message); }
+  };
 
   const handlePaste = useCallback(async () => {
     if (readOnly) return;
@@ -915,6 +934,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
           <span>{selectedIndices.size} selected</span>
           <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
           <button
+            className="secondary" onClick={() => setShowBulkEdit(true)} disabled={readOnly}
+            title={readOnly ? 'This connection is read-only' : 'Set, rename or unset a field on every selected document'}
+          ><Icon name="edit" size={13} /> Edit field</button>
+          <button
             className="danger" onClick={handleBulkDelete} disabled={readOnly}
             title={readOnly ? 'This connection is read-only' : 'Delete selected (Del)'}
           ><Icon name="trash" size={13} /> Delete</button>
@@ -1186,6 +1209,15 @@ export default function DocumentsView({ connectionId, database, collection, acti
           x={ctxMenu.x} y={ctxMenu.y}
           items={buildCtxItems(ctxMenu.idx)}
           onClose={() => setCtxMenu(null)}
+        />
+      )}
+
+      {showBulkEdit && (
+        <BulkEditModal
+          count={selectedIndices.size}
+          fields={fieldOptions}
+          onApply={applyBulkEdit}
+          onClose={() => setShowBulkEdit(false)}
         />
       )}
 

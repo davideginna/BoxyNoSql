@@ -636,6 +636,24 @@ ipcMain.handle('insert-documents', async (_, connectionId: string, dbName: strin
   return { insertedCount: result.insertedCount };
 });
 
+/**
+ * One field, many documents. The update document is built in the renderer
+ * (`utils/bulkEdit.ts`) so it can be shown before it runs; this only revives
+ * the ids and the value and hands it to `updateMany`.
+ */
+ipcMain.handle('bulk-update-documents', async (_, connectionId: string, dbName: string, collection: string, docIds: string[], update: any) => {
+  assertWritable(connectionId);
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  // Same fallback as update-document: an `_id` that is not an ObjectId is a
+  // legitimate `_id`, so try both rather than dropping the document.
+  const ids = docIds.map(id => { try { return new ObjectId(id); } catch { return id; } });
+  const rawIds = docIds.filter(id => !/^[0-9a-f]{24}$/i.test(id));
+  const filter: any = { _id: { $in: [...ids, ...rawIds] } };
+  const result = await client.db(dbName).collection(collection).updateMany(filter, fromExtJSON(update));
+  return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+});
+
 ipcMain.handle('delete-document', async (_, connectionId: string, dbName: string, collection: string, docId: string) => {
   assertWritable(connectionId);
   const client = clients.get(connectionId);
