@@ -13,6 +13,7 @@ import {
 } from '../utils/docTable';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
 import BulkEditModal from './BulkEditModal';
+import ExplainModal from './ExplainModal';
 import { showToast } from '../toast';
 import { previewLabel, type QueryEntry } from '../utils/queryHistory';
 
@@ -296,6 +297,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [showFieldsMenu, setShowFieldsMenu] = useState(false);
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [showExplain, setShowExplain] = useState(false);
 
   useEffect(() => { saveLineNumbers(lineNumbers); }, [lineNumbers]);
   useEffect(() => { saveWrap(editWrap); }, [editWrap]);
@@ -450,9 +452,9 @@ export default function DocumentsView({ connectionId, database, collection, acti
   // filter fields, which is where you are when you want to run. Ctrl+Enter in
   // the modals keeps its own meaning (save), so this only fires with no modal.
   useEffect(() => {
-    if (!active || editingDoc || viewingDoc || showAddDoc || showQueryModal) return;
+    if (!active || editingDoc || viewingDoc || showAddDoc || showQueryModal || showExplain) return;
     return onRunKey(e => { e.preventDefault(); applyFilter(); });
-  }, [active, editingDoc, viewingDoc, showAddDoc, showQueryModal, conditions, matchAll, limit, sortKeys, hiddenFields]);
+  }, [active, editingDoc, viewingDoc, showAddDoc, showQueryModal, showExplain, conditions, matchAll, limit, sortKeys, hiddenFields]);
 
   const openAddDoc = useCallback(() => {
     setAddJson('{\n  \n}');
@@ -570,7 +572,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
       // Inside a text field these keys belong to the field: Ctrl+C/V/X are the
       // clipboard, Delete/Backspace delete characters — not documents.
       if (isTypingTarget(e.target)) return;
-      if (showAddDoc) return;
+      if (showAddDoc || showExplain) return;
       if (editingDoc) {
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
         if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
@@ -610,7 +612,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
+  }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
 
   // Find in edit textarea
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {
@@ -908,6 +910,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
         <input type="number" className="toolbar-limit-input" value={limit} onChange={e => setLimit(Number(e.target.value))} />
         <button onClick={applyFilter} disabled={loading}>{loading ? '…' : <><Icon name="play" size={12} /> Run</>}</button>
         <button className="secondary" onClick={resetFilter}><Icon name="refresh" size={13} /> Reset</button>
+        <button
+          className="secondary" onClick={() => setShowExplain(true)}
+          title="Explain this filter — index usage, documents examined, timings"
+        ><Icon name="plan" size={13} /> Explain</button>
         <button
           className="secondary" onClick={openAddDoc} disabled={readOnly}
           title={readOnly ? 'This connection is read-only' : 'Add document (Ctrl+D)'}
@@ -1218,6 +1224,20 @@ export default function DocumentsView({ connectionId, database, collection, acti
           fields={fieldOptions}
           onApply={applyBulkEdit}
           onClose={() => setShowBulkEdit(false)}
+        />
+      )}
+
+      {/* Same filter, sort and projection `get-documents` runs — explaining a
+          different query than the list shows would answer the wrong question. */}
+      {showExplain && (
+        <ExplainModal
+          what="filter"
+          namespace={`${database}.${collection}`}
+          load={() => inv(
+            'explain-find', connectionId, database, collection,
+            buildFilter(conditions, matchAll), buildSort(sortKeys), buildProjection(hiddenFields),
+          )}
+          onClose={() => setShowExplain(false)}
         />
       )}
 

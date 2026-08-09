@@ -66,6 +66,7 @@
   --tree-key:      #7ab0c8;
   --error:         #f48771;
   --success:       #4ec9b0;
+  --warning:       #d7ba7d;
   --status-bg:     #2a5a78;
   --status-text:   #ffffff;
   --accent-text:  #ffffff;
@@ -106,6 +107,7 @@ body.theme-light {
   --tree-key:      #001080;
   --error:         #d73a49;
   --success:       #28a745;
+  --warning:       #8a6100;
   --status-bg:     #0066b8;
   --status-text:   #ffffff;
   --accent-text:  #ffffff;
@@ -138,6 +140,7 @@ body.theme-hc {
   --tree-key:      #3794ff;
   --error:         #f48771;
   --success:       #89d185;
+  --warning:       #ffd700;
   --status-bg:     #3794ff;
   --status-text:   #000000;
   --accent-text:  #000000;
@@ -171,6 +174,7 @@ body.theme-solarized {
   --tree-key:      #b58900;
   --error:         #dc322f;
   --success:       #859900;
+  --warning:       #cb4b16;
   --status-bg:     #b58900;
   --status-text:   #002b36;
   --accent-text:  #002b36;
@@ -979,6 +983,47 @@ button,
 .schema-examples {
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-secondary);
   max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Explain plan ────────────────────────────────────────────────────────────── */
+.explain-body { display: flex; flex-direction: column; gap: var(--space-4); max-height: 70vh; overflow: auto; }
+/* Verdict first: the numbers below only mean something once you know whether
+   they are good. The colour is the level, so it also reads at a glance. */
+.explain-verdict {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  padding: 8px 10px; border-radius: var(--radius-md);
+  border-left: 3px solid var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 10%, transparent);
+  font-size: var(--fs-sm); line-height: 1.45;
+}
+.explain-verdict--good { border-left-color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.explain-verdict--warn { border-left-color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.explain-verdict--bad  { border-left-color: var(--error);   background: color-mix(in srgb, var(--error) 12%, transparent); }
+.explain-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+.explain-metric {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 8px 10px;
+}
+.explain-metric-value { font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--text-primary); }
+.explain-metric-label { font-size: var(--fs-2xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.explain-section-title { font-size: var(--fs-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.explain-plan { list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }
+.explain-stage {
+  display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 5px 10px; font-size: var(--fs-sm);
+}
+.explain-stage-name { font-family: var(--font-mono); color: var(--text-primary); font-weight: 600; }
+.explain-stage-index { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--accent); font-family: var(--font-mono); }
+.explain-stage-key { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-secondary); }
+.explain-stage-meta { margin-left: auto; font-size: var(--fs-xs); color: var(--text-secondary); white-space: nowrap; }
+.explain-raw-head { display: flex; gap: var(--space-3); align-items: center; }
+.explain-raw {
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 8px 10px; margin: 0; max-height: 320px; overflow: auto;
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-primary);
+  white-space: pre-wrap; word-break: break-word;
 }
 
 /* ── Command palette ─────────────────────────────────────────────────────────── */

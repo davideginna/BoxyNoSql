@@ -16,6 +16,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)`
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
 - ✅ Aggregation pipeline builder with a Monaco editor per stage, completions, stage templates and a document counter per stage
+- ✅ Explain plan on the current filter, query or pipeline: index used or collection scan, documents and keys examined, stage timings, a verdict when far more is read than returned, and the raw output one click away
 - ✅ Index management (create/drop) with usage stats
 - ✅ Collection stats and a schema explorer (sampled field list with types, presence and example values)
 - ✅ Copy a collection or a whole database across connections, with a confirmation naming both ends and an automatic refresh of the target
@@ -40,10 +41,6 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 ## Roadmap
 
 Planned, not shipped. 🔥 = high impact, low effort.
-
-### Productivity
-
-- ⬜ **Explain plan** — run `explain()` on the current query or pipeline and see index usage, documents examined and stage timings
 
 ### Comfort & discoverability
 
