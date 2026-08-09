@@ -9,7 +9,13 @@ const globals = require('globals');
 
 module.exports = tseslint.config(
   {
-    ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**'],
+    // `**/` on each: agent worktrees live under `.claude/worktrees/` and carry
+    // their own copy of the tree plus node_modules, so a root-relative pattern
+    // would leave thousands of files (and their inline eslint-disable comments,
+    // whose rules are not registered for those paths) to be linted.
+    ignores: [
+      '**/dist/**', '**/release/**', '**/coverage/**', '**/node_modules/**', '.claude/**',
+    ],
   },
 
   js.configs.recommended,
