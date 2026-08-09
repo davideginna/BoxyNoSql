@@ -39,6 +39,10 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 
 *(Dark theme shown; light, high-contrast and solarized are also available. Sample data, no real servers or data pictured.)*
 
+## Roadmap
+
+Everything that was on it has shipped — see the Features list above and `CHANGELOG.md`.
+
 ## Install
 
 ```bash
