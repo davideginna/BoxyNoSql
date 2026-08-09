@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.0] - 2026-08-09
 
 ### Added
 - **Several connections open at once** — `databases`, `expandedDbs` and `collections` are per connection, so the sidebar shows one database tree per connected server instead of swapping between them
