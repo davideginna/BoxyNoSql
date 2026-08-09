@@ -2,6 +2,16 @@
 
 Test manuale completo contro MongoDB locale via Docker. Copre ogni feature (connessioni, db, collection, documenti, query, aggregate, indici, stats, utenti/ruoli, folder, colori, temi, UX).
 
+## 0. Esecuzione del 2026-08-09 (app reale, Mongo docker)
+
+Passata sull'app impacchettata (`npm run build` + Electron), guidata via CDP contro il Mongo locale. **63 controlli, tutti verdi.** Coperti: connessione e tooltip dei nodi (13b), sort da header e da popover con verso e tooltip (6b), visibilità campi e rilettura del documento intero in edit (6b.8–6b.16), query history con salvataggio e richiamo (8b), explain su filtro, pipeline e query terminal (9c), schema explorer su `users` (9b), virtualizzazione su `logs` a 5000 righe per pagina (6c: 32 righe montate su 5000, `scrollHeight` 140061px, select-all = 5000), command palette (13c.28–34), Alt+Enter (13c.7–8), toast di copia e conferma di incolla con annullamento (13c.11–16), conferma digitata su drop con impatto (8d), bulk field edit (7b), read-only end-to-end incluso il rifiuto lato main di `insert-documents` e di una scrittura dal query terminal (13c.19–27), sessione ripristinata al riavvio, Esc annidato (13c.2), contatori per stage e rifiuto di `$out` senza scriverlo (9.13–9.15).
+
+**Non verificato in questa passata**, da fare a mano: il **dialog nativo di salvataggio dell'export** (8c.2–8c.9). La sessione desktop è Wayland e non c'è modo di pilotare la finestra GTK da qui; il menu Export e i suoi due gruppi sono stati verificati, la scrittura del file no.
+
+I test distruttivi hanno usato un database `scratchtest` creato e cancellato dalla passata stessa: `testdb` è rimasto a 200 / 500 / 50000 documenti.
+
+---
+
 ## 1. Setup ambiente
 
 ### 1.1 Docker: MongoDB senza auth (per i test base)
