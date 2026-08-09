@@ -9,7 +9,7 @@ export type IconName =
   | 'gear' | 'warn' | 'expand' | 'menu' | 'refresh' | 'close' | 'check'
   | 'chevronRight' | 'chevronDown' | 'arrowUp' | 'arrowDown' | 'arrowRight'
   | 'expandAll' | 'collapseAll' | 'filter' | 'info' | 'download' | 'keyboard'
-  | 'columns' | 'history';
+  | 'columns' | 'history' | 'plan';
 
 const P: Record<IconName, React.ReactNode> = {
   database: (<>
@@ -129,6 +129,11 @@ const P: Record<IconName, React.ReactNode> = {
   columns: (<>
     <rect x="3" y="4" width="18" height="16" rx="2" />
     <line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" />
+  </>),
+  plan: (<>
+    <circle cx="18" cy="12" r="2.5" />
+    <circle cx="6" cy="5" r="2.5" /><circle cx="6" cy="19" r="2.5" />
+    <path d="M8.3 6.3 15.7 10.7M8.3 17.7 15.7 13.3" />
   </>),
 };
 

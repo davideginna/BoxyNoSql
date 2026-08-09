@@ -724,6 +724,69 @@ ipcMain.handle('aggregation-stage-counts', async (_, connectionId: string, dbNam
   return counts;
 });
 
+// ── Explain ──────────────────────────────────────────────────────────────────
+/**
+ * `executionStats` and not `queryPlanner`: the plan alone says which index was
+ * chosen, but not how many documents that cost, which is the whole question.
+ */
+const EXPLAIN_VERBOSITY = 'executionStats';
+
+/**
+ * Explaining a pipeline runs everything before the write stage for real, and
+ * MongoDB will not explain the write stage itself — so a pipeline that ends in
+ * `$out`/`$merge` is refused up front rather than half-executed.
+ */
+function assertExplainable(pipeline: any[]) {
+  const writing = pipeline.find(stage => WRITE_STAGES.has(Object.keys(stage ?? {})[0]));
+  if (writing) {
+    throw new Error(`Cannot explain a pipeline containing ${Object.keys(writing)[0]} — it writes, and an explain must not.`);
+  }
+}
+
+// None of the three explain handlers goes through `assertWritable`: explaining
+// is a read, and a read-only connection is exactly where you want to be able to
+// ask why a query is slow.
+ipcMain.handle('explain-find', async (_, connectionId: string, dbName: string, collection: string, filter: any = {}, sort: any = null, projection: any = null) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  // The same cursor `get-documents` builds, minus the paging: explaining a
+  // different query than the one the view runs would be worse than useless.
+  const cursor = client.db(dbName).collection(collection)
+    .find(fromExtJSON(filter ?? {}), projection ? { projection } : {});
+  if (sort && Object.keys(sort).length > 0) cursor.sort(sort);
+  return serializeDoc(await cursor.explain(EXPLAIN_VERBOSITY));
+});
+
+ipcMain.handle('explain-aggregation', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const prepared: any[] = fromExtJSON(pipeline);
+  assertExplainable(prepared);
+  return serializeDoc(await client.db(dbName).collection(collection).aggregate(prepared).explain(EXPLAIN_VERBOSITY));
+});
+
+/**
+ * Explain whatever the query terminal holds. The query is evalled the way
+ * `run-query` does it, but *always* against the guarded handle regardless of
+ * the connection's read-only flag: an `insertOne` left in the editor must not
+ * run just because Explain was the button that got clicked.
+ *
+ * Only a cursor can be explained. `findOne`, `countDocuments` and the write
+ * helpers return a value, and there is no honest explain to show for those —
+ * say so rather than invent one.
+ */
+ipcMain.handle('explain-query', async (_, connectionId: string, dbName: string, _collection: string, query: string) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const fn = new Function('db', `return (async () => { return (${query}) })()`);
+  const result = await fn(guardHandle(client.db(dbName)));
+  if (!result || typeof result.explain !== 'function') {
+    throw new Error('Only a cursor can be explained. Use find() or aggregate(), and leave off .toArray().');
+  }
+  if (Array.isArray(result.pipeline)) assertExplainable(result.pipeline);
+  return serializeDoc(await result.explain(EXPLAIN_VERBOSITY));
+});
+
 // ── Indexes ──────────────────────────────────────────────────────────────────
 ipcMain.handle('get-indexes', async (_, connectionId: string, dbName: string, collection: string) => {
   const client = clients.get(connectionId);

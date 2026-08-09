@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import MonacoQueryEditor, { MonacoThemeName } from './MonacoQueryEditor';
+import ExplainModal from './ExplainModal';
 import Icon from './Icon';
 import { showAlert } from '../dialog';
 import { onRunKey } from '../utils/keys';
@@ -58,6 +59,7 @@ export default function AggregationBuilder({ connectionId, database, collection,
   const [counts, setCounts] = useState<(number | null)[]>([]);
   const [sampleFields, setSampleFields] = useState<string[]>([]);
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showExplain, setShowExplain] = useState(false);
 
   const history = useQueryHistory('aggregation', connectionId, database, collection);
 
@@ -155,19 +157,40 @@ export default function AggregationBuilder({ connectionId, database, collection,
   };
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || showExplain) return;
     return onRunKey(e => { e.preventDefault(); handleRun(); });
-  }, [active, stages, connectionId, database, collection]);
+  }, [active, showExplain, stages, connectionId, database, collection]);
 
   return (
     <div className="aggregation-builder">
       {exportMenu && (
         <ContextMenu x={exportMenu.x} y={exportMenu.y} items={exportItems()} onClose={() => setExportMenu(null)} />
       )}
+      {showExplain && (
+        <ExplainModal
+          what="pipeline"
+          namespace={`${database}.${collection}`}
+          load={() => (window as any).electron.invoke(
+            'explain-aggregation', connectionId, database, collection,
+            parsed.map(p => (p as { ok: true; stage: any }).stage),
+          )}
+          onClose={() => setShowExplain(false)}
+        />
+      )}
       <div className="toolbar">
         <button onClick={addStage}><Icon name="plus" size={13} /> Add Stage</button>
         <button onClick={handleRun} disabled={loading}>
           {loading ? 'Running…' : <><Icon name="play" size={12} /> Run Pipeline</>}
+        </button>
+        <button
+          className="secondary"
+          disabled={firstBroken !== -1}
+          title={firstBroken !== -1
+            ? `Stage ${firstBroken + 1} has invalid JSON`
+            : 'Explain this pipeline — index usage, documents examined, stage timings'}
+          onClick={() => setShowExplain(true)}
+        >
+          <Icon name="plan" size={13} /> Explain
         </button>
         <button
           className="secondary"

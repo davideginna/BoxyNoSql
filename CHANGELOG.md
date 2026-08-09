@@ -19,6 +19,7 @@
 - **Bulk field edit** — set, rename or unset a field across the selected documents, with the update document shown before it runs
 - **Schema explorer** — a Schema tab that samples the collection and lists every field with its types, how many of the sampled documents have it and a few example values
 - **Command palette (`Ctrl+P`)** — fuzzy jump to any connection, database, collection or action without walking the tree
+- **Explain plan** — an Explain button in the documents, query and aggregation views runs `explain('executionStats')` on whatever is currently in them and shows the winning plan stage by stage, the index it used (or the collection scan it did not avoid), documents and index keys examined, timings, and a verdict when far more is read than returned — the raw output is one click below, and copyable. The documents view explains the same filter, sort and projection the list itself runs, so the answer is about the query you are actually looking at. Explaining is a read and works on read-only connections; a query-terminal explain evals against the read-only proxy whatever the connection's flag, so an `insertOne` left in the editor cannot run, and a `$out`/`$merge` pipeline is refused instead of being half-executed
 - `npm run check` — typecheck main + renderer and run the tests in one command
 
 ### Changed

@@ -349,6 +349,73 @@ Aprire la tab Schema su `testdb.users`:
 
 ---
 
+## 9c. Test: Explain plan
+
+Serve un dataset con e senza indici, altrimenti l'explain dice sempre la stessa cosa. Preparare:
+
+```bash
+docker exec -i boxy-mongo mongosh <<'EOF'
+use testdb
+db.users.createIndex({ email: 1 })
+db.users.createIndex({ city: 1, age: 1 })
+db.orders.createIndex({ status: 1, placedAt: 1 })
+db.logs.createIndex({ seq: 1 })
+EOF
+```
+
+`users` ≈200 doc, `orders` ≈500, `logs` ≈50k.
+
+### Documents — explain del filtro corrente
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 9c.1 | `testdb.users`, nessun filtro → Explain | Si apre "Explain filter · testdb.users", verdetto giallo "Collection scan … Expected with no filter" |
+| 9c.2 | Filtro `email = a@x.it` → Run → Explain | Verdetto verde, indice `email_1`, catena `FETCH → IXSCAN`, examined ≈ returned |
+| 9c.3 | Filtro `city = Rome` (campo senza indice) su `logs` → Explain | Verdetto rosso "Collection scan", *documents examined* molto più grande di *returned* |
+| 9c.4 | Filtro `city = Rome` + sort per `age` DESC → Explain | Compare uno stage `SORT` sopra l'`IXSCAN` di `city_1_age_1` |
+| 9c.5 | Nascondere qualche campo (Fields) e rifare Explain | La proiezione arriva al server: nessun errore, eventualmente compare `PROJECTION_*` nel piano |
+| 9c.6 | Confronto con la lista | Il namespace nell'header è la collection della tab; l'explain usa lo stesso filtro/sort/campi visibili della lista, non un altro |
+| 9c.7 | Filtro che non trova nulla | *returned* 0 e verdetto che conta comunque i documenti letti |
+| 9c.8 | Su connessione read-only | Explain funziona lo stesso (è una lettura) |
+
+### Query Terminal — explain della query nell'editor
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 9c.9 | `db.collection("users").find({email:"a@x.it"})` → Explain | Indice `email_1`, verdetto verde |
+| 9c.10 | `db.collection("logs").find({message:/errore/})` → Explain | Collection scan, tempi e documenti esaminati alti |
+| 9c.11 | `db.collection("users").find({}).toArray()` → Explain | Errore chiaro: "Only a cursor can be explained… leave off .toArray()" |
+| 9c.12 | `db.collection("users").findOne({})` → Explain | Stesso errore: non c'è un cursore da spiegare |
+| 9c.13 | `db.collection("users").insertOne({x:1})` → Explain | Errore read-only, **e il documento NON viene inserito** (verificare con Run di `find({x:1})`) |
+| 9c.14 | `db.collection("orders").aggregate([{$match:{status:"paid"}}])` → Explain | Piano dell'aggregazione, indice `status_1_placedAt_1` |
+| 9c.15 | Query con sintassi rotta | Errore JS nel pannello, la modale non resta vuota |
+
+### Aggregation Builder — explain della pipeline
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 9c.16 | `$match {"status":"paid"}` + `$group` → Explain | Catena `$cursor → FETCH → IXSCAN → $group`, `$cursor` rientrato rispetto agli stage |
+| 9c.17 | Stesso caso | *returned* è quello dell'ultimo stage (pochi gruppi), *documents examined* quello del cursore (molti) |
+| 9c.18 | `$match` su campo non indicizzato | Collection scan segnalato in rosso |
+| 9c.19 | Pipeline con uno stage JSON invalido | Il bottone Explain è disabilitato, il tooltip dice quale stage |
+| 9c.20 | Pipeline che termina con `$out` | Errore "Cannot explain a pipeline containing $out"; **verificare che la collection di destinazione non sia stata creata** |
+| 9c.21 | Pipeline con `$merge` | Stesso rifiuto |
+
+### Modale
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 9c.22 | Aprire la modale | Prima il verdetto, poi le 4 metriche, poi il piano; nessun numero fittizio dove il server non ha risposto (si vede `—`) |
+| 9c.23 | "Raw explain output" | Si espande il JSON grezzo, scrollabile |
+| 9c.24 | Copy | Toast di conferma, incollando si ottiene il JSON completo |
+| 9c.25 | ESC / bottone Close / X | Chiudono solo la modale, non la tab |
+| 9c.26 | Alt+Enter con la modale aperta | **Non** riesegue la query dietro |
+| 9c.27 | Con la modale aperta, premere Canc o Ctrl+D nella tab Documents | Non succede nulla (le scorciatoie della vista sono sospese) |
+| 9c.28 | Cambiare tema con la modale aperta | Verdetto, metriche e piano seguono il tema (verde/giallo/rosso leggibili in tutti e quattro) |
+| 9c.29 | Mongo fermo (`docker stop boxy-mongo`) → Explain | Messaggio d'errore nella modale, nessun crash |
+
+---
+
 ## 10. Test: Indexes
 
 Aprire tab Indexes su `testdb.users`:

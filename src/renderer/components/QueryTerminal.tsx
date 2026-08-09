@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import MonacoQueryEditor, { MonacoThemeName } from './MonacoQueryEditor';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
+import ExplainModal from './ExplainModal';
 import Icon from './Icon';
 import { showAlert } from '../dialog';
 import { previewLabel } from '../utils/queryHistory';
@@ -108,6 +109,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
   };
 
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showExplain, setShowExplain] = useState(false);
 
   // The rows are already in the renderer, so they go to main as they are; only
   // the formatting and the file write happen over there.
@@ -128,9 +130,9 @@ export default function QueryTerminal({ connectionId, database, collection, resu
   // Monaco binds Alt+Enter itself; this covers the rest of the pane (results,
   // toolbar, wherever the focus happens to be).
   useEffect(() => {
-    if (!active) return;
+    if (!active || showExplain) return;
     return onRunKey(e => { e.preventDefault(); handleRun(); });
-  }, [active, query, connectionId, database, collection]);
+  }, [active, showExplain, query, connectionId, database, collection]);
 
   const handleClear = () => {
     setResult([]);
@@ -150,9 +152,24 @@ export default function QueryTerminal({ connectionId, database, collection, resu
       {exportMenu && (
         <ContextMenu x={exportMenu.x} y={exportMenu.y} items={exportItems()} onClose={() => setExportMenu(null)} />
       )}
+      {showExplain && (
+        <ExplainModal
+          what="query"
+          namespace={`${database}.${collection}`}
+          load={() => (window as any).electron.invoke('explain-query', connectionId, database, collection, query)}
+          onClose={() => setShowExplain(false)}
+        />
+      )}
       <div className="toolbar">
         <button onClick={handleRun} disabled={loading}>
           {loading ? 'Running...' : '▶ Run Query'}
+        </button>
+        <button
+          className="secondary"
+          onClick={() => setShowExplain(true)}
+          title="Explain this query — index usage, documents examined, timings"
+        >
+          <Icon name="plan" size={13} /> Explain
         </button>
         <button className="secondary" onClick={handleClear}>Clear</button>
         <button
