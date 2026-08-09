@@ -39,6 +39,15 @@ db.orders.insertMany([
   { userId: "Alice", total: 200.0, items: 5, status: "paid" },
 ])
 db.big.insertMany(Array.from({length: 250}, (_,i) => ({ i, name: `n${i}`, grp: i % 5 })))
+// 50k documenti: serve per export, drop con conteggi stimati, schema explorer
+// e soprattutto per i test di virtualizzazione (sezione 6c)
+for (let b = 0; b < 50; b++) {
+  db.logs.insertMany(Array.from({length: 1000}, (_,i) => {
+    const n = b * 1000 + i
+    return { n, level: ["info","warn","error"][n % 3], msg: `log message ${n}`,
+             at: new Date(Date.now() - n * 1000), meta: { host: `h${n % 7}`, pid: 1000 + (n % 50) } }
+  }))
+}
 use otherdb
 db.notes.insertOne({ text: "hello" })
 EOF
@@ -173,6 +182,38 @@ Aprire `testdb.users` (Table view salvo dove indicato):
 | 6b.16d | Chip di sort in toolbar | Mostra `campo ↑ ASC`; tooltip con verso e "click to remove" |
 | 6b.16 | Con `email` nascosto: doppio click su una riga → Edit | L'editor mostra il documento **intero**, `email` compresa (riletto per `_id`); salvando non si perde nulla. Idem F3/View e "Add field" |
 | 6b.17 | Con `email` nascosto: Ctrl+C su una riga, poi Ctrl+V | La copia contiene solo i campi visibili — il paste crea documenti senza `email` (comportamento voluto: si copia ciò che si vede) |
+
+### 6c. Collezioni grandi — virtualizzazione delle righe
+
+Aprire `testdb.logs` (50k documenti). Solo le righe vicine al viewport stanno nel
+DOM: sotto le 200 righe non cambia nulla, sopra parte il windowing.
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 6c.1 | Limit = 5000 → Run, Tree view | Carica in un attimo e resta reattivo; nessun freeze della finestra durante il render |
+| 6c.2 | Scroll fino in fondo alla pagina (Tree) | Scorre fluido, la scrollbar copre tutte le 5000 righe (non "salta" né si accorcia) |
+| 6c.3 | Con DevTools aperti (`npm run dev`), ispezionare `.tree-view-container` | Poche decine di `.doc-tree-row`, più uno o due `div.doc-spacer` alti migliaia di px al posto delle righe non renderizzate |
+| 6c.4 | Switch a Table view, scroll su e giù | Header sticky sempre visibile; le colonne **non** cambiano larghezza mentre si scorre (layout fisso attivo sopra le 200 righe) |
+| 6c.5 | Table view con molti campi → scroll orizzontale | Funziona come prima; le celle non vanno a capo |
+| 6c.6 | Table view: ispezionare `tbody` | Poche decine di `tr`, più `tr.doc-spacer-row` in cima e in fondo |
+| 6c.7 | Click su header `n` per ordinare, con limit 5000 | Riordina server-side e torna a pagina 1; la lista resta reattiva |
+| 6c.8 | Tree view: espandere un documento, scorrere via e tornare indietro | Il documento è di nuovo chiuso (la riga è stata smontata) — atteso |
+| 6c.9 | Tree view: toolbar "Expand all", poi scorrere in una zona mai vista | Anche le righe nuove arrivano già espanse (il tick viene riapplicato al mount) |
+| 6c.10 | Svuotare il campo Limit | Torna a 1, non a 0 (`limit: 0` per MongoDB significa "nessun limite") |
+| 6c.11 | Limit = 20 → Run | Nessuna differenza rispetto a prima: niente spacer, colonne di nuovo auto-dimensionate |
+
+**Selezione mentre si è scrollati** (Table view, `testdb.logs`, limit 5000):
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 6c.12 | Checkbox nell'header | "5000 selected" nella barra bulk e nella status bar, anche se in pagina ci sono ~25 righe |
+| 6c.13 | Ctrl+A | Idem: seleziona tutta la pagina, non solo le righe montate |
+| 6c.14 | Click sulla riga 3, scroll di ~2000 righe, shift+click su una riga visibile | Selezionato tutto l'intervallo (il contatore lo dice), comprese le migliaia di righe mai renderizzate |
+| 6c.15 | Con quella selezione: Ctrl+C, poi incollare in un editor | JSON con **tutti** i documenti dell'intervallo, in ordine di indice |
+| 6c.16 | Deselect all, poi selezionare ~5 righe sparse con Ctrl+click scrollando | Le righe restano evidenziate tornando indietro; il contatore è corretto |
+| 6c.17 | Selezione multipla → Delete (o tasto Del) | Chiede conferma con il numero giusto e cancella tutti i documenti scelti |
+| 6c.18 | Tasto destro su una riga in mezzo alla lista scrollata | Menu contestuale sul documento giusto (View/Edit aprono quello, non il primo della pagina) |
+| 6c.19 | Selezionare 1 riga scrollati, F3 e Ctrl+J | Aprono view/edit del documento selezionato |
 
 ---
 
@@ -622,7 +663,14 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 npm test
 ```
 
-Coprono: `serializeDoc` (12 tests), `buildFilter` + `detectType` (24 tests).
+Coprono `serializeDoc`, `buildFilter`/`detectType`, gli util del renderer e diversi
+componenti. La virtualizzazione della lista documenti è coperta su due livelli:
+`virtualList.test.ts` per la matematica pura della finestra (quali indici sono
+visibili, clamping ai due estremi, lista vuota) e `DocumentsView.test.tsx` per il
+windowing vero — jsdom non ha layout, quindi i test montano un finto viewport;
+senza di quello il virtualizzatore degrada a "renderizza tutto", che è ciò che
+tiene in piedi gli altri test del file. Restano manuali le voci della 6c che
+riguardano fluidità e resa visiva.
 
 ### Tests da aggiungere (raccomandato, non incluso)
 

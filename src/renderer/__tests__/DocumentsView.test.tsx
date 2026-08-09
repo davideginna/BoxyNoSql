@@ -1,9 +1,9 @@
 // `src/test/setup.ts` loads the matchers at runtime, but it sits outside
 // tsconfig.json's `src/renderer` include — this import is what types them.
 import '@testing-library/jest-dom/vitest';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
-import DocumentsView from '../components/DocumentsView';
+import DocumentsView, { TABLE_ROW_ESTIMATE, TREE_ROW_ESTIMATE } from '../components/DocumentsView';
 
 const OID = 'a'.repeat(24);
 const DOC = { _id: { $oid: OID }, name: 'alpha', nested: { a: 1, b: 2 } };
@@ -22,6 +22,13 @@ const EXPECTED_JSON = [
 
 // Mutable so a test can pretend the collection is bigger than one page.
 let docTotal = 1;
+// How many documents the fake collection holds; a page is capped by the limit.
+// Document 0 is always DOC, so the single-document tests read the same.
+let docCount = 1;
+
+const oidAt = (i: number) => (i === 0 ? OID : i.toString(16).padStart(24, '0'));
+const docAt = (i: number) =>
+  i === 0 ? DOC : { ...DOC, _id: { $oid: oidAt(i) }, name: `row-${i}` };
 
 // args after the channel: (connectionId, db, collection, filter, limit, skip, sort, projection)
 const invoke = vi.fn(async (channel: string, ...args: any[]) => {
@@ -31,16 +38,21 @@ const invoke = vi.fn(async (channel: string, ...args: any[]) => {
   // Apply the exclusion projection the way the real handler does, so a test can
   // tell a projected row apart from the stored document.
   const projection = args[7];
-  const doc = projection
-    ? Object.fromEntries(Object.entries(DOC).filter(([k]) => !(k in projection)))
-    : DOC;
-  return { docs: [doc], total: docTotal };
+  const limit = Math.max(1, Number(args[4]) || 1);
+  const docs = Array.from({ length: Math.min(docCount, limit) }, (_, i) => {
+    const doc = docAt(i);
+    return projection
+      ? Object.fromEntries(Object.entries(doc).filter(([k]) => !(k in projection)))
+      : doc;
+  });
+  return { docs, total: docTotal };
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   docTotal = 1;
+  docCount = 1;
   (window as any).electron = { on: () => () => {}, invoke };
 });
 
@@ -507,5 +519,209 @@ describe('DocumentsView — bulk field edit', () => {
     fireEvent.click((await screen.findAllByRole('checkbox'))[0]);
 
     expect(screen.getByRole('button', { name: /Edit field/ })).toBeDisabled();
+  });
+});
+
+/**
+ * jsdom has no layout engine: every element reports a height of zero, which is
+ * exactly the case the virtualizer degrades on — it renders every row. That
+ * degrade path is what keeps the other tests in this file working, and the
+ * first test below pins it. The rest need windowing to actually engage, so
+ * `fakeLayout` hands jsdom a viewport, a row height and a working `scrollTop`.
+ */
+// The faked rows are exactly as tall as the component assumes an unmeasured row
+// to be, so a filler standing in for rows that were never rendered is the same
+// size as the rows themselves and the assertions can be exact.
+const ROW_H = TABLE_ROW_ESTIMATE;
+const VIEWPORT = 480;
+
+function fakeLayout() {
+  const scrollTops = new WeakMap<Element, number>();
+  const saved = {
+    clientHeight: Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!,
+    offsetHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!,
+    scrollTop: Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')!,
+    rect: HTMLElement.prototype.getBoundingClientRect,
+  };
+
+  Object.defineProperty(Element.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: Element) {
+      const scroller = this.classList.contains('document-table')
+        || this.classList.contains('tree-view-container');
+      return scroller ? VIEWPORT : 0;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (this.classList.contains('doc-tree-row')) return TREE_ROW_ESTIMATE;
+      return this.tagName === 'TR' ? ROW_H : 0;
+    },
+  });
+  Object.defineProperty(Element.prototype, 'scrollTop', {
+    configurable: true,
+    get(this: Element) { return scrollTops.get(this) ?? 0; },
+    set(this: Element, v: number) { scrollTops.set(this, v); },
+  });
+  // The scroller is pinned at the top of the viewport; everything inside it
+  // rides its scroll offset, which is how the hook works out where row 0 is.
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const scroller = this.closest('.document-table, .tree-view-container');
+    const top = !scroller || scroller === this ? 0 : -(scroller as HTMLElement).scrollTop;
+    return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON() {} } as DOMRect;
+  };
+
+  return () => {
+    Object.defineProperty(Element.prototype, 'clientHeight', saved.clientHeight);
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', saved.offsetHeight);
+    Object.defineProperty(Element.prototype, 'scrollTop', saved.scrollTop);
+    HTMLElement.prototype.getBoundingClientRect = saved.rect;
+  };
+}
+
+const PAGE = 500;
+
+// Raising the limit is what makes a page big enough to need windowing, so the
+// tests go through the toolbar input rather than seeding state behind it.
+const runWithLimit = async (n: number) => {
+  fireEvent.change(screen.getByTitle(/Documents per page/), { target: { value: String(n) } });
+  fireEvent.click(screen.getAllByRole('button', { name: /Run/ })[0]);
+  await waitFor(() => expect(lastLoad()[5]).toBe(n));
+};
+
+describe('DocumentsView — long result sets', () => {
+  beforeEach(() => { docCount = 5000; docTotal = 5000; });
+
+  const dataRows = (c: HTMLElement) => c.querySelectorAll('tbody tr:not(.doc-spacer-row)');
+  const spacerPx = (c: HTMLElement) =>
+    [...c.querySelectorAll('.doc-spacer-row td, .doc-spacer')]
+      .reduce((sum, el) => sum + parseFloat((el as HTMLElement).style.height || '0'), 0);
+
+  it('renders every row when there is no viewport to measure', async () => {
+    // No `fakeLayout` here: this is plain jsdom, and a mounted-but-hidden tab
+    // looks the same. Windowing against a zero height would mount nothing.
+    const { container } = view();
+    await showTable();
+    await runWithLimit(PAGE);
+
+    await waitFor(() => expect(dataRows(container)).toHaveLength(PAGE));
+    expect(spacerPx(container)).toBe(0);
+  });
+
+  describe('with a measurable viewport', () => {
+    let restore: () => void;
+    beforeEach(() => { restore = fakeLayout(); window.confirm = () => true; });
+    afterEach(() => restore());
+
+    const bigTable = async () => {
+      const rendered = view();
+      await showTable();
+      await runWithLimit(PAGE);
+      await waitFor(() => expect(dataRows(rendered.container).length).toBeLessThan(PAGE));
+      return rendered.container;
+    };
+
+    const scrollTo = (container: HTMLElement, y: number) => {
+      const scroller = container.querySelector('.document-table, .tree-view-container') as HTMLElement;
+      scroller.scrollTop = y;
+      fireEvent.scroll(scroller);
+    };
+
+    it('keeps only the rows near the viewport in the DOM', async () => {
+      const container = await bigTable();
+
+      // 480px of viewport at 28px a row is 18 rows, plus the overscan.
+      expect(dataRows(container).length).toBeGreaterThanOrEqual(18);
+      expect(dataRows(container).length).toBeLessThan(50);
+      expect(screen.getByText('alpha')).toBeInTheDocument();
+      expect(screen.queryByText('row-400')).toBeNull();
+    });
+
+    it('stands in for the rows it left out, so the scrollbar still spans the page', async () => {
+      const container = await bigTable();
+      expect(spacerPx(container) + dataRows(container).length * ROW_H).toBe(PAGE * ROW_H);
+    });
+
+    it('swaps in the rows around a new scroll offset', async () => {
+      const container = await bigTable();
+      scrollTo(container, 200 * ROW_H);
+
+      expect(screen.getByText('row-200')).toBeInTheDocument();
+      expect(screen.queryByText('alpha')).toBeNull();
+      expect(spacerPx(container) + dataRows(container).length * ROW_H).toBe(PAGE * ROW_H);
+    });
+
+    it('selects the whole page from the header checkbox, not just what is mounted', async () => {
+      const container = await bigTable();
+      expect(dataRows(container).length).toBeLessThan(PAGE);
+
+      fireEvent.click(screen.getAllByRole('checkbox')[0]);
+      expect(screen.getByText(`${PAGE} selected`)).toBeInTheDocument();
+    });
+
+    it('selects the whole page on Ctrl+A too', async () => {
+      await bigTable();
+      fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+      expect(screen.getByText(`${PAGE} selected`)).toBeInTheDocument();
+    });
+
+    it('shift-clicks a range across rows that were never mounted', async () => {
+      const container = await bigTable();
+      fireEvent.click(screen.getByText('row-5').closest('tr')!);
+      expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+      scrollTo(container, 333 * ROW_H);
+      // Row 5 is long gone from the DOM; the range is still 5…340 because
+      // selection is keyed by the index into `documents`.
+      expect(screen.queryByText('row-5')).toBeNull();
+      fireEvent.click(screen.getByText('row-340').closest('tr')!, { shiftKey: true });
+
+      expect(screen.getByText('336 selected')).toBeInTheDocument();
+    });
+
+    it('copies every selected document, mounted or not', async () => {
+      const writeText = vi.fn();
+      Object.assign(navigator, { clipboard: { writeText } });
+      const container = await bigTable();
+
+      fireEvent.click(screen.getAllByRole('checkbox')[0]);
+      fireEvent.click(within(container.querySelector('.bulk-action-bar') as HTMLElement)
+        .getByRole('button', { name: /Copy/ }));
+
+      expect(JSON.parse(writeText.mock.calls[0][0])).toHaveLength(PAGE);
+    });
+
+    it('deletes every selected document, mounted or not', async () => {
+      const container = await bigTable();
+      fireEvent.click(screen.getAllByRole('checkbox')[0]);
+      fireEvent.click(within(container.querySelector('.bulk-action-bar') as HTMLElement)
+        .getByRole('button', { name: /Delete/ }));
+
+      await waitFor(() =>
+        expect(invoke.mock.calls.filter(c => c[0] === 'delete-document')).toHaveLength(PAGE));
+    });
+
+    it('windows the tree view as well, where rows are not all the same height', async () => {
+      const { container } = view();
+      await loaded();
+      await runWithLimit(PAGE);
+      await waitFor(() =>
+        expect(container.querySelectorAll('.doc-tree-row').length).toBeLessThan(PAGE));
+
+      expect(container.querySelectorAll('.doc-tree-row').length)
+        .toBeGreaterThanOrEqual(Math.floor(VIEWPORT / TREE_ROW_ESTIMATE));
+      fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+      expect(screen.getByText(`${PAGE} selected`)).toBeInTheDocument();
+    });
+
+    it('leaves a short page alone — no windowing, no fillers', async () => {
+      docCount = 20; docTotal = 20;
+      const { container } = view();
+      await showTable();
+
+      expect(dataRows(container)).toHaveLength(20);
+      expect(container.querySelector('.document-table')).not.toHaveClass('windowed');
+    });
   });
 });
