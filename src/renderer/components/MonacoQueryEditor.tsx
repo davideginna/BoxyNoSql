@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution';
 import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
+import 'monaco-editor/esm/vs/language/json/monaco.contribution';
 
 // Register completions once per process
 let completionsRegistered = false;
+let jsonCompletionsRegistered = false;
 
 const COLLECTION_METHODS: { name: string; snippet: string; doc: string }[] = [
   { name: 'find',              snippet: 'find(${1:{}})',                                     doc: 'Cursor for matching documents.' },
@@ -40,6 +42,54 @@ const OPERATORS: string[] = [
   '$set','$unset','$inc','$push','$pull','$addToSet','$rename',
   '$match','$project','$group','$sort','$limit','$skip','$unwind','$lookup','$addFields','$facet','$count',
 ];
+
+/** Expression operators worth suggesting inside a pipeline stage body. */
+const STAGE_OPERATORS: string[] = [
+  '$match', '$project', '$group', '$sort', '$limit', '$skip', '$unwind', '$lookup',
+  '$addFields', '$set', '$unset', '$replaceRoot', '$facet', '$count', '$sortByCount',
+  '$bucket', '$sample', '$geoNear', '$graphLookup', '$merge', '$out',
+  '$sum', '$avg', '$min', '$max', '$first', '$last', '$push', '$addToSet',
+  '$concat', '$toUpper', '$toLower', '$substr', '$size', '$arrayElemAt', '$ifNull',
+  '$cond', '$switch', '$dateToString', '$year', '$month', '$dayOfMonth',
+  '$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$type',
+  '$regex', '$options', '$and', '$or', '$nor', '$not', '$expr',
+];
+
+/**
+ * Completions for a pipeline stage body, which is plain JSON — no `db.` chain,
+ * so the javascript provider above would only get in the way. Fields are
+ * offered both bare (as a key) and `$`-prefixed (as a field reference).
+ */
+function registerJsonCompletions() {
+  if (jsonCompletionsRegistered) return;
+  jsonCompletionsRegistered = true;
+
+  monaco.languages.registerCompletionItemProvider('json', {
+    triggerCharacters: ['$', '"', '{', ':', ' '],
+    provideCompletionItems: (model, position) => {
+      const word = model.getWordUntilPosition(position);
+      const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+      return {
+        suggestions: STAGE_OPERATORS.map(op => ({
+          label: op,
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: op,
+          documentation: `MongoDB operator ${op}`,
+          range,
+        })),
+      };
+    },
+  });
+
+  // The stage bodies are hand-written JSON: keep the syntax errors, drop the
+  // schema noise Monaco would otherwise invent.
+  monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+    validate: true,
+    allowComments: false,
+    schemas: [],
+    enableSchemaRequest: false,
+  });
+}
 
 function registerCompletions() {
   if (completionsRegistered) return;
@@ -126,6 +176,9 @@ interface Props {
   onRun?: () => void;
   theme?: MonacoThemeName;
   collectionSample?: string[];
+  /** `json` for an aggregation stage body, `javascript` for the query terminal. */
+  language?: 'javascript' | 'json';
+  lineNumbers?: boolean;
 }
 
 export type MonacoThemeName = 'vs-dark' | 'vs' | 'hc-black' | 'boxy-solarized';
@@ -163,7 +216,10 @@ function ensureSolarizedTheme() {
   });
 }
 
-export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-dark', collectionSample }: Props) {
+export default function MonacoQueryEditor({
+  value, onChange, onRun, theme = 'vs-dark', collectionSample,
+  language = 'javascript', lineNumbers = true,
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -172,12 +228,12 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
   onRunRef.current = onRun;
 
   useEffect(() => {
-    registerCompletions();
+    if (language === 'json') registerJsonCompletions(); else registerCompletions();
     ensureSolarizedTheme();
     if (!hostRef.current) return;
     const editor = monaco.editor.create(hostRef.current, {
       value,
-      language: 'javascript',
+      language,
       theme,
       automaticLayout: true,
       minimap: { enabled: false },
@@ -189,7 +245,12 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
       quickSuggestions: { other: true, comments: false, strings: true },
       suggestOnTriggerCharacters: true,
       acceptSuggestionOnEnter: 'on',
-      lineNumbers: 'on',
+      lineNumbers: lineNumbers ? 'on' : 'off',
+      // A stage body is a few lines in a small box: give it back the gutter room.
+      folding: lineNumbers,
+      lineDecorationsWidth: lineNumbers ? undefined : 4,
+      lineNumbersMinChars: lineNumbers ? 3 : 0,
+      padding: { top: 6, bottom: 6 },
     });
     editorRef.current = editor;
 
@@ -197,8 +258,11 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
       onChangeRef.current(editor.getValue());
     });
 
-    // Ctrl+Enter → run (use latest onRun via ref)
+    // Alt+Enter and Ctrl+Enter → run (use latest onRun via ref)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      onRunRef.current?.();
+    });
+    editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
       onRunRef.current?.();
     });
     // Ctrl+Space → trigger suggestion
@@ -213,7 +277,7 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
         e.stopPropagation();
         editor.focus();
         editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
-      } else if (e.ctrlKey && e.key === 'Enter') {
+      } else if ((e.ctrlKey || e.altKey) && e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
         onRunRef.current?.();
@@ -243,24 +307,33 @@ export default function MonacoQueryEditor({ value, onChange, onRun, theme = 'vs-
   // Sample-field completions (per-collection)
   useEffect(() => {
     if (!collectionSample || collectionSample.length === 0) return;
-    const disposable = monaco.languages.registerCompletionItemProvider('javascript', {
+    const disposable = monaco.languages.registerCompletionItemProvider(language, {
       triggerCharacters: ['"', "'"],
       provideCompletionItems: (model, position) => {
         const word = model.getWordUntilPosition(position);
         const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
-        return {
-          suggestions: collectionSample.map(f => ({
-            label: f,
+        const suggestions = collectionSample.map(f => ({
+          label: f,
+          kind: monaco.languages.CompletionItemKind.Field,
+          insertText: f,
+          documentation: 'Field from sample document',
+          range,
+        }));
+        // In a stage body a field is usually referenced as "$field".
+        if (language === 'json') {
+          collectionSample.forEach(f => suggestions.push({
+            label: `$${f}`,
             kind: monaco.languages.CompletionItemKind.Field,
-            insertText: f,
-            documentation: 'Field from sample document',
+            insertText: `$${f}`,
+            documentation: 'Field reference in a pipeline expression',
             range,
-          })),
-        };
+          }));
+        }
+        return { suggestions };
       },
     });
     return () => disposable.dispose();
-  }, [collectionSample?.join('|')]);
+  }, [collectionSample?.join('|'), language]);
 
   return <div ref={hostRef} style={{ width: '100%', height: '100%', minHeight: 0 }} />;
 }

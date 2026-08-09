@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { showConfirm } from '../dialog';
 import Icon from './Icon';
+import { onEscape } from '../utils/keys';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -49,11 +50,7 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
     onClose();
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); attemptClose(); } };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  });
+  useEffect(() => onEscape(() => attemptClose()));
 
   const createUser = async () => {
     if (!newUser.username || !newUser.password) return;

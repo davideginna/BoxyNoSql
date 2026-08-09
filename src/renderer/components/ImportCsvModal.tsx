@@ -3,6 +3,7 @@ import Icon from './Icon';
 import {
   CsvColumnMapping, CsvFieldType, buildCsvDocuments, guessCsvColumnType,
 } from '../utils/fileImport';
+import { onEscape, SWALLOW_ESCAPE } from '../utils/keys';
 
 const TYPE_OPTIONS: { value: CsvFieldType; label: string }[] = [
   { value: 'string', label: 'String' },
@@ -32,11 +33,9 @@ export default function ImportCsvModal({ fileName, headers, rows, defaultColName
   );
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, busy]);
+  // Not while an import is running: cancelling mid-write would leave half a
+  // collection behind with no way to tell how much landed.
+  useEffect(() => onEscape(busy ? SWALLOW_ESCAPE : onClose), [onClose, busy]);
 
   const activeCount = mapping.filter(m => m.type !== 'skip' && m.field.trim()).length;
   const preview = useMemo(() => rows.slice(0, PREVIEW_ROWS), [rows]);

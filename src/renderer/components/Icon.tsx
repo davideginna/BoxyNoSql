@@ -8,7 +8,8 @@ export type IconName =
   | 'save' | 'user' | 'eye' | 'tree' | 'moon' | 'sun' | 'bolt' | 'wave'
   | 'gear' | 'warn' | 'expand' | 'menu' | 'refresh' | 'close' | 'check'
   | 'chevronRight' | 'chevronDown' | 'arrowUp' | 'arrowDown' | 'arrowRight'
-  | 'expandAll' | 'collapseAll' | 'filter' | 'info' | 'download' | 'keyboard';
+  | 'expandAll' | 'collapseAll' | 'filter' | 'info' | 'download' | 'keyboard'
+  | 'columns' | 'history';
 
 const P: Record<IconName, React.ReactNode> = {
   database: (<>
@@ -120,6 +121,14 @@ const P: Record<IconName, React.ReactNode> = {
     <line x1="6" y1="10" x2="6" y2="10" /><line x1="10" y1="10" x2="10" y2="10" />
     <line x1="14" y1="10" x2="14" y2="10" /><line x1="18" y1="10" x2="18" y2="10" />
     <line x1="6" y1="14" x2="18" y2="14" />
+  </>),
+  history: (<>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><polyline points="3 3 3 8 8 8" />
+    <polyline points="12 7 12 12 15 14" />
+  </>),
+  columns: (<>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" />
   </>),
 };
 

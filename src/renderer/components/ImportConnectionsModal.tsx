@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon from './Icon';
 import { ImportedConnection } from '../utils/uriImport';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
+import { isEscapeKey } from '../utils/keys';
 
 interface Props {
   items: ImportedConnection[];
@@ -31,7 +32,7 @@ export default function ImportConnectionsModal({ items, fileName, existingUris, 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e) && !busy) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, busy]);

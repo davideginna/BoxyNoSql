@@ -9,15 +9,22 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Database/collection tree view with search
 - ✅ Document viewer (tree + table), multi-select, bulk copy/paste/delete
 - ✅ Paginated document browsing with configurable limit
+- ✅ Server-side sort (click a column, shift-click for a second key) and per-collection field visibility
+- ✅ Query history per collection (filters, queries, pipelines) with named saved queries, kept across restarts
+- ✅ Pinned collections, restored last session, connection health with auto-reconnect
+- ✅ Shortcut cheat sheet (F1), guided welcome screen, connection clone, CSV/TSV import
 - ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)`
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
-- ✅ Aggregation pipeline builder
+- ✅ Aggregation pipeline builder with a Monaco editor per stage, completions, stage templates and a document counter per stage
 - ✅ Index management (create/drop) with usage stats
 - ✅ Collection stats
+- ✅ Copy a collection or a whole database across connections, with a confirmation naming both ends and an automatic refresh of the target
 - ✅ Import from JSON / NDJSON at three levels (document, collection, full database)
-- ✅ Export JSON/CSV
+- ✅ Export to JSON / NDJSON / CSV through a native save dialog: the current filtered+sorted view, the whole collection, or a query/aggregation result
 - ✅ User/role management per database
 - ✅ Per-tab persistent state: switching between collections/views keeps filters and results
+- ✅ Read-only connections: a per-connection flag that refuses every write in the main process, not just in the UI
+- ✅ Typed confirmation on drop/clear: retype the name, with the document count shown up front
 - ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊
 
 ## Screenshots
@@ -36,30 +43,18 @@ Planned, not shipped. 🔥 = high impact, low effort.
 
 ### Productivity
 
-- 🔥 **Sort and project the document list** — click a column to sort and choose which fields to show, instead of always getting insertion order and every field
-- 🔥 **Query history and saved queries** — every query, filter and pipeline you run kept per collection, with the good ones nameable and reusable across restarts
-- 🔥 **A real editor for aggregation stages** — the Monaco editor, highlighting and completions the query terminal already has, plus the document count each stage returns
 - ⬜ **Explain plan** — run `explain()` on the current query or pipeline and see index usage, documents examined and stage timings
 - ⬜ **Command palette (Ctrl+P)** — jump to any database, collection or action by typing its name, without walking the tree
 - ⬜ **Bulk field edit** — set, rename or unset a field on the whole selection instead of opening documents one at a time
 
 ### Data & safety
 
-- 🔥 **Export what you are looking at** — export the current filter, query or aggregation result through a native save dialog, not only the entire collection
-- 🔥 **Typed confirmation on destructive actions** — drop and clear ask you to type the name and show how many documents are about to go
-- ⬜ **Read-only connections** — a per-connection flag that disables every write, so a production server is safe to browse
 - ⬜ **Schema explorer** — sample a collection and list every field with its types, how many documents have it, and example values
-- ⬜ **CSV import** — import CSV/TSV with a column-to-field mapping step, alongside the existing JSON and NDJSON
-- ⬜ **One `npm run check` and tests beyond the utils** — typecheck main and renderer plus lint in a single command, with view-level tests, so refactors stop shipping silent regressions
+- ⬜ **Lint** — `npm run check` typechecks main + renderer and runs the tests; a linter is still missing from it
 
 ### Comfort & discoverability
 
-- 🔥 **Shortcut cheat sheet (F1)** — around twenty shortcuts already exist and nothing lists them; one searchable overlay does
-- ⬜ **Reopen the last session** — reconnect the servers and restore the tabs that were open when the app closed
 - ⬜ **Large collections without the freeze** — virtualized rows and streamed pages so a big result set scrolls instead of locking the UI
-- ⬜ **Pinned collections** — keep the handful you actually work on at the top of the tree
-- ⬜ **Connection health and auto-reconnect** — show when a server has dropped and reconnect on the next action instead of failing with "Not connected"
-- ⬜ **Guided first run** — the empty welcome screen offers "add a connection" and a one-click `mongodb://localhost:27017`
 
 ## Install
 
@@ -72,7 +67,12 @@ npm install
 ```bash
 npm run dev    # start Vite + tsc watchers
 npm start      # open Electron (after dev server is up)
+npm run check  # typecheck main + renderer, then run the tests
 ```
+
+### Keyboard
+
+`Esc` cancels the innermost thing open, everywhere. `Alt+Enter` runs the current filter, query or pipeline (`Ctrl+Enter` also works in the editors). `F1` lists every other shortcut.
 
 ## Build
 

@@ -1,7 +1,7 @@
 {
   "name": "boxynosql",
   "version": "1.4.2",
-  "description": "BoxyNoSql — desktop NoSQL GUI client",
+  "description": "BoxyNoSql \u2014 desktop NoSQL GUI client",
   "homepage": "https://github.com/davideginna/BoxyNoSql",
   "author": "Davide Ginnasio",
   "license": "MIT",
@@ -20,6 +20,9 @@
     "electron:build:dir": "npm run build && electron-builder --dir",
     "start": "electron .",
     "test": "vitest run --reporter=verbose",
+    "check": "npm run typecheck:main && npm run typecheck:renderer && vitest run",
+    "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
+    "typecheck:renderer": "tsc -p tsconfig.json",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

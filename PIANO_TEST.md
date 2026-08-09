@@ -147,6 +147,33 @@ Aprire `testdb.users`:
 | 6.16 | Preview query → ⛶ expand | Modal mostra JSON completo, `📋 Copy` copia in clipboard |
 | 6.17 | Reset | Pulisce conditions |
 
+### 6b. Sort e visibilità campi
+
+Aprire `testdb.users` (Table view salvo dove indicato):
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 6b.1 | Click header `age` | Freccia ↑ sull'header, docs ordinati crescente su tutta la collection (non solo la pagina) |
+| 6b.2 | Click di nuovo su `age` | Freccia ↓, ordine decrescente |
+| 6b.3 | Terzo click su `age` | Nessuna freccia, torna all'ordine naturale |
+| 6b.4 | Click `name`, poi shift-click `age` | Due chip in toolbar `name ↑` e `age ↑`, header numerati 1 e 2, ordinamento a due chiavi |
+| 6b.5 | Shift-click `name` due volte | `name` diventa ↓ poi sparisce, `age` resta |
+| 6b.6 | Click su una chip in toolbar | Rimuove quella chiave di sort |
+| 6b.7 | Su `testdb.big` andare a pag. 3, poi click su un header | Torna a pag. 1 (il risultato riordinato è un'altra pagina) |
+| 6b.8 | Toolbar → Fields → togliere spunta a `email` | Colonna sparisce, bottone mostra "Fields (1 hidden)" |
+| 6b.9 | Riaprire Fields | `email` ancora in lista, barrato e non spuntato — si può riattivare |
+| 6b.10 | Checkbox di `_id` | Disabilitata (edit/delete la usano) |
+| 6b.11 | Cambiare collection e tornare su `users` | `email` ancora nascosto (persistito per collection in `localStorage.hiddenFields`) |
+| 6b.12 | Riavviare l'app, riaprire `users` | `email` ancora nascosto; sort invece azzerato |
+| 6b.13 | Fields → frecce ↑/↓ su un campo in Tree view | Ordina anche senza header (unica UI di sort in tree) |
+| 6b.14 | Fields → "Show all" / "Clear sort" | Ripristinano tutte le colonne / rimuovono ogni chiave |
+| 6b.15 | Click fuori dal popover Fields, poi Esc | Si chiude in entrambi i casi |
+| 6b.16b | Header ordinato | Mostra freccia **e** la parola ASC/DESC; tooltip dice "Sorted ascending (A→Z · 1→9 · oldest first)" e cosa farà il prossimo click |
+| 6b.16c | Fields → bottoni ASC/DESC | Etichettati, quello attivo è pieno di accento; tooltip spiega il verso; riclick sulla stessa direzione toglie il sort |
+| 6b.16d | Chip di sort in toolbar | Mostra `campo ↑ ASC`; tooltip con verso e "click to remove" |
+| 6b.16 | Con `email` nascosto: doppio click su una riga → Edit | L'editor mostra il documento **intero**, `email` compresa (riletto per `_id`); salvando non si perde nulla. Idem F3/View e "Add field" |
+| 6b.17 | Con `email` nascosto: Ctrl+C su una riga, poi Ctrl+V | La copia contiene solo i campi visibili — il paste crea documenti senza `email` (comportamento voluto: si copia ciò che si vede) |
+
 ---
 
 ## 7. Test: Documents — CRUD + UX
@@ -194,6 +221,70 @@ Aprire tab Query su `testdb.users`:
 
 ---
 
+## 8b. Test: Query history e saved queries
+
+Vale per tre posti: Filter di Documents, Query Terminal, Aggregation Builder. Fare almeno il giro completo su uno e uno spot-check sugli altri due.
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 8b.1 | Run di 3 query diverse → bottone History | Sezione "Recent" con 3 righe, la più recente in cima, con "just now" |
+| 8b.2 | Rifare la stessa query e riaprire History | Nessun duplicato: la voce esistente risale in cima |
+| 8b.3 | Query con errore di sintassi → History | C'è lo stesso (registrata prima della chiamata, così si può ripescare e correggere) |
+| 8b.4 | Click su una voce | La query torna nell'editor / il filtro ripopola il builder e viene rieseguito |
+| 8b.5 | Icona 📌 su una voce → dare un nome | Passa in sezione "Saved", bottone diventa "History (1★)" |
+| 8b.6 | 📌 su una voce salvata | Riapre il dialog col nome corrente (rename) |
+| 8b.7 | Freccia ↓ su una salvata | Torna in "Recent" |
+| 8b.8 | Cestino su una salvata | Chiede conferma; su una non salvata elimina diretto |
+| 8b.9 | "Save current" senza aver premuto Run | Crea la voce dall'editor corrente e chiede il nome |
+| 8b.10 | Cambiare collection e aprire History | Lista vuota — la history è per collection |
+| 8b.11 | Riavviare l'app | Recent e Saved ancora lì (`localStorage.queryHistory`) |
+| 8b.12 | Fare più di 25 run diversi | Le più vecchie non salvate spariscono, le salvate restano |
+| 8b.13 | Due tab sulla stessa collection, run in entrambi | Nessuno dei due azzera la history dell'altro (rilettura da storage prima di ogni scrittura) |
+| 8b.14 | Click fuori dal popover / Esc | Si chiude |
+| 8b.15 | Aggregation: pipeline con uno stage a JSON rotto → Run → poi ripescarla | Torna identica a com'era scritta, JSON rotto compreso |
+
+---
+
+## 8c. Test: Export
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 8c.1 | Documents → Export | Menu con due gruppi: "Current view" e "Whole collection", 3 formati ciascuno |
+| 8c.2 | Filtro attivo + sort + un campo nascosto → Current view → JSON | Dialog nativo con nome tipo `users-filtered-<data>.json`; il file contiene **solo** i doc filtrati, nell'ordine del sort, senza il campo nascosto |
+| 8c.3 | Stesso stato → Whole collection → JSON | Tutti i doc, ordine naturale, tutti i campi; nome file senza `-filtered` |
+| 8c.4 | Annullare il dialog di salvataggio | Nessun file, nessun alert, nessun errore |
+| 8c.5 | Export NDJSON | Una riga JSON per documento, niente parentesi quadre |
+| 8c.6 | Export CSV su `users` (campi sparsi: `nickname` solo su alcuni) | Header con l'unione di tutti i campi; celle vuote dove il campo manca, righe non sfasate |
+| 8c.7 | CSV con valori contenenti virgole/virgolette/newline | Celle quotate, virgolette raddoppiate; riapribile in un foglio di calcolo |
+| 8c.8 | Export di `testdb.logs` (50k doc) in JSON | Completa senza freeze; il file è un array JSON valido (`jq . file > /dev/null`) |
+| 8c.9 | Export di una collection vuota, JSON | File con `[]`, non file rotto |
+| 8c.10 | Query Terminal senza risultati | Bottone Export disabilitato |
+| 8c.11 | Query Terminal con risultati → Export CSV | Esporta le righe mostrate; nome `<collection>-query-<data>.csv` |
+| 8c.12 | Aggregation con risultati → Export JSON | Nome `<collection>-aggregation-<data>.json`, contenuto = risultato della pipeline |
+| 8c.13 | Alert a fine export | Mostra il numero di documenti e il percorso del file |
+| 8c.14 | Export su un percorso non scrivibile (es. `/root/x.json`) | Banner d'errore in vista, niente crash |
+
+---
+
+## 8d. Test: Conferma digitata su drop/clear
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 8d.1 | Sidebar → collection `users` → Drop collection | Dialog con conteggio (`≈200 documents`) e campo "Type `users` to confirm"; bottone Drop disabilitato |
+| 8d.2 | Digitare `user` | Ancora disabilitato |
+| 8d.3 | Digitare `Users` (maiuscola) | Ancora disabilitato — il match è case-sensitive |
+| 8d.4 | Digitare `users` | Drop si abilita; Invio dal campo esegue |
+| 8d.5 | Esc dal campo / click fuori / Cancel | Chiude senza fare nulla |
+| 8d.6 | Riaprire il dialog dopo una conferma riuscita | Campo vuoto, bottone di nuovo disabilitato |
+| 8d.7 | Clear collection su `users` | Stesso flusso; il testo dice che la collection resta e il contenuto no |
+| 8d.8 | Drop database `testdb` | Conteggio con collection: `≈50,700 documents in 3 collections`; va digitato `testdb` |
+| 8d.9 | Clear database `testdb` | Stesso flusso |
+| 8d.10 | Drop su `testdb.logs` (50k) | Il dialog si apre subito: i conteggi sono stimati da metadata, non da un full scan |
+| 8d.11 | Staccare Mongo e provare un drop | Il dialog si apre lo stesso, senza riga di conteggio (il fallimento del conteggio non blocca la conferma) |
+| 8d.12 | Azioni non distruttive (rename, duplicate) | Nessun campo da digitare |
+
+---
+
 ## 9. Test: Aggregation Builder
 
 Aprire tab Aggregation su `testdb.orders`:
@@ -206,6 +297,16 @@ Aprire tab Aggregation su `testdb.orders`:
 | 9.4 | Rimuovi stage con × | Ricalcolo senza quello stage |
 | 9.5 | Stage con JSON invalido | Banner errore "Unexpected token" |
 | 9.6 | `$match` con `{"_id":{"$oid":"<valido>"}}` | **Verifica bug-fix:** pipeline round-trip funziona (oid convertito lato main) |
+| 9.7 | Editor di stage | È Monaco: colori, parentesi, Ctrl+Space suggerisce `$group`/`$sum`/…, Ctrl+Enter esegue |
+| 9.8 | Ctrl+Space dentro una stringa | Suggerisce i campi della collection, sia `status` sia `$status` |
+| 9.9 | Cambiare tipo stage con body ancora al template | Il body diventa il template del nuovo stage (`$limit` → `10`) |
+| 9.10 | Cambiare tipo stage con body modificato | Il body resta intatto |
+| 9.11 | JSON rotto in uno stage | Bordo rosso + messaggio sotto quello stage; Run rifiuta e dice quale stage |
+| 9.12 | Frecce su/giù nell'header stage | Riordina; la prima non ha "su", l'ultima non ha "giù" |
+| 9.13 | Run su `orders` con `$match`+`$group` | Ogni stage mostra i doc in uscita (es. 500 → 2) |
+| 9.14 | Modificare uno stage dopo il Run | I contatori spariscono (appartengono alla pipeline eseguita) |
+| 9.15 | Pipeline con `$out` | Lo stage `$out` e i successivi mostrano `—`, non vengono rieseguiti per contare |
+| 9.16 | Cambiare tema con l'editor aperto | Gli editor degli stage seguono il tema |
 
 ---
 
@@ -276,6 +377,73 @@ Riconnetti con URI auth. Apri 👤 su `testdb`:
 | 13.6 | Switch View per tab: Documents → Query → Aggregation | Tipo cambia in-place per quella tab |
 | 13.7 | Disconnect connessione | Tutti i tab di quella connessione chiudono |
 | 13.8 | Close tab attiva | Attiva switcha all'ultima rimasta |
+
+---
+
+## 13b. Test: Identità dei nodi in sidebar
+
+Servono **due connessioni verso server diversi con un db dallo stesso nome** (es. due container Mongo, entrambi con `testdb`).
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13b.1 | Connessione dentro una cartella | Accanto al nome compare il path cartella (📁 `cochise / svil`), troncato con ellissi se stretto |
+| 13b.2 | Hover sull'header connessione | Tooltip con `Connection:` / `Folder:` / `Server:` |
+| 13b.3 | Server con credenziali nell'URI | Il tooltip mostra `admin@localhost:27017` — **mai** la password |
+| 13b.4 | Hover su un database | Tooltip con connessione, cartella, server e `Database:` — i due `testdb` si distinguono |
+| 13b.5 | Hover su una collection | Aggiunge `Collection:` |
+| 13b.6 | Hover su una collection pinnata | Stesso tooltip completo |
+| 13b.7 | Connessione alla radice (nessuna cartella) | Nessun path inline, tooltip senza riga `Folder:` |
+
+---
+
+## 13c. Test: ESC, Alt+Enter, copia/incolla e read-only
+
+### ESC annulla ovunque
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13c.1 | Esc su ogni modale (connessione, manager, cartella, settings, about, shortcut, utenti, import, CSV, update) | Si chiude |
+| 13c.2 | Esc su un dialog di conferma aperto **sopra** un modale | Chiude solo la conferma, il modale resta |
+| 13c.3 | Esc durante un import in corso | Non chiude niente (né il modale né quello che sta sotto) |
+| 13c.4 | Esc sull'editor documento con modifiche | Chiede "Close without saving?" — stessa strada del bottone Cancel |
+| 13c.5 | Esc con la barra Find aperta nell'editor | Chiude prima la Find, un secondo Esc chiude l'editor |
+| 13c.6 | Esc su popover Fields / History / menu contestuale / modale Query preview | Si chiudono |
+
+### Alt+Enter esegue
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13c.7 | Documents: Alt+Enter mentre scrivi in un campo del filtro | Esegue la query |
+| 13c.8 | Query Terminal e Aggregation: Alt+Enter dentro Monaco e fuori | Esegue |
+| 13c.9 | Due tab aperti, Alt+Enter | Esegue **solo** quello a schermo |
+| 13c.10 | Invio semplice in un campo | Non esegue (resta il comportamento del campo) |
+
+### Copia / incolla di db e collection
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13c.11 | Ctrl+C su un database | Toast in basso: `Database "testdb" copied from "<connessione>"`, sparisce da solo |
+| 13c.12 | Ctrl+C su una collection | Toast `Collection "testdb.users" copied from "<connessione>"` |
+| 13c.13 | Click sul toast | Sparisce subito |
+| 13c.14 | Incolla su un'altra connessione | **Prima** chiede conferma con sorgente e destinazione (`From:` / `To:`), poi copia |
+| 13c.15 | Annullare quella conferma | Non scrive niente |
+| 13c.16 | Incolla sulla stessa connessione | La conferma dice "same connection" |
+| 13c.17 | Dopo l'incolla | L'albero della connessione di destinazione si aggiorna da solo: il db/collection nuovo si vede senza premere Refresh |
+| 13c.18 | Incolla con nome già esistente | Chiede il nuovo nome come prima, e solo dopo copia |
+
+### Connessioni read-only
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 13c.19 | Spuntare "Read-only" su una connessione e salvare | Badge `RO` accanto al nome in sidebar |
+| 13c.20 | Menu contestuale db/collection | Drop, Clear, Rename, Duplicate, Import e Paste disabilitati |
+| 13c.21 | Documents | Add e Paste disabilitati con tooltip "This connection is read-only"; Export attivo |
+| 13c.22 | Ctrl+D / Ctrl+V / Del in Documents | Non fanno nulla |
+| 13c.23 | Query Terminal: `db.collection("users").insertOne({a:1})` | Errore: connessione read-only (bloccato lato main, non solo in UI) |
+| 13c.24 | Query Terminal: `db.collection("users").find({})` | Funziona |
+| 13c.25 | Copia **da** una connessione read-only verso una scrivibile | Consentito (leggere è permesso) |
+| 13c.26 | Copia **verso** una connessione read-only | Rifiutata con errore |
+| 13c.27 | Togliere la spunta e risalvare | Tutto torna scrivibile senza riavviare |
 
 ---
 

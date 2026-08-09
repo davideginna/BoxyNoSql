@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import Icon from './Icon';
+import { isEscapeKey } from '../utils/keys';
 
 interface ShortcutGroup {
   title: string;
@@ -63,7 +64,7 @@ const GROUPS: ShortcutGroup[] = [
 
 export default function ShortcutsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'F1') { e.preventDefault(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e) || e.key === 'F1') { e.preventDefault(); onClose(); } };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);

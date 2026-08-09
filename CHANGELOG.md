@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Several connections open at once** — `databases`, `expandedDbs` and `collections` are per connection, so the sidebar shows one database tree per connected server instead of swapping between them
+- **Cross-connection copy** of a collection or a whole database (data + indexes), streamed through the main process in batches, so source and target can be different servers
+- **Connection health and auto-reconnect** — a connection-loss-shaped error retries `connect-db` once and replays the call before giving up, and the sidebar shows "Reconnecting…" / "Connection lost"
+- **Pinned collections** — the ones you actually work on stay above the tree, per connection
+- **Reopen the last session** — the tabs that were open at exit come back, reconnecting whichever connections they need
+- **Sort and field visibility in the document list** — click a column header to sort (ascending → descending → off, shift-click for a second key), or use the toolbar "Fields" popover, which is also the only sort UI in tree view. Hidden fields are remembered per collection. Both are applied server-side: sorting only the current page would order 20 documents out of the whole collection. Opening a document for edit/view re-reads it whole, so saving with fields hidden cannot drop them
+- **Query history and saved queries** (`utils/queryHistory.ts` + `QueryHistoryMenu`) — every filter, query and pipeline you run is kept per collection, re-running an identical one bumps it instead of duplicating, and the good ones can be named and reused across restarts. Shared by the documents filter, the query terminal and the aggregation builder
+- **Export what you are looking at** — JSON / NDJSON / CSV through a native save dialog: the current filtered and sorted view (with only the visible fields), the whole collection, or a query/aggregation result. Documents stream from the cursor straight to the file, so a 50k-document export never becomes 50k objects in the renderer; CSV takes a second pass to build a header covering every field
+- **Typed confirmation on destructive actions** — drop and clear ask you to retype the database or collection name and show how many documents are about to go (counts come from collection metadata, so the dialog opens instantly even on a 50k collection)
+- **A real editor for aggregation stages** — Monaco per stage with completions for stage and expression operators and for the collection's own fields (`field` and `$field`), stage templates, reorder, per-stage JSON errors, and **a document counter per stage** after each run (`$out`/`$merge` and everything after them are not re-run just to be counted)
+- **Read-only connections** — a per-connection flag that refuses every write in the main process, not just in the UI: 18 write handlers check it, and the query terminal gets a proxied `db` whose write methods throw. Copying *from* a read-only connection is allowed, copying *to* one is not
+- **Toasts** — non-blocking status messages. Copying a database or collection now says what went on the clipboard and from which connection
+- **Node tooltips in the sidebar** — a connection shows its folder path inline, and every connection/database/collection carries a tooltip with connection, folder, server and path, so two connections holding a `testdb` are no longer indistinguishable. The server line shows `user@host`, never the password
+- `npm run check` — typecheck main + renderer and run the tests in one command
+
+### Changed
+- **Escape cancels everywhere.** Handlers now form a stack, so a confirmation opened on top of a modal takes one Escape and closes only itself, and a modal that is busy writing swallows the key instead of letting it through. Escape also closes the document editor (through the same "discard changes?" path as its Cancel button), the add/view modals, the query preview and the popovers
+- **`Alt+Enter` runs** in the documents, query and aggregation views — including from inside a Monaco editor and from inside a filter field. `Ctrl+Enter` still works in the editors
+- **Copy/paste of a database or collection asks first**, naming both ends (`From:` / `To:`), and afterwards refreshes the whole target connection — refreshing only the target database left a copied database invisible until a manual refresh
+
+### Fixed
+- **Window-level shortcuts fired in every open tab.** `MainContent` keeps every tab ever opened mounted, so `Ctrl+D`, `Delete` and the clipboard shortcuts were bound once per documents tab; views now bind them only while they are the tab on screen
+
 ## [1.4.2] - 2026-07-29
 
 ### Added

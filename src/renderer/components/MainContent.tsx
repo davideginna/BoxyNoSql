@@ -18,12 +18,13 @@ interface Tab {
 }
 
 interface Connection {
-  id: string; name: string; uri: string;
+  id: string; name: string; uri: string; readOnly?: boolean;
   folderId?: string; color?: string; order?: number;
   lastConnectedAt?: number;
 }
 
-interface Folder { id: string; name: string; color?: string; }
+// Shared with the sidebar, which spells out the same path in its tooltips.
+import { folderBreadcrumb, type Folder } from '../utils/connectionPath';
 
 interface MainContentProps {
   tabs: Tab[];
@@ -177,47 +178,46 @@ export default function MainContent({
                 </button>
               </div>
             </>
-          ) : !hasConnectedConnections ? (
-            recent.length > 0 ? (
-              <>
-                <p>Not connected to any server — pick a recent connection</p>
-                <div className="welcome-recent">
-                  {recent.map(c => {
-                    const folder = c.folderId ? folders.find(f => f.id === c.folderId) : undefined;
-                    const connColor = c.color || DEFAULT_CONNECTION_COLOR;
-                    return (
-                      <button
-                        key={c.id}
-                        className="welcome-recent-item"
-                        style={{ '--recent-border': connColor } as CSSProperties}
-                        onClick={() => onConnect(c.id)}
-                      >
-                        <Icon name="plug" size={14} color={connColor} />
-                        <span className="welcome-recent-name">{c.name}</span>
-                        {folder && (
-                          <span className="welcome-recent-folder" style={{ color: folder.color || undefined }}>
-                            <Icon name="folder" size={11} color={folder.color || undefined} /> {folder.name}
-                          </span>
-                        )}
-                        <span className="welcome-recent-time">{formatRelativeTime(c.lastConnectedAt!)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="welcome-actions">
-                  <button className="secondary" onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p>Not connected to any server</p>
-                <div className="welcome-actions">
-                  <button onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
-                </div>
-              </>
-            )
-          ) : (
+          ) : recent.length > 0 ? (
+            <>
+              <p>{hasConnectedConnections ? 'Pick a recent connection, or a collection from the sidebar' : 'Not connected to any server — pick a recent connection'}</p>
+              <div className="welcome-recent">
+                {recent.map(c => {
+                  const folderChain = c.folderId ? folderBreadcrumb(c.folderId, folders) : [];
+                  const leafFolder = folderChain[folderChain.length - 1];
+                  const connColor = c.color || DEFAULT_CONNECTION_COLOR;
+                  return (
+                    <button
+                      key={c.id}
+                      className="welcome-recent-item"
+                      style={{ '--recent-border': connColor } as CSSProperties}
+                      onClick={() => onConnect(c.id)}
+                    >
+                      <Icon name="plug" size={14} color={connColor} />
+                      <span className="welcome-recent-name">{c.name}</span>
+                      {leafFolder && (
+                        <span className="welcome-recent-folder" style={{ color: leafFolder.color || undefined }} title={folderChain.map(f => f.name).join(' / ')}>
+                          <Icon name="folder" size={11} color={leafFolder.color || undefined} /> {folderChain.map(f => f.name).join(' / ')}
+                        </span>
+                      )}
+                      <span className="welcome-recent-time">{formatRelativeTime(c.lastConnectedAt!)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="welcome-actions">
+                <button className="secondary" onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
+              </div>
+            </>
+          ) : hasConnectedConnections ? (
             <p>Select a collection from the sidebar to get started</p>
+          ) : (
+            <>
+              <p>Not connected to any server</p>
+              <div className="welcome-actions">
+                <button onClick={onOpenConnections}><Icon name="plug" size={14} /> Open connections</button>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -226,22 +226,26 @@ export default function MainContent({
 
   const hasCollection = !!(activeTabData.collection && activeTabData.database);
 
-  const renderPane = (tab: Tab, viewType: Tab['type']) => {
+  // `active` is what a view checks before binding a window-level shortcut:
+  // every tab that was ever opened stays mounted, so without it Alt+Enter or
+  // Ctrl+D would fire in all of them at once.
+  const renderPane = (tab: Tab, viewType: Tab['type'], active: boolean) => {
     const { connectionId, database, collection, id } = tab;
     const connId = connectionId || selectedConnection || '';
     if (!database || !collection) return null;
+    const readOnly = !!connections.find(c => c.id === connId)?.readOnly;
     switch (viewType) {
       case 'documents':
-        return <DocumentsView connectionId={connId} database={database} collection={collection} />;
+        return <DocumentsView connectionId={connId} database={database} collection={collection} active={active} readOnly={readOnly} />;
       case 'query':
         return <QueryTerminal
-          connectionId={connId} database={database} collection={collection}
+          connectionId={connId} database={database} collection={collection} active={active}
           result={queryResults[id] || []}
           setResult={r => setQueryResults(prev => ({ ...prev, [id]: r }))}
         />;
       case 'aggregation':
         return <AggregationBuilder
-          connectionId={connId} database={database} collection={collection}
+          connectionId={connId} database={database} collection={collection} active={active}
           result={aggregationResults[id] || []}
           setResult={r => setAggregationResults(prev => ({ ...prev, [id]: r }))}
         />;
@@ -325,7 +329,7 @@ export default function MainContent({
                       flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden',
                     }}
                   >
-                    {renderPane(tab, viewType as Tab['type'])}
+                    {renderPane(tab, viewType as Tab['type'], viewActive)}
                   </div>
                 );
               })}

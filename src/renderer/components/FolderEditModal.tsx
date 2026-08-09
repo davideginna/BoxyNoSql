@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ColorEditor from './ColorEditor';
 import Icon from './Icon';
+import { onEscape } from '../utils/keys';
 
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 
@@ -16,11 +17,7 @@ export default function FolderEditModal({ folder, connectionCount, onSave, onClo
   const [color, setColor] = useState<string | undefined>(folder.color);
   const [applyToConns, setApplyToConns] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  useEffect(() => onEscape(onClose), [onClose]);
 
   const save = () => {
     onSave({ ...folder, name: name.trim() || folder.name, color }, applyToConns);

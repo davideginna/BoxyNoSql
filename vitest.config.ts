@@ -14,7 +14,7 @@ export default defineConfig({
     globals: true,
     coverage: {
       provider: 'v8',
-      include: ['src/main/serialize.ts', 'src/renderer/utils/**'],
+      include: ['src/main/serialize.ts', 'src/main/exportFormat.ts', 'src/main/version.ts', 'src/renderer/utils/**'],
     },
     projects: [
       {

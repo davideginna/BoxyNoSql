@@ -5,6 +5,14 @@ export interface ConfirmOpts {
   confirmText?: string;
   hideCancel?: boolean;
   detail?: string;
+  /**
+   * Typed confirmation: the user has to retype this exact string (the database
+   * or collection name) before the confirm button unlocks. For actions that
+   * destroy data and cannot be undone.
+   */
+  requireTyped?: string;
+  /** What is about to be destroyed, e.g. "≈1,204 documents in 3 collections". */
+  impact?: string;
 }
 
 export interface InputOpts {

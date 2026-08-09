@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Icon from './Icon';
 import { UpdateStatus, formatBytes, formatSpeed } from '../utils/updates';
+import { isEscapeKey } from '../utils/keys';
 
 interface Props {
   status: UpdateStatus;
@@ -29,7 +30,7 @@ export default function UpdateModal({
   const dismissable = status.state !== 'downloading';
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && dismissable) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e) && dismissable) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, dismissable]);

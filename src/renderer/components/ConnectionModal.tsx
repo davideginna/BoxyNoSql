@@ -6,9 +6,10 @@ import {
 } from '../utils/mongoUri';
 import ColorEditor from './ColorEditor';
 import Icon from './Icon';
+import { onEscape } from '../utils/keys';
 
 interface Connection {
-  id: string; name: string; uri: string; database?: string;
+  id: string; name: string; uri: string; readOnly?: boolean; database?: string;
   folderId?: string; color?: string; order?: number;
   iconDbColor?: string; iconColColor?: string;
   tls?: boolean;
@@ -54,6 +55,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
   const [color, setColor] = useState<string | undefined>(undefined);
   const [iconDbColor, setIconDbColor] = useState<string | undefined>(undefined);
   const [iconColColor, setIconColColor] = useState<string | undefined>(undefined);
+  const [readOnly, setReadOnly] = useState(false);
   const [tls, setTls] = useState(false);
   const [certFile, setCertFile] = useState('');
   const [certPassword, setCertPassword] = useState('');
@@ -87,6 +89,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
       setName(connection.name);
       setUri(connection.uri);
       setDatabase(connection.database || '');
+      setReadOnly(!!connection.readOnly);
       setColor(connection.color);
       setIconDbColor(connection.iconDbColor);
       setIconColColor(connection.iconColColor);
@@ -211,11 +214,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     onClose();
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); attemptClose(); } };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  });
+  useEffect(() => onEscape(() => attemptClose()));
 
   useEffect(() => {
     const off = (window as any).electron.on('test-log', (msg: string) => {
@@ -265,6 +264,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     onSave({
       id: connection?.id || Date.now().toString(),
       name, uri,
+      readOnly: readOnly || undefined,
       database: database || undefined,
       folderId: connection?.folderId,
       color,
@@ -304,6 +304,16 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
               <div className="form-group">
                 <label>Name</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="My Database" />
+              </div>
+              <div className="form-group">
+                <label className="conn-readonly">
+                  <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} />
+                  <span>Read-only</span>
+                  <span className="conn-readonly-hint">
+                    Blocks every write on this connection — inserts, updates, drops, index changes and
+                    write methods in the query terminal. Enforced in the main process, not just hidden.
+                  </span>
+                </label>
               </div>
               <div className="form-group">
                 <label>Connection String</label>

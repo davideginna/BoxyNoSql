@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Icon, { IconName } from './Icon';
+import { isEscapeKey } from '../utils/keys';
 
 export interface ContextMenuItem {
   label: string;
@@ -26,7 +27,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e)) onClose(); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
