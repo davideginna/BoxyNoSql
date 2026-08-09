@@ -1,0 +1,521 @@
+{
+  "collscan": {
+    "explainVersion": "1",
+    "queryPlanner": {
+      "namespace": "testdb.users",
+      "indexFilterSet": false,
+      "parsedQuery": {
+        "nickname": {
+          "$eq": "nick0"
+        }
+      },
+      "queryHash": "02726335",
+      "planCacheKey": "02726335",
+      "optimizationTimeMillis": 0,
+      "maxIndexedOrSolutionsReached": false,
+      "maxIndexedAndSolutionsReached": false,
+      "maxScansToExplodeReached": false,
+      "winningPlan": {
+        "stage": "COLLSCAN",
+        "filter": {
+          "nickname": {
+            "$eq": "nick0"
+          }
+        },
+        "direction": "forward"
+      },
+      "rejectedPlans": []
+    },
+    "executionStats": {
+      "executionSuccess": true,
+      "nReturned": 1,
+      "executionTimeMillis": 12,
+      "totalKeysExamined": 0,
+      "totalDocsExamined": 200,
+      "executionStages": {
+        "stage": "COLLSCAN",
+        "filter": {
+          "nickname": {
+            "$eq": "nick0"
+          }
+        },
+        "nReturned": 1,
+        "executionTimeMillisEstimate": 0,
+        "works": 201,
+        "advanced": 1,
+        "needTime": 199,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "direction": "forward",
+        "docsExamined": 200
+      }
+    },
+    "command": {
+      "find": "users",
+      "filter": {
+        "nickname": "nick0"
+      },
+      "$db": "testdb"
+    },
+    "serverInfo": {
+      "host": "d7d014ae4c38",
+      "port": 27017,
+      "version": "7.0.39",
+      "gitVersion": "636e201a5c0732b95e88bb011a72938ce01d290b"
+    },
+    "serverParameters": {
+      "internalQueryFacetBufferSizeBytes": 104857600,
+      "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+      "internalLookupStageIntermediateDocumentMaxSizeBytes": 104857600,
+      "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+      "internalQueryMaxBlockingSortMemoryUsageBytes": 104857600,
+      "internalQueryProhibitBlockingMergeOnMongoS": 0,
+      "internalQueryMaxAddToSetBytes": 104857600,
+      "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+      "internalQueryFrameworkControl": "forceClassicEngine"
+    },
+    "ok": 1
+  },
+  "ixscan": {
+    "explainVersion": "1",
+    "queryPlanner": {
+      "namespace": "testdb.users",
+      "indexFilterSet": false,
+      "parsedQuery": {
+        "email": {
+          "$eq": "user5@example.com"
+        }
+      },
+      "queryHash": "7F1F8B58",
+      "planCacheKey": "34D9A51E",
+      "optimizationTimeMillis": 0,
+      "maxIndexedOrSolutionsReached": false,
+      "maxIndexedAndSolutionsReached": false,
+      "maxScansToExplodeReached": false,
+      "winningPlan": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "IXSCAN",
+          "keyPattern": {
+            "email": 1
+          },
+          "indexName": "email_1",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "email": []
+          },
+          "isUnique": true,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "forward",
+          "indexBounds": {
+            "email": [
+              "[\"user5@example.com\", \"user5@example.com\"]"
+            ]
+          }
+        }
+      },
+      "rejectedPlans": []
+    },
+    "executionStats": {
+      "executionSuccess": true,
+      "nReturned": 1,
+      "executionTimeMillis": 3,
+      "totalKeysExamined": 1,
+      "totalDocsExamined": 1,
+      "executionStages": {
+        "stage": "FETCH",
+        "nReturned": 1,
+        "executionTimeMillisEstimate": 2,
+        "works": 2,
+        "advanced": 1,
+        "needTime": 0,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "docsExamined": 1,
+        "alreadyHasObj": 0,
+        "inputStage": {
+          "stage": "IXSCAN",
+          "nReturned": 1,
+          "executionTimeMillisEstimate": 2,
+          "works": 2,
+          "advanced": 1,
+          "needTime": 0,
+          "needYield": 0,
+          "saveState": 0,
+          "restoreState": 0,
+          "isEOF": 1,
+          "keyPattern": {
+            "email": 1
+          },
+          "indexName": "email_1",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "email": []
+          },
+          "isUnique": true,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "forward",
+          "indexBounds": {
+            "email": [
+              "[\"user5@example.com\", \"user5@example.com\"]"
+            ]
+          },
+          "keysExamined": 1,
+          "seeks": 1,
+          "dupsTested": 0,
+          "dupsDropped": 0
+        }
+      }
+    },
+    "command": {
+      "find": "users",
+      "filter": {
+        "email": "user5@example.com"
+      },
+      "$db": "testdb"
+    },
+    "serverInfo": {
+      "host": "d7d014ae4c38",
+      "port": 27017,
+      "version": "7.0.39",
+      "gitVersion": "636e201a5c0732b95e88bb011a72938ce01d290b"
+    },
+    "serverParameters": {
+      "internalQueryFacetBufferSizeBytes": 104857600,
+      "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+      "internalLookupStageIntermediateDocumentMaxSizeBytes": 104857600,
+      "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+      "internalQueryMaxBlockingSortMemoryUsageBytes": 104857600,
+      "internalQueryProhibitBlockingMergeOnMongoS": 0,
+      "internalQueryMaxAddToSetBytes": 104857600,
+      "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+      "internalQueryFrameworkControl": "forceClassicEngine"
+    },
+    "ok": 1
+  },
+  "compound": {
+    "explainVersion": "1",
+    "queryPlanner": {
+      "namespace": "testdb.users",
+      "indexFilterSet": false,
+      "parsedQuery": {
+        "city": {
+          "$eq": "Milano"
+        }
+      },
+      "queryHash": "763317E7",
+      "planCacheKey": "BCDB2790",
+      "optimizationTimeMillis": 0,
+      "maxIndexedOrSolutionsReached": false,
+      "maxIndexedAndSolutionsReached": false,
+      "maxScansToExplodeReached": false,
+      "winningPlan": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "IXSCAN",
+          "keyPattern": {
+            "city": 1,
+            "age": -1
+          },
+          "indexName": "city_1_age_-1",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "city": [],
+            "age": []
+          },
+          "isUnique": false,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "forward",
+          "indexBounds": {
+            "city": [
+              "[\"Milano\", \"Milano\"]"
+            ],
+            "age": [
+              "[MaxKey, MinKey]"
+            ]
+          }
+        }
+      },
+      "rejectedPlans": []
+    },
+    "executionStats": {
+      "executionSuccess": true,
+      "nReturned": 40,
+      "executionTimeMillis": 1,
+      "totalKeysExamined": 40,
+      "totalDocsExamined": 40,
+      "executionStages": {
+        "stage": "FETCH",
+        "nReturned": 40,
+        "executionTimeMillisEstimate": 0,
+        "works": 41,
+        "advanced": 40,
+        "needTime": 0,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "docsExamined": 40,
+        "alreadyHasObj": 0,
+        "inputStage": {
+          "stage": "IXSCAN",
+          "nReturned": 40,
+          "executionTimeMillisEstimate": 0,
+          "works": 41,
+          "advanced": 40,
+          "needTime": 0,
+          "needYield": 0,
+          "saveState": 0,
+          "restoreState": 0,
+          "isEOF": 1,
+          "keyPattern": {
+            "city": 1,
+            "age": -1
+          },
+          "indexName": "city_1_age_-1",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "city": [],
+            "age": []
+          },
+          "isUnique": false,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "forward",
+          "indexBounds": {
+            "city": [
+              "[\"Milano\", \"Milano\"]"
+            ],
+            "age": [
+              "[MaxKey, MinKey]"
+            ]
+          },
+          "keysExamined": 40,
+          "seeks": 1,
+          "dupsTested": 0,
+          "dupsDropped": 0
+        }
+      }
+    },
+    "command": {
+      "find": "users",
+      "filter": {
+        "city": "Milano"
+      },
+      "sort": {
+        "age": -1
+      },
+      "$db": "testdb"
+    },
+    "serverInfo": {
+      "host": "d7d014ae4c38",
+      "port": 27017,
+      "version": "7.0.39",
+      "gitVersion": "636e201a5c0732b95e88bb011a72938ce01d290b"
+    },
+    "serverParameters": {
+      "internalQueryFacetBufferSizeBytes": 104857600,
+      "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+      "internalLookupStageIntermediateDocumentMaxSizeBytes": 104857600,
+      "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+      "internalQueryMaxBlockingSortMemoryUsageBytes": 104857600,
+      "internalQueryProhibitBlockingMergeOnMongoS": 0,
+      "internalQueryMaxAddToSetBytes": 104857600,
+      "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+      "internalQueryFrameworkControl": "forceClassicEngine"
+    },
+    "ok": 1
+  },
+  "agg": {
+    "explainVersion": "1",
+    "stages": [
+      {
+        "$cursor": {
+          "queryPlanner": {
+            "namespace": "testdb.orders",
+            "indexFilterSet": false,
+            "parsedQuery": {
+              "status": {
+                "$eq": "paid"
+              }
+            },
+            "queryHash": "CE0C8B8B",
+            "planCacheKey": "FABA1ECD",
+            "optimizationTimeMillis": 0,
+            "maxIndexedOrSolutionsReached": false,
+            "maxIndexedAndSolutionsReached": false,
+            "maxScansToExplodeReached": false,
+            "winningPlan": {
+              "stage": "PROJECTION_COVERED",
+              "transformBy": {
+                "status": 1,
+                "_id": 0
+              },
+              "inputStage": {
+                "stage": "IXSCAN",
+                "keyPattern": {
+                  "status": 1,
+                  "placedAt": -1
+                },
+                "indexName": "status_1_placedAt_-1",
+                "isMultiKey": false,
+                "multiKeyPaths": {
+                  "status": [],
+                  "placedAt": []
+                },
+                "isUnique": false,
+                "isSparse": false,
+                "isPartial": false,
+                "indexVersion": 2,
+                "direction": "forward",
+                "indexBounds": {
+                  "status": [
+                    "[\"paid\", \"paid\"]"
+                  ],
+                  "placedAt": [
+                    "[MaxKey, MinKey]"
+                  ]
+                }
+              }
+            },
+            "rejectedPlans": []
+          },
+          "executionStats": {
+            "executionSuccess": true,
+            "nReturned": 125,
+            "executionTimeMillis": 1,
+            "totalKeysExamined": 125,
+            "totalDocsExamined": 0,
+            "executionStages": {
+              "stage": "PROJECTION_COVERED",
+              "nReturned": 125,
+              "executionTimeMillisEstimate": 0,
+              "works": 126,
+              "advanced": 125,
+              "needTime": 0,
+              "needYield": 0,
+              "saveState": 1,
+              "restoreState": 1,
+              "isEOF": 1,
+              "transformBy": {
+                "status": 1,
+                "_id": 0
+              },
+              "inputStage": {
+                "stage": "IXSCAN",
+                "nReturned": 125,
+                "executionTimeMillisEstimate": 0,
+                "works": 126,
+                "advanced": 125,
+                "needTime": 0,
+                "needYield": 0,
+                "saveState": 1,
+                "restoreState": 1,
+                "isEOF": 1,
+                "keyPattern": {
+                  "status": 1,
+                  "placedAt": -1
+                },
+                "indexName": "status_1_placedAt_-1",
+                "isMultiKey": false,
+                "multiKeyPaths": {
+                  "status": [],
+                  "placedAt": []
+                },
+                "isUnique": false,
+                "isSparse": false,
+                "isPartial": false,
+                "indexVersion": 2,
+                "direction": "forward",
+                "indexBounds": {
+                  "status": [
+                    "[\"paid\", \"paid\"]"
+                  ],
+                  "placedAt": [
+                    "[MaxKey, MinKey]"
+                  ]
+                },
+                "keysExamined": 125,
+                "seeks": 1,
+                "dupsTested": 0,
+                "dupsDropped": 0
+              }
+            }
+          }
+        },
+        "nReturned": 125,
+        "executionTimeMillisEstimate": 0
+      },
+      {
+        "$group": {
+          "_id": "$status",
+          "n": {
+            "$sum": {
+              "$const": 1
+            }
+          }
+        },
+        "maxAccumulatorMemoryUsageBytes": {
+          "n": 96
+        },
+        "totalOutputDataSizeBytes": 245,
+        "usedDisk": false,
+        "spills": 0,
+        "spilledDataStorageSize": 0,
+        "numBytesSpilledEstimate": 0,
+        "spilledRecords": 0,
+        "nReturned": 1,
+        "executionTimeMillisEstimate": 0
+      }
+    ],
+    "serverInfo": {
+      "host": "d7d014ae4c38",
+      "port": 27017,
+      "version": "7.0.39",
+      "gitVersion": "636e201a5c0732b95e88bb011a72938ce01d290b"
+    },
+    "serverParameters": {
+      "internalQueryFacetBufferSizeBytes": 104857600,
+      "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+      "internalLookupStageIntermediateDocumentMaxSizeBytes": 104857600,
+      "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+      "internalQueryMaxBlockingSortMemoryUsageBytes": 104857600,
+      "internalQueryProhibitBlockingMergeOnMongoS": 0,
+      "internalQueryMaxAddToSetBytes": 104857600,
+      "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+      "internalQueryFrameworkControl": "forceClassicEngine"
+    },
+    "command": {
+      "aggregate": "orders",
+      "pipeline": [
+        {
+          "$match": {
+            "status": "paid"
+          }
+        },
+        {
+          "$group": {
+            "_id": "$status",
+            "n": {
+              "$sum": 1
+            }
+          }
+        }
+      ],
+      "cursor": {},
+      "$db": "testdb"
+    },
+    "ok": 1
+  }
+}

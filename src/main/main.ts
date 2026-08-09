@@ -2,7 +2,12 @@ import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron';
 import path from 'path';
 import Store from 'electron-store';
 import { MongoClient, Db, ObjectId } from 'mongodb';
+import fs from 'fs';
 import { serializeDoc } from './serialize';
+import {
+  collectKeys, createChunkWriter, defaultFileName, dialogFilters, type ExportFormat,
+} from './exportFormat';
+import { guardHandle, ReadOnlyError } from './readOnlyGuard';
 import { initUpdater } from './updater';
 
 declare const __dirname: string;
@@ -40,6 +45,8 @@ interface Connection extends TlsSettings {
   id: string;
   name: string;
   uri: string;
+  /** Blocks every write on this connection, enforced here and not in the UI. */
+  readOnly?: boolean;
   database?: string;
   folderId?: string;
   color?: string;
@@ -62,6 +69,19 @@ const store = new Store<{ connections: Connection[]; folders: Folder[] }>({
 
 let mainWindow: BrowserWindow | null = null;
 
+const isReadOnly = (connectionId: string) =>
+  !!store.get('connections').find(c => c.id === connectionId)?.readOnly;
+
+/**
+ * Called first in every handler that changes data. The renderer hides the
+ * destructive UI too, but that is cosmetic — this is the part a stray
+ * `window.electron.invoke` cannot get around.
+ */
+function assertWritable(connectionId: string) {
+  if (isReadOnly(connectionId)) throw new ReadOnlyError();
+}
+
+
 function resolveIcon(): string | undefined {
   const candidates = [
     path.join(__dirname, '../../build/icon.png'),  // dev: project/build/icon.png from dist/main
@@ -70,9 +90,9 @@ function resolveIcon(): string | undefined {
   ];
   for (const p of candidates) {
     try {
-      require('fs').accessSync(p);
+      fs.accessSync(p);
       return p;
-    } catch {}
+    } catch { /* not at this path, try next candidate */ }
   }
   return undefined;
 }
@@ -190,9 +210,11 @@ ipcMain.handle('show-input', async (_, title: string, defaultValue = '') => {
 // value injected at compile time.
 ipcMain.handle('get-app-info', () => {
   let buildDate: string | null = null;
-  try { buildDate = require('fs').statSync(__filename).mtime.toISOString(); } catch { /* ignore */ }
+  try { buildDate = fs.statSync(__filename).mtime.toISOString(); } catch { /* ignore */ }
   const pkg = (() => {
     for (const p of [path.join(__dirname, '../../package.json'), path.join(__dirname, '../package.json')]) {
+      // Dynamic path with a try/next fallback — needs require(), a static import can't do either.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       try { return require(p); } catch { /* try next */ }
     }
     return {};
@@ -279,7 +301,7 @@ function buildTlsOptions(s: TlsSettings | undefined): Record<string, any> {
   const opts: Record<string, any> = {};
   const requireFile = (p: string, label: string) => {
     const resolved = p.trim();
-    if (!require('fs').existsSync(resolved)) throw new Error(`${label} not found: ${resolved}`);
+    if (!fs.existsSync(resolved)) throw new Error(`${label} not found: ${resolved}`);
     return resolved;
   };
 
@@ -385,6 +407,7 @@ ipcMain.handle('list-databases', async (_, connectionId: string) => {
 });
 
 ipcMain.handle('drop-database', async (_, connectionId: string, dbName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).dropDatabase();
@@ -400,6 +423,7 @@ ipcMain.handle('get-collections', async (_, connectionId: string, dbName: string
 });
 
 ipcMain.handle('create-collection', async (_, connectionId: string, dbName: string, colName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).createCollection(colName);
@@ -407,6 +431,7 @@ ipcMain.handle('create-collection', async (_, connectionId: string, dbName: stri
 });
 
 ipcMain.handle('drop-collection', async (_, connectionId: string, dbName: string, colName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).collection(colName).drop();
@@ -414,6 +439,7 @@ ipcMain.handle('drop-collection', async (_, connectionId: string, dbName: string
 });
 
 ipcMain.handle('rename-collection', async (_, connectionId: string, dbName: string, oldName: string, newName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).collection(oldName).rename(newName);
@@ -421,6 +447,7 @@ ipcMain.handle('rename-collection', async (_, connectionId: string, dbName: stri
 });
 
 ipcMain.handle('duplicate-collection', async (_, connectionId: string, dbName: string, srcName: string, destName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const db = client.db(dbName);
@@ -439,7 +466,106 @@ ipcMain.handle('duplicate-collection', async (_, connectionId: string, dbName: s
   return { success: true };
 });
 
+// Cross-connection collection copy: source and target can be different
+// MongoClients (even different servers), so unlike duplicate-collection above
+// this can't use a server-side $out and has to stream documents through the
+// main process in batches. Shared by copy-collection and copy-database below.
+async function copyCollectionData(srcColRef: any, tgtColRef: any): Promise<{ insertedCount: number; indexesCreated: number }> {
+  const BATCH_SIZE = 500;
+  let batch: any[] = [];
+  let insertedCount = 0;
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const result = await tgtColRef.insertMany(batch);
+    insertedCount += result.insertedCount;
+    batch = [];
+  };
+  const cursor = srcColRef.find({});
+  for await (const doc of cursor) {
+    batch.push(doc);
+    if (batch.length >= BATCH_SIZE) await flush();
+  }
+  await flush();
+  let indexesCreated = 0;
+  const indexes = await srcColRef.indexes();
+  for (const idx of indexes) {
+    if (idx.name === '_id_') continue;
+    const { key, name, v, ...opts } = idx as any;
+    try { await tgtColRef.createIndex(key, { name, ...opts }); indexesCreated++; } catch {}
+  }
+  return { insertedCount, indexesCreated };
+}
+
+ipcMain.handle('copy-collection', async (_, args: {
+  sourceConnId: string; sourceDb: string; sourceCol: string;
+  targetConnId: string; targetDb: string; targetCol: string;
+}) => {
+  // Reading from a read-only connection is fine; writing to one is not.
+  assertWritable(args.targetConnId);
+  const { sourceConnId, sourceDb, sourceCol, targetConnId, targetDb, targetCol } = args;
+  const srcClient = clients.get(sourceConnId);
+  const tgtClient = clients.get(targetConnId);
+  if (!srcClient) throw new Error('Source connection not connected');
+  if (!tgtClient) throw new Error('Target connection not connected');
+  const tgtDbRef = tgtClient.db(targetDb);
+  const existing = await tgtDbRef.listCollections({ name: targetCol }, { nameOnly: true }).toArray();
+  if (existing.length > 0) throw new Error(`Collection "${targetCol}" already exists in "${targetDb}"`);
+  await tgtDbRef.createCollection(targetCol);
+  const srcColRef = srcClient.db(sourceDb).collection(sourceCol);
+  const tgtColRef = tgtDbRef.collection(targetCol);
+  return copyCollectionData(srcColRef, tgtColRef);
+});
+
+// Cross-connection database copy: same idea as copy-collection, but walks
+// every collection of the source db into a freshly created target db.
+ipcMain.handle('copy-database', async (_, args: {
+  sourceConnId: string; sourceDb: string; targetConnId: string; targetDb: string;
+}) => {
+  assertWritable(args.targetConnId);
+  const { sourceConnId, sourceDb, targetConnId, targetDb } = args;
+  const srcClient = clients.get(sourceConnId);
+  const tgtClient = clients.get(targetConnId);
+  if (!srcClient) throw new Error('Source connection not connected');
+  if (!tgtClient) throw new Error('Target connection not connected');
+  const existingDbs: string[] = (await getAdminDb(tgtClient).command({ listDatabases: 1, nameOnly: true })).databases.map((d: any) => d.name);
+  if (existingDbs.includes(targetDb)) throw new Error(`Database "${targetDb}" already exists`);
+  const srcDbRef = srcClient.db(sourceDb);
+  const tgtDbRef = tgtClient.db(targetDb);
+  const cols = await srcDbRef.listCollections({}, { nameOnly: true }).toArray();
+  let insertedCount = 0;
+  let indexesCreated = 0;
+  for (const colInfo of cols) {
+    await tgtDbRef.createCollection(colInfo.name);
+    const result = await copyCollectionData(srcDbRef.collection(colInfo.name), tgtDbRef.collection(colInfo.name));
+    insertedCount += result.insertedCount;
+    indexesCreated += result.indexesCreated;
+  }
+  return { collectionsCount: cols.length, insertedCount, indexesCreated };
+});
+
+/**
+ * What a drop or a clear is about to destroy, for the typed confirmation.
+ *
+ * Counts come from `estimatedDocumentCount()` (collection metadata, O(1)) and
+ * not from `countDocuments()`: this runs while the user is still deciding, on a
+ * database that may hold millions of documents, and a slightly stale number is
+ * worth far more than a full scan per collection.
+ */
+ipcMain.handle('get-drop-impact', async (_, connectionId: string, dbName: string, colName?: string) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const dbRef = client.db(dbName);
+  if (colName) {
+    return { documents: await dbRef.collection(colName).estimatedDocumentCount(), estimated: true };
+  }
+  const cols = await dbRef.listCollections().toArray();
+  let documents = 0;
+  for (const col of cols) documents += await dbRef.collection(col.name).estimatedDocumentCount();
+  return { collections: cols.length, documents, estimated: true };
+});
+
 ipcMain.handle('clear-collection', async (_, connectionId: string, dbName: string, colName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const result = await client.db(dbName).collection(colName).deleteMany({});
@@ -447,6 +573,7 @@ ipcMain.handle('clear-collection', async (_, connectionId: string, dbName: strin
 });
 
 ipcMain.handle('clear-database', async (_, connectionId: string, dbName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const cols = await client.db(dbName).listCollections().toArray();
@@ -468,7 +595,7 @@ function fromExtJSON(val: any): any {
 }
 
 // ── Documents ────────────────────────────────────────────────────────────────
-ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, collection: string, query: any = {}, limit = 20, skip = 0) => {
+ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, collection: string, query: any = {}, limit = 20, skip = 0, sort: any = null, projection: any = null) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const col = client.db(dbName).collection(collection);
@@ -478,14 +605,20 @@ ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, 
   // every page change. With no filter the collection metadata already holds the
   // number, so use it and tell the renderer the figure is an estimate.
   const isUnfiltered = !mongoQuery || Object.keys(mongoQuery).length === 0;
+  // Sort and projection are server-side on purpose: sorting only the current
+  // page would order 20 documents out of the whole collection, and a projection
+  // applied in the renderer would still ship every field over IPC.
+  const cursor = col.find(mongoQuery, projection ? { projection } : {});
+  if (sort && Object.keys(sort).length > 0) cursor.sort(sort);
   const [docs, total] = await Promise.all([
-    col.find(mongoQuery).skip(skip).limit(limit).toArray(),
+    cursor.skip(skip).limit(limit).toArray(),
     isUnfiltered ? col.estimatedDocumentCount() : col.countDocuments(mongoQuery),
   ]);
   return { docs: docs.map(v => serializeDoc(v)), total, estimated: isUnfiltered };
 });
 
 ipcMain.handle('update-document', async (_, connectionId: string, dbName: string, collection: string, docId: string, update: any) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   let filter: any;
@@ -497,6 +630,7 @@ ipcMain.handle('update-document', async (_, connectionId: string, dbName: string
 });
 
 ipcMain.handle('insert-documents', async (_, connectionId: string, dbName: string, collection: string, docs: any[]) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const prepared = docs.map(d => fromExtJSON(d));
@@ -504,7 +638,26 @@ ipcMain.handle('insert-documents', async (_, connectionId: string, dbName: strin
   return { insertedCount: result.insertedCount };
 });
 
+/**
+ * One field, many documents. The update document is built in the renderer
+ * (`utils/bulkEdit.ts`) so it can be shown before it runs; this only revives
+ * the ids and the value and hands it to `updateMany`.
+ */
+ipcMain.handle('bulk-update-documents', async (_, connectionId: string, dbName: string, collection: string, docIds: string[], update: any) => {
+  assertWritable(connectionId);
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  // Same fallback as update-document: an `_id` that is not an ObjectId is a
+  // legitimate `_id`, so try both rather than dropping the document.
+  const ids = docIds.map(id => { try { return new ObjectId(id); } catch { return id; } });
+  const rawIds = docIds.filter(id => !/^[0-9a-f]{24}$/i.test(id));
+  const filter: any = { _id: { $in: [...ids, ...rawIds] } };
+  const result = await client.db(dbName).collection(collection).updateMany(filter, fromExtJSON(update));
+  return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+});
+
 ipcMain.handle('delete-document', async (_, connectionId: string, dbName: string, collection: string, docId: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   let filter: any;
@@ -517,7 +670,11 @@ ipcMain.handle('run-query', async (_, connectionId: string, dbName: string, coll
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const fn = new Function('db', `return (async () => { return (${query}) })()`);
-  let result = await fn(client.db(dbName));
+  // The query terminal evals user code against a live handle, so a read-only
+  // connection cannot be protected by a check up front — it gets a proxied
+  // `db` whose write methods throw instead.
+  const handle = client.db(dbName);
+  let result = await fn(isReadOnly(connectionId) ? guardHandle(handle) : handle);
   if (result != null && typeof result.toArray === 'function') result = await result.toArray();
   if (Array.isArray(result)) return result.map(v => serializeDoc(v));
   return serializeDoc(result);
@@ -529,6 +686,107 @@ ipcMain.handle('run-aggregation', async (_, connectionId: string, dbName: string
   const prepared = fromExtJSON(pipeline);
   const docs = await client.db(dbName).collection(collection).aggregate(prepared).toArray();
   return docs.map(v => serializeDoc(v));
+});
+
+/** Stages that write. Re-running a prefix that ends in one just to count it would write again. */
+const WRITE_STAGES = new Set(['$out', '$merge']);
+
+/**
+ * How many documents each stage of the pipeline leaves behind: one
+ * `pipeline.slice(0, i + 1) + [{ $count }]` per stage, so an n-stage pipeline
+ * costs n aggregations. That is the price of the per-stage counter in the
+ * builder — it only runs on an explicit Run, never while typing.
+ *
+ * A stage that writes gets `null`, and so does everything after it: once the
+ * prefix contains a write there is no way to count without repeating the write.
+ */
+ipcMain.handle('aggregation-stage-counts', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const col = client.db(dbName).collection(collection);
+  const prepared: any[] = fromExtJSON(pipeline);
+  const counts: (number | null)[] = [];
+  let poisoned = false;
+  for (let i = 0; i < prepared.length; i++) {
+    const stageName = Object.keys(prepared[i] ?? {})[0];
+    if (poisoned || WRITE_STAGES.has(stageName)) {
+      poisoned = true;
+      counts.push(null);
+      continue;
+    }
+    try {
+      const res = await col.aggregate([...prepared.slice(0, i + 1), { $count: 'n' }]).toArray();
+      counts.push(res[0]?.n ?? 0);
+    } catch {
+      // One broken stage should not cost the counts of the stages before it.
+      counts.push(null);
+      poisoned = true;
+    }
+  }
+  return counts;
+});
+
+// ── Explain ──────────────────────────────────────────────────────────────────
+/**
+ * `executionStats` and not `queryPlanner`: the plan alone says which index was
+ * chosen, but not how many documents that cost, which is the whole question.
+ */
+const EXPLAIN_VERBOSITY = 'executionStats';
+
+/**
+ * Explaining a pipeline runs everything before the write stage for real, and
+ * MongoDB will not explain the write stage itself — so a pipeline that ends in
+ * `$out`/`$merge` is refused up front rather than half-executed.
+ */
+function assertExplainable(pipeline: any[]) {
+  const writing = pipeline.find(stage => WRITE_STAGES.has(Object.keys(stage ?? {})[0]));
+  if (writing) {
+    throw new Error(`Cannot explain a pipeline containing ${Object.keys(writing)[0]} — it writes, and an explain must not.`);
+  }
+}
+
+// None of the three explain handlers goes through `assertWritable`: explaining
+// is a read, and a read-only connection is exactly where you want to be able to
+// ask why a query is slow.
+ipcMain.handle('explain-find', async (_, connectionId: string, dbName: string, collection: string, filter: any = {}, sort: any = null, projection: any = null) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  // The same cursor `get-documents` builds, minus the paging: explaining a
+  // different query than the one the view runs would be worse than useless.
+  const cursor = client.db(dbName).collection(collection)
+    .find(fromExtJSON(filter ?? {}), projection ? { projection } : {});
+  if (sort && Object.keys(sort).length > 0) cursor.sort(sort);
+  return serializeDoc(await cursor.explain(EXPLAIN_VERBOSITY));
+});
+
+ipcMain.handle('explain-aggregation', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const prepared: any[] = fromExtJSON(pipeline);
+  assertExplainable(prepared);
+  return serializeDoc(await client.db(dbName).collection(collection).aggregate(prepared).explain(EXPLAIN_VERBOSITY));
+});
+
+/**
+ * Explain whatever the query terminal holds. The query is evalled the way
+ * `run-query` does it, but *always* against the guarded handle regardless of
+ * the connection's read-only flag: an `insertOne` left in the editor must not
+ * run just because Explain was the button that got clicked.
+ *
+ * Only a cursor can be explained. `findOne`, `countDocuments` and the write
+ * helpers return a value, and there is no honest explain to show for those —
+ * say so rather than invent one.
+ */
+ipcMain.handle('explain-query', async (_, connectionId: string, dbName: string, _collection: string, query: string) => {
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  const fn = new Function('db', `return (async () => { return (${query}) })()`);
+  const result = await fn(guardHandle(client.db(dbName)));
+  if (!result || typeof result.explain !== 'function') {
+    throw new Error('Only a cursor can be explained. Use find() or aggregate(), and leave off .toArray().');
+  }
+  if (Array.isArray(result.pipeline)) assertExplainable(result.pipeline);
+  return serializeDoc(await result.explain(EXPLAIN_VERBOSITY));
 });
 
 // ── Indexes ──────────────────────────────────────────────────────────────────
@@ -547,12 +805,14 @@ ipcMain.handle('get-index-stats', async (_, connectionId: string, dbName: string
 });
 
 ipcMain.handle('create-index', async (_, connectionId: string, dbName: string, collection: string, keys: any, options: any = {}) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   return client.db(dbName).collection(collection).createIndex(keys, options);
 });
 
 ipcMain.handle('drop-index', async (_, connectionId: string, dbName: string, collection: string, indexName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   return client.db(dbName).collection(collection).dropIndex(indexName);
@@ -565,26 +825,103 @@ ipcMain.handle('get-collection-stats', async (_, connectionId: string, dbName: s
   return client.db(dbName).command({ collStats: collectionName });
 });
 
-ipcMain.handle('export-collection', async (_, connectionId: string, dbName: string, collection: string, format: 'json' | 'csv') => {
-  const client = clients.get(connectionId);
-  if (!client) throw new Error('Not connected');
-  const docs = await client.db(dbName).collection(collection).find({}).toArray();
-  const serialized = docs.map(v => serializeDoc(v));
-  if (format === 'json') return JSON.stringify(serialized, null, 2);
-  if (serialized.length === 0) return '';
-  const keySet = new Set<string>();
-  serialized.forEach(d => Object.keys(d).forEach(k => keySet.add(k)));
-  const keys = Array.from(keySet);
-  const esc = (v: any): string => {
-    if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+/** Save dialog + write stream. Returns null when the user cancels. */
+async function askSavePath(defaultName: string, format: ExportFormat): Promise<string | null> {
+  const res = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Export',
+    defaultPath: defaultName,
+    filters: dialogFilters(format),
+  });
+  return res.canceled || !res.filePath ? null : res.filePath;
+}
+
+function openWriter(filePath: string) {
+  const stream = fs.createWriteStream(filePath, { encoding: 'utf8' });
+  return {
+    write: (s: string) => new Promise<void>((resolve, reject) => {
+      stream.write(s, err => err ? reject(err) : resolve());
+    }),
+    close: () => new Promise<void>(resolve => stream.end(resolve)),
   };
-  return [keys.join(','), ...serialized.map(doc => keys.map(k => esc((doc as any)[k])).join(','))].join('\n');
+}
+
+/**
+ * Export the result of a find, exactly as the documents view has it: same
+ * filter, same sort, same projection. The cursor is walked one document at a
+ * time and written straight to disk, so the size of the collection does not
+ * become the size of the heap.
+ *
+ * CSV takes two passes on purpose — the header has to list every field any
+ * document has, and that is only known after seeing them all. Buffering them
+ * instead would defeat the streaming.
+ */
+ipcMain.handle('export-documents', async (_, args: {
+  connectionId: string; dbName: string; collection: string;
+  filter?: any; sort?: any; projection?: any;
+  format: ExportFormat; filtered?: boolean;
+}) => {
+  const client = clients.get(args.connectionId);
+  if (!client) throw new Error('Not connected');
+  const col = client.db(args.dbName).collection(args.collection);
+  const filter = fromExtJSON(args.filter ?? {});
+  const cursor = () => {
+    const c = col.find(filter, args.projection ? { projection: args.projection } : {});
+    if (args.sort && Object.keys(args.sort).length > 0) c.sort(args.sort);
+    return c;
+  };
+
+  const filePath = await askSavePath(defaultFileName(args.collection, args.format, args.filtered), args.format);
+  if (!filePath) return { canceled: true };
+
+  let keys: string[] | undefined;
+  if (args.format === 'csv') {
+    const found = new Set<string>();
+    for await (const doc of cursor()) collectKeys([serializeDoc(doc)], found);
+    keys = [...found];
+  }
+
+  const writer = createChunkWriter(args.format, keys);
+  const out = openWriter(filePath);
+  let count = 0;
+  try {
+    await out.write(writer.head());
+    for await (const doc of cursor()) {
+      await out.write(writer.row(serializeDoc(doc)));
+      count++;
+    }
+    await out.write(writer.tail());
+  } finally {
+    await out.close();
+  }
+  return { canceled: false, filePath, count };
+});
+
+/**
+ * Export rows the renderer already holds — a query terminal or aggregation
+ * result. They are serialized documents, not a cursor, so there is nothing to
+ * stream from; they only have to be formatted and written.
+ */
+ipcMain.handle('export-rows', async (_, args: { rows: any[]; baseName: string; format: ExportFormat }) => {
+  const filePath = await askSavePath(defaultFileName(args.baseName, args.format), args.format);
+  if (!filePath) return { canceled: true };
+
+  const rows = Array.isArray(args.rows) ? args.rows : [args.rows];
+  const keys = args.format === 'csv' ? [...collectKeys(rows)] : undefined;
+  const writer = createChunkWriter(args.format, keys);
+  const out = openWriter(filePath);
+  try {
+    await out.write(writer.head());
+    for (const row of rows) await out.write(writer.row(row));
+    await out.write(writer.tail());
+  } finally {
+    await out.close();
+  }
+  return { canceled: false, filePath, count: rows.length };
 });
 
 // ── Import ───────────────────────────────────────────────────────────────────
 ipcMain.handle('import-collection', async (_, connectionId: string, dbName: string, colName: string, docs: any[]) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const dbRef = client.db(dbName);
@@ -596,6 +933,7 @@ ipcMain.handle('import-collection', async (_, connectionId: string, dbName: stri
 });
 
 ipcMain.handle('import-database', async (_, connectionId: string, dbName: string, collections: Record<string, any[]>) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   const dbRef = client.db(dbName);
@@ -622,6 +960,7 @@ ipcMain.handle('list-users', async (_, connectionId: string, dbName: string) => 
 });
 
 ipcMain.handle('create-user', async (_, connectionId: string, dbName: string, username: string, password: string, roles: any[]) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).command({ createUser: username, pwd: password, roles });
@@ -629,6 +968,7 @@ ipcMain.handle('create-user', async (_, connectionId: string, dbName: string, us
 });
 
 ipcMain.handle('drop-user', async (_, connectionId: string, dbName: string, username: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).command({ dropUser: username });
@@ -644,6 +984,7 @@ ipcMain.handle('list-roles', async (_, connectionId: string, dbName: string) => 
 });
 
 ipcMain.handle('create-role', async (_, connectionId: string, dbName: string, roleName: string, privileges: any[], roles: any[]) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).command({ createRole: roleName, privileges, roles });
@@ -651,6 +992,7 @@ ipcMain.handle('create-role', async (_, connectionId: string, dbName: string, ro
 });
 
 ipcMain.handle('drop-role', async (_, connectionId: string, dbName: string, roleName: string) => {
+  assertWritable(connectionId);
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
   await client.db(dbName).command({ dropRole: roleName });

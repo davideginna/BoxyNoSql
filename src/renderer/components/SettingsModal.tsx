@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { onEscape } from '../utils/keys';
 import { ColorMode, IconSettings } from '../utils/iconColors';
 import ColorPickerPopup from './ColorPickerPopup';
 import Icon from './Icon';
@@ -65,11 +66,7 @@ function ColPreview({ color }: { color?: string }) {
 }
 
 export default function SettingsModal({ settings, onChange, onClose }: Props) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useEffect(() => onEscape(onClose), [onClose]);
 
   // Preview color when mode is 'connection' uses a sample hue so the user sees it's colored.
   const dbPreviewColor = settings.db === 'mono' ? undefined

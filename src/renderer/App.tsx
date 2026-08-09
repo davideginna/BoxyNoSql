@@ -10,19 +10,30 @@ import AboutModal from './components/AboutModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import UpdateModal from './components/UpdateModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
+import { PinnedCollection, loadPinned, savePinned, togglePinned } from './utils/pinnedCollections';
+import { loadSession, saveSession } from './utils/session';
 import {
   UpdateStatus, getCheckOnStartup, getSkippedVersion, setSkippedVersion, shouldShow,
 } from './utils/updates';
 import { showConfirm, showInput, showAlert } from './dialog';
+import { showToast } from './toast';
+import ToastHost from './components/ToastHost';
+import { copiedMessage, pasteConfirm, type TransferItem } from './utils/transfer';
+import { impactLine, type DropImpact } from './utils/destructive';
 import { isTypingTarget } from './utils/dom';
+import CommandPalette from './components/CommandPalette';
+import { folderPathLabel } from './utils/connectionPath';
+import type { PaletteItem } from './utils/palette';
 import { pickFile, parseDocs, parseDatabaseFile, parseCsv } from './utils/fileImport';
 import ImportCsvModal from './components/ImportCsvModal';
 import { ImportedConnection } from './utils/uriImport';
 
-const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
+const CONNECTION_ERROR_RE = /not connected|ECONNREFUSED|ETIMEDOUT|server selection timed out|topology (was destroyed|is closed)|MongoServerSelectionError|MongoNetworkError|MongoNotConnectedError|MongoTopologyClosedError/i;
 
 interface Connection {
   id: string; name: string; uri: string; database?: string;
+  /** Every write is refused, in the main process — see `readOnlyGuard.ts`. */
+  readOnly?: boolean;
   folderId?: string; color?: string; order?: number;
   iconDbColor?: string; iconColColor?: string;
   tls?: boolean;
@@ -36,7 +47,7 @@ interface Connection {
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 interface Tab {
   id: string;
-  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats';
+  type: 'documents' | 'query' | 'aggregation' | 'indexes' | 'stats' | 'schema';
   title: string; collection?: string; database?: string; connectionId?: string;
 }
 
@@ -104,10 +115,11 @@ function App() {
   const [selectedConnection, setSelectedConnection] = useState<string | null>(null);
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
-  const [databases, setDatabases] = useState<string[]>([]);
-  const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
+  const [connectionHealth, setConnectionHealth] = useState<Record<string, 'reconnecting' | 'down'>>({});
+  const [databases, setDatabases] = useState<Record<string, string[]>>({});
+  const [expandedDbs, setExpandedDbs] = useState<Record<string, Set<string>>>({});
   const [collapsedConns, setCollapsedConns] = useState<Set<string>>(new Set());
-  const [collections, setCollections] = useState<Record<string, string[]>>({});
+  const [collections, setCollections] = useState<Record<string, Record<string, string[]>>>({});
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -117,11 +129,14 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [csvImport, setCsvImport] = useState<{
-    dbName: string; colName?: string; headers: string[]; rows: string[][]; fileName: string;
+    connId: string; dbName: string; colName?: string; headers: string[]; rows: string[][]; fileName: string;
   } | null>(null);
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
+  const [pinnedCollections, setPinnedCollections] = useState<PinnedCollection[]>(() => loadPinned());
+  const [collectionClipboard, setCollectionClipboard] = useState<{ connectionId: string; db: string; col: string } | null>(null);
+  const [databaseClipboard, setDatabaseClipboard] = useState<{ connectionId: string; db: string } | null>(null);
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
-  const [usersRolesDb, setUsersRolesDb] = useState<string | null>(null);
+  const [usersRoles, setUsersRoles] = useState<{ connId: string; db: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light' | 'hc' | 'solarized'>(
     () => (localStorage.getItem('theme') as any) || 'dark'
@@ -132,12 +147,83 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // Central IPC call point: on a connection-loss-shaped error for a call whose
+  // first arg is a connectionId, silently reconnects once and retries the call
+  // before giving up — so a dropped server surfaces as its real error (or none
+  // at all) instead of always "Not connected" on the next click.
+  const clearHealth = (id: string) => setConnectionHealth(h => {
+    if (!(id in h)) return h;
+    const next = { ...h };
+    delete next[id];
+    return next;
+  });
+
+  const inv = useCallback(async (ch: string, ...a: any[]) => {
+    const electron = (window as any).electron;
+    const id = a[0];
+    try {
+      const result = await electron.invoke(ch, ...a);
+      if (typeof id === 'string') clearHealth(id);
+      return result;
+    } catch (e: any) {
+      if (typeof id !== 'string' || !CONNECTION_ERROR_RE.test(e?.message || '')) throw e;
+      setConnectionHealth(h => ({ ...h, [id]: 'reconnecting' }));
+      try {
+        await electron.invoke('connect-db', id);
+        clearHealth(id);
+        return await electron.invoke(ch, ...a);
+      } catch {
+        setConnectionHealth(h => ({ ...h, [id]: 'down' }));
+        throw e;
+      }
+    }
+  }, []);
+
+  const sessionRestoredRef = useRef(false);
+
   useEffect(() => {
-    Promise.all([inv('get-connections'), inv('get-folders')]).then(([conns, fols]) => {
+    Promise.all([inv('get-connections'), inv('get-folders')]).then(async ([conns, fols]: [Connection[], Folder[]]) => {
       setConnections(conns);
       setFolders(fols);
+      try {
+        const session = loadSession();
+        if (!session || session.tabs.length === 0) return;
+        const validIds = new Set(conns.map(c => c.id));
+        const neededIds = [...new Set(
+          session.tabs.map(t => t.connectionId).filter((id): id is string => !!id && validIds.has(id))
+        )];
+        const connectedNow = new Set<string>();
+        for (const id of neededIds) {
+          try {
+            const result = await inv('connect-db', id);
+            setSelectedConnection(id);
+            setConnectedIds(s => new Set([...s, id]));
+            setDatabases(prev => ({ ...prev, [id]: result.databases }));
+            setConnections(await inv('touch-connection', id));
+            connectedNow.add(id);
+          } catch { /* server unreachable at startup — skip its tabs silently */ }
+        }
+        const restoredTabs = session.tabs.filter(t => t.connectionId && connectedNow.has(t.connectionId));
+        if (restoredTabs.length > 0) {
+          setTabs(restoredTabs);
+          setActiveTab(
+            session.activeTab && restoredTabs.some(t => t.id === session.activeTab)
+              ? session.activeTab
+              : restoredTabs[restoredTabs.length - 1].id
+          );
+        }
+      } finally {
+        sessionRestoredRef.current = true;
+      }
     });
   }, []);
+
+  // Skipped until the startup restore above has run once, so it never overwrites
+  // the saved session with the transient empty tabs/activeTab of the first render.
+  useEffect(() => {
+    if (!sessionRestoredRef.current) return;
+    saveSession(tabs, activeTab);
+  }, [tabs, activeTab]);
 
   // ── Updates ──────────────────────────────────────────────────────────────────
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -171,24 +257,24 @@ function App() {
   // from the caches; every expanded database is re-listed.
   // (Defined here rather than with the other database handlers below because the
   // shortcut effect depends on it.)
-  const handleRefreshTree = useCallback(async () => {
-    const connId = selectedConnection;
+  const handleRefreshTree = useCallback(async (connIdArg?: string) => {
+    const connId = connIdArg || selectedConnection;
     if (!connId || !connectedIds.has(connId)) return;
     setRefreshing(true);
     try {
       const dbs: string[] = await inv('list-databases', connId);
       const live = new Set(dbs);
-      const expanded = [...expandedDbs].filter(db => live.has(db));
+      const expanded = [...(expandedDbs[connId] || new Set<string>())].filter(db => live.has(db));
       const loaded = await Promise.all(expanded.map(async db =>
         [db, await inv('get-collections', connId, db)] as [string, string[]]
       ));
-      setDatabases(dbs);
-      setExpandedDbs(new Set(expanded));
+      setDatabases(prev => ({ ...prev, [connId]: dbs }));
+      setExpandedDbs(prev => ({ ...prev, [connId]: new Set(expanded) }));
       setCollections(prev => {
         const next: Record<string, string[]> = {};
-        Object.entries(prev).forEach(([db, cols]) => { if (live.has(db)) next[db] = cols; });
+        Object.entries(prev[connId] || {}).forEach(([db, cols]) => { if (live.has(db)) next[db] = cols; });
         loaded.forEach(([db, cols]) => { next[db] = cols; });
-        return next;
+        return { ...prev, [connId]: next };
       });
     } catch (e: any) {
       showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
@@ -197,23 +283,28 @@ function App() {
     }
   }, [selectedConnection, connectedIds, expandedDbs]);
 
-  const handleRefreshDb = useCallback(async (dbName: string) => {
-    if (!selectedConnection) return;
+  const handleRefreshDb = useCallback(async (connId: string, dbName: string) => {
     try {
-      const cols = await inv('get-collections', selectedConnection, dbName);
-      setCollections(prev => ({ ...prev, [dbName]: cols }));
-      setExpandedDbs(prev => new Set([...prev, dbName]));
+      const cols = await inv('get-collections', connId, dbName);
+      setCollections(prev => ({ ...prev, [connId]: { ...(prev[connId] || {}), [dbName]: cols } }));
+      setExpandedDbs(prev => ({ ...prev, [connId]: new Set([...(prev[connId] || new Set<string>()), dbName]) }));
     } catch (e: any) {
       showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
     }
-  }, [selectedConnection]);
+  }, []);
 
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
-  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRolesDb || !!updateStatus || !!csvImport;
+  const [showPalette, setShowPalette] = useState(false);
+  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRoles || !!updateStatus || !!csvImport;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setShowShortcuts(true); return; }
+      // Ctrl+P opens from anywhere, typing included: jumping somewhere else is
+      // exactly what you do while your hands are in a field.
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault(); setShowPalette(v => !v); return;
+      }
       if (isTypingTarget(e.target)) return;
       if (anyModalOpen) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -233,6 +324,60 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [anyModalOpen, activeTab, tabs, handleRefreshTree]);
 
+  /**
+   * Everything the palette can jump to. Collections come from what the tree has
+   * already listed — filling the list would otherwise mean listing every
+   * database of every connection on each keystroke.
+   */
+  const paletteItems = (): PaletteItem[] => {
+    const items: PaletteItem[] = [];
+    for (const conn of connections) {
+      const path = folderPathLabel(conn.folderId, folders);
+      const connected = connectedIds.has(conn.id);
+      items.push({
+        id: `conn:${conn.id}`,
+        kind: 'connection',
+        label: conn.name,
+        sublabel: [path, connected ? 'connected' : 'not connected'].filter(Boolean).join(' · '),
+        keywords: conn.uri,
+        run: () => { if (connected) setSelectedConnection(conn.id); else handleConnect(conn.id); },
+      });
+      for (const db of databases[conn.id] || []) {
+        items.push({
+          id: `db:${conn.id}:${db}`,
+          kind: 'database',
+          label: db,
+          sublabel: conn.name,
+          run: () => { setSelectedConnection(conn.id); handleExpandDb(conn.id, db); },
+        });
+        for (const col of collections[conn.id]?.[db] || []) {
+          items.push({
+            id: `col:${conn.id}:${db}:${col}`,
+            kind: 'collection',
+            label: col,
+            sublabel: `${conn.name} / ${db}`,
+            run: () => handleSelectCollection(conn.id, db, col),
+          });
+        }
+      }
+    }
+    const action = (id: string, label: string, keywords: string, run: () => void): PaletteItem =>
+      ({ id: `action:${id}`, kind: 'action', label, keywords, run });
+    items.push(
+      action('new-connection', 'New connection', 'add server create', () => { setEditingConn(null); setShowConnModal(true); }),
+      action('manage-connections', 'Manage connections', 'ctrl+m servers folders', () => setShowConnManager(true)),
+      action('refresh', 'Refresh tree', 'f5 reload databases collections', () => handleRefreshTree()),
+      action('settings', 'Appearance settings', 'ctrl+, icons colors theme', () => setShowSettings(true)),
+      action('shortcuts', 'Keyboard shortcuts', 'f1 keys cheat sheet', () => setShowShortcuts(true)),
+      action('about', 'About BoxyNoSql', 'version update', () => setShowAbout(true)),
+      action('theme-dark', 'Theme: dark', 'appearance', () => setTheme('dark')),
+      action('theme-light', 'Theme: light', 'appearance', () => setTheme('light')),
+      action('theme-hc', 'Theme: high contrast', 'appearance accessibility', () => setTheme('hc')),
+      action('theme-solarized', 'Theme: solarized', 'appearance', () => setTheme('solarized')),
+    );
+    return items;
+  };
+
   // ── Connections ──────────────────────────────────────────────────────────────
   const handleSaveConnection = async (conn: Connection) => {
     const updated = await inv('save-connection', conn);
@@ -249,28 +394,31 @@ function App() {
     if (!await showConfirm({ message: 'Delete this connection?', danger: true, confirmText: 'Delete' })) return;
     const remaining = await inv('delete-connection', id);
     setConnections(remaining);
-    if (selectedConnection === id) {
-      setSelectedConnection(null); setDatabases([]); setCollections({});
-    }
+    if (selectedConnection === id) setSelectedConnection(null);
+    setDatabases(prev => { const n = { ...prev }; delete n[id]; return n; });
+    setCollections(prev => { const n = { ...prev }; delete n[id]; return n; });
+    setExpandedDbs(prev => { const n = { ...prev }; delete n[id]; return n; });
     setConnectedIds(s => { const n = new Set(s); n.delete(id); return n; });
+    setPinnedCollections(prev => {
+      const next = prev.filter(p => p.connectionId !== id);
+      savePinned(next);
+      return next;
+    });
   };
 
   // Clicking the connection that is already open collapses its tree instead of
-  // doing nothing. Collapse is tracked separately from selection because open
-  // tabs keep loading through `selectedConnection` — clearing it would break them.
-  const handleSelectConnection = async (id: string) => {
+  // doing nothing. Collapse is tracked separately from selection (per-connection,
+  // independent of which one is "selected") because open tabs keep loading
+  // through `selectedConnection` — clearing it would break them — and every
+  // connected connection's tree stays visible/expanded on its own regardless of
+  // which one is selected.
+  const handleSelectConnection = (id: string) => {
     if (id === selectedConnection) {
       setCollapsedConns(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
       return;
     }
     setCollapsedConns(s => { if (!s.has(id)) return s; const n = new Set(s); n.delete(id); return n; });
     setSelectedConnection(id);
-    if (connectedIds.has(id)) {
-      setCollections({});
-      setExpandedDbs(new Set());
-      try { setDatabases(await inv('list-databases', id)); }
-      catch { setDatabases([]); }
-    }
   };
 
   const handleConnect = async (connectionId: string) => {
@@ -280,9 +428,9 @@ function App() {
       const result = await inv('connect-db', connectionId);
       setSelectedConnection(connectionId);
       setConnectedIds(s => new Set([...s, connectionId]));
-      setDatabases(result.databases);
-      setCollections({});
-      setExpandedDbs(new Set());
+      setDatabases(prev => ({ ...prev, [connectionId]: result.databases }));
+      setCollections(prev => ({ ...prev, [connectionId]: {} }));
+      setExpandedDbs(prev => ({ ...prev, [connectionId]: new Set() }));
       setShowConnManager(false);
       setConnections(await inv('touch-connection', connectionId));
     } catch (e: any) {
@@ -304,9 +452,10 @@ function App() {
   const handleDisconnect = async (connectionId: string) => {
     await inv('disconnect-db', connectionId);
     setConnectedIds(s => { const n = new Set(s); n.delete(connectionId); return n; });
-    if (selectedConnection === connectionId) {
-      setSelectedConnection(null); setDatabases([]); setCollections({}); setExpandedDbs(new Set());
-    }
+    setDatabases(prev => { const n = { ...prev }; delete n[connectionId]; return n; });
+    setCollections(prev => { const n = { ...prev }; delete n[connectionId]; return n; });
+    setExpandedDbs(prev => { const n = { ...prev }; delete n[connectionId]; return n; });
+    if (selectedConnection === connectionId) setSelectedConnection(null);
     setTabs(prev => {
       const remaining = prev.filter(t => t.connectionId !== connectionId);
       setActiveTab(a => remaining.some(t => t.id === a) ? a : (remaining.length > 0 ? remaining[remaining.length - 1].id : null));
@@ -415,106 +564,265 @@ function App() {
   // ── Databases ────────────────────────────────────────────────────────────────
   const refreshDatabases = async (connId: string) => {
     const dbs = await inv('list-databases', connId);
-    setDatabases(dbs);
+    setDatabases(prev => ({ ...prev, [connId]: dbs }));
   };
 
-  const handleExpandDb = async (dbName: string) => {
-    const newExpanded = new Set(expandedDbs);
+  const handleExpandDb = async (connId: string, dbName: string) => {
+    const newExpanded = new Set(expandedDbs[connId] || []);
     if (newExpanded.has(dbName)) {
       newExpanded.delete(dbName);
     } else {
       newExpanded.add(dbName);
-      if (!collections[dbName]) {
-        const cols = await inv('get-collections', selectedConnection, dbName);
-        setCollections(prev => ({ ...prev, [dbName]: cols }));
+      if (!(collections[connId] || {})[dbName]) {
+        const cols = await inv('get-collections', connId, dbName);
+        setCollections(prev => ({ ...prev, [connId]: { ...(prev[connId] || {}), [dbName]: cols } }));
       }
     }
-    setExpandedDbs(newExpanded);
+    setExpandedDbs(prev => ({ ...prev, [connId]: newExpanded }));
   };
 
-  const handleExpandAll = async () => {
-    const toLoad = databases.filter(db => !collections[db]);
+  const handleExpandAll = async (connId: string) => {
+    const dbs = databases[connId] || [];
+    const connCols = collections[connId] || {};
+    const toLoad = dbs.filter(db => !connCols[db]);
     const loaded = await Promise.all(toLoad.map(async db => {
-      const cols = await inv('get-collections', selectedConnection, db);
+      const cols = await inv('get-collections', connId, db);
       return [db, cols] as [string, string[]];
     }));
-    const newCols = { ...collections };
+    const newCols = { ...connCols };
     loaded.forEach(([db, cols]) => { newCols[db] = cols; });
-    setCollections(newCols);
-    setExpandedDbs(new Set(databases));
+    setCollections(prev => ({ ...prev, [connId]: newCols }));
+    setExpandedDbs(prev => ({ ...prev, [connId]: new Set(dbs) }));
   };
 
-  const handleCollapseAll = () => setExpandedDbs(new Set());
+  const handleCollapseAll = (connId: string) => setExpandedDbs(prev => ({ ...prev, [connId]: new Set() }));
 
-  const handleCreateDatabase = async () => {
+  const handleCreateDatabase = async (connId: string) => {
     const dbName = await showInput({ title: 'Create Database', message: 'Database name:' });
     if (!dbName?.trim()) return;
     const colName = await showInput({ title: 'Create Database', message: 'Initial collection name (required):' });
     if (!colName?.trim()) return;
     try {
-      await inv('create-collection', selectedConnection, dbName.trim(), colName.trim());
-      await refreshDatabases(selectedConnection!);
-      setCollections(prev => ({ ...prev, [dbName.trim()]: [colName.trim()] }));
-      setExpandedDbs(prev => new Set([...prev, dbName.trim()]));
+      await inv('create-collection', connId, dbName.trim(), colName.trim());
+      await refreshDatabases(connId);
+      setCollections(prev => ({ ...prev, [connId]: { ...(prev[connId] || {}), [dbName.trim()]: [colName.trim()] } }));
+      setExpandedDbs(prev => ({ ...prev, [connId]: new Set([...(prev[connId] || []), dbName.trim()]) }));
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleDropDatabase = async (dbName: string) => {
-    if (!await showConfirm({ title: 'Drop Database', message: `Drop database "${dbName}"? ALL data will be permanently deleted.`, danger: true, confirmText: 'Drop' })) return;
+  /**
+   * Counts for the typed confirmation. A failure here must not block the
+   * dialog — the confirmation still works, it just cannot say how much is
+   * about to go.
+   */
+  const dropImpact = async (connId: string, dbName: string, colName?: string): Promise<string> => {
     try {
-      await inv('drop-database', selectedConnection, dbName);
-      await refreshDatabases(selectedConnection!);
-      setCollections(prev => { const n = { ...prev }; delete n[dbName]; return n; });
-      setExpandedDbs(prev => { const n = new Set(prev); n.delete(dbName); return n; });
+      return impactLine(await inv('get-drop-impact', connId, dbName, colName) as DropImpact);
+    } catch { return ''; }
+  };
+
+  const handleDropDatabase = async (connId: string, dbName: string) => {
+    if (!await showConfirm({
+      title: 'Drop Database',
+      message: `Drop database "${dbName}"? ALL data will be permanently deleted.`,
+      danger: true, confirmText: 'Drop',
+      requireTyped: dbName,
+      impact: await dropImpact(connId, dbName),
+    })) return;
+    try {
+      await inv('drop-database', connId, dbName);
+      await refreshDatabases(connId);
+      setCollections(prev => { const forConn = { ...(prev[connId] || {}) }; delete forConn[dbName]; return { ...prev, [connId]: forConn }; });
+      setExpandedDbs(prev => { const forConn = new Set(prev[connId] || []); forConn.delete(dbName); return { ...prev, [connId]: forConn }; });
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleClearDatabase = async (dbName: string) => {
-    if (!await showConfirm({ title: 'Clear Database', message: `Delete ALL documents in every collection in "${dbName}"? This cannot be undone.`, danger: true, confirmText: 'Clear' })) return;
+  const handleClearDatabase = async (connId: string, dbName: string) => {
+    if (!await showConfirm({
+      title: 'Clear Database',
+      message: `Delete ALL documents in every collection in "${dbName}"? The collections stay, their contents do not. This cannot be undone.`,
+      danger: true, confirmText: 'Clear',
+      requireTyped: dbName,
+      impact: await dropImpact(connId, dbName),
+    })) return;
     try {
-      await inv('clear-database', selectedConnection, dbName);
+      await inv('clear-database', connId, dbName);
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
   // ── Collections ───────────────────────────────────────────────────────────────
-  const refreshCollections = async (dbName: string) => {
-    const cols = await inv('get-collections', selectedConnection, dbName);
-    setCollections(prev => ({ ...prev, [dbName]: cols }));
+  const refreshCollections = async (connId: string, dbName: string) => {
+    const cols = await inv('get-collections', connId, dbName);
+    setCollections(prev => ({ ...prev, [connId]: { ...(prev[connId] || {}), [dbName]: cols } }));
   };
 
-  const handleCreateCollection = async (dbName: string) => {
+  const handleCreateCollection = async (connId: string, dbName: string) => {
     const name = await showInput({ title: 'New Collection', message: `Collection name in "${dbName}":` });
     if (!name?.trim()) return;
     try {
-      await inv('create-collection', selectedConnection, dbName, name.trim());
-      await refreshCollections(dbName);
+      await inv('create-collection', connId, dbName, name.trim());
+      await refreshCollections(connId, dbName);
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleDropCollection = async (dbName: string, colName: string) => {
-    if (!await showConfirm({ title: 'Drop Collection', message: `Drop collection "${colName}"? This cannot be undone.`, danger: true, confirmText: 'Drop' })) return;
+  const handleDropCollection = async (connId: string, dbName: string, colName: string) => {
+    if (!await showConfirm({
+      title: 'Drop Collection',
+      message: `Drop collection "${colName}"? This cannot be undone.`,
+      danger: true, confirmText: 'Drop',
+      requireTyped: colName,
+      impact: await dropImpact(connId, dbName, colName),
+    })) return;
     try {
-      await inv('drop-collection', selectedConnection, dbName, colName);
-      await refreshCollections(dbName);
+      await inv('drop-collection', connId, dbName, colName);
+      await refreshCollections(connId, dbName);
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleRenameCollection = async (dbName: string, colName: string) => {
+  const handleRenameCollection = async (connId: string, dbName: string, colName: string) => {
     const newName = await showInput({ title: 'Rename Collection', message: 'New name:', defaultValue: colName });
     if (!newName?.trim() || newName.trim() === colName) return;
     try {
-      await inv('rename-collection', selectedConnection, dbName, colName, newName.trim());
-      await refreshCollections(dbName);
+      await inv('rename-collection', connId, dbName, colName, newName.trim());
+      await refreshCollections(connId, dbName);
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleDuplicateCollection = async (dbName: string, colName: string) => {
+  const handleDuplicateCollection = async (connId: string, dbName: string, colName: string) => {
     const newName = await showInput({ title: 'Duplicate Collection', message: `Copy "${colName}" to:`, defaultValue: `${colName}_copy` });
     if (!newName?.trim() || newName.trim() === colName) return;
     try {
-      await inv('duplicate-collection', selectedConnection, dbName, colName, newName.trim());
-      await refreshCollections(dbName);
+      await inv('duplicate-collection', connId, dbName, colName, newName.trim());
+      await refreshCollections(connId, dbName);
     } catch (e: any) { showAlert({ title: 'Duplicate failed', message: e.message, danger: true }); }
+  };
+
+  const connName = (id: string) => connections.find(c => c.id === id)?.name || id;
+
+  const handleCopyCollection = (connId: string, dbName: string, colName: string) => {
+    setCollectionClipboard({ connectionId: connId, db: dbName, col: colName });
+    showToast(copiedMessage({ kind: 'collection', connectionName: connName(connId), db: dbName, col: colName }));
+  };
+
+  // Cross-connection collection copy (data + indexes), the counterpart to
+  // handleCopyCollection above. A name clash in the target db always prompts
+  // for a rename — it never silently overwrites or merges into what's there.
+  const handlePasteCollection = async (connId: string, dbName: string) => {
+    if (!collectionClipboard) return;
+    const { connectionId: sourceConnId, db: sourceDb, col: sourceCol } = collectionClipboard;
+    const item: TransferItem = { kind: 'collection', connectionName: connName(sourceConnId), db: sourceDb, col: sourceCol };
+    // Ask before writing anything, naming both ends: source and target can be
+    // different servers, and that is exactly how the wrong one gets written to.
+    if (!await showConfirm({
+      ...pasteConfirm(item, { connectionName: connName(connId), db: dbName }),
+      confirmText: 'Copy',
+    })) return;
+    let targetCol = sourceCol;
+    try {
+      const existingCols: string[] = await inv('get-collections', connId, dbName);
+      if (existingCols.includes(targetCol)) {
+        let attempt = `${sourceCol} - copy`;
+        for (;;) {
+          const name = await showInput({
+            title: 'Collection already exists',
+            message: `"${sourceCol}" already exists in "${dbName}". Enter a name for the copy:`,
+            defaultValue: attempt,
+          });
+          if (!name?.trim()) return;
+          const trimmed = name.trim();
+          if (existingCols.includes(trimmed)) {
+            attempt = trimmed;
+            await showAlert(`"${trimmed}" also already exists — choose another name.`);
+            continue;
+          }
+          targetCol = trimmed;
+          break;
+        }
+      }
+      const result = await inv('copy-collection', {
+        sourceConnId, sourceDb, sourceCol,
+        targetConnId: connId, targetDb: dbName, targetCol,
+      });
+      // Refresh the target connection, not just this database: the copy can
+      // land on a connection whose tree is stale or not listed at all.
+      await handleRefreshTree(connId);
+      showAlert({
+        title: 'Collection copied',
+        message: `Copied ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} to "${dbName}.${targetCol}"` +
+          (result.indexesCreated ? ` (${result.indexesCreated} index${result.indexesCreated !== 1 ? 'es' : ''} recreated).` : '.'),
+      });
+    } catch (e: any) {
+      showAlert({ title: 'Copy failed', message: e.message, danger: true });
+    }
+  };
+
+  const handleCopyDatabase = (connId: string, dbName: string) => {
+    setDatabaseClipboard({ connectionId: connId, db: dbName });
+    showToast(copiedMessage({ kind: 'database', connectionName: connName(connId), db: dbName }));
+  };
+
+  // Cross-connection database copy (every collection's data + indexes), the
+  // counterpart to handleCopyDatabase above. Same rename-on-conflict flow as
+  // handlePasteCollection — a name clash on the target connection always
+  // prompts for a new name, never silently overwrites.
+  const handlePasteDatabase = async (targetConnId: string) => {
+    if (!databaseClipboard) return;
+    const { connectionId: sourceConnId, db: sourceDb } = databaseClipboard;
+    const item: TransferItem = { kind: 'database', connectionName: connName(sourceConnId), db: sourceDb };
+    if (!await showConfirm({
+      ...pasteConfirm(item, { connectionName: connName(targetConnId) }),
+      confirmText: 'Copy',
+    })) return;
+    let targetDb = sourceDb;
+    try {
+      const existingDbs: string[] = await inv('list-databases', targetConnId);
+      if (existingDbs.includes(targetDb)) {
+        // Unlike a collection name, a database name can't contain a space or
+        // any of /\."$*<>:| — so the rename default (and every retry) uses an
+        // underscore, and a bad name is caught here instead of round-tripping
+        // to a MongoServerError.
+        let attempt = `${sourceDb}_copy`;
+        for (;;) {
+          const name = await showInput({
+            title: 'Database already exists',
+            message: `"${sourceDb}" already exists on this connection. Enter a name for the copy:`,
+            defaultValue: attempt,
+          });
+          if (!name?.trim()) return;
+          const trimmed = name.trim();
+          if (/[/\\. "$*<>:|?]/.test(trimmed)) {
+            attempt = trimmed;
+            await showAlert('Database names can\'t contain spaces or any of / \\ . " $ * < > : | ?');
+            continue;
+          }
+          if (existingDbs.includes(trimmed)) {
+            attempt = trimmed;
+            await showAlert(`"${trimmed}" also already exists — choose another name.`);
+            continue;
+          }
+          targetDb = trimmed;
+          break;
+        }
+      }
+      const result = await inv('copy-database', { sourceConnId, sourceDb, targetConnId, targetDb });
+      await handleRefreshTree(targetConnId);
+      showAlert({
+        title: 'Database copied',
+        message: `Copied ${result.collectionsCount} collection${result.collectionsCount !== 1 ? 's' : ''} ` +
+          `(${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''}) to "${targetDb}"` +
+          (result.indexesCreated ? ` — ${result.indexesCreated} index${result.indexesCreated !== 1 ? 'es' : ''} recreated.` : '.'),
+      });
+    } catch (e: any) {
+      showAlert({ title: 'Copy failed', message: e.message, danger: true });
+    }
+  };
+
+  const handleTogglePin = (connId: string, dbName: string, colName: string) => {
+    setPinnedCollections(prev => {
+      const next = togglePinned(prev, connId, dbName, colName);
+      savePinned(next);
+      return next;
+    });
   };
 
   const handleCopyCollectionName = async (_dbName: string, colName: string) => {
@@ -522,21 +830,19 @@ function App() {
   };
 
   // ── Import ───────────────────────────────────────────────────────────────────
-  const handleImportDocuments = async (dbName: string, colName: string) => {
-    if (!selectedConnection) return;
+  const handleImportDocuments = async (connId: string, dbName: string, colName: string) => {
     const file = await pickFile('.json,.ndjson,.jsonl');
     if (!file) return;
     try {
       const text = await file.text();
       const docs = parseDocs(text);
       if (docs.length === 0) { alert('No documents found in file'); return; }
-      const result = await inv('insert-documents', selectedConnection, dbName, colName, docs);
+      const result = await inv('insert-documents', connId, dbName, colName, docs);
       alert(`Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${dbName}.${colName}`);
     } catch (e: any) { alert('Import failed: ' + e.message); }
   };
 
-  const handleImportCollection = async (dbName: string) => {
-    if (!selectedConnection) return;
+  const handleImportCollection = async (connId: string, dbName: string) => {
     const file = await pickFile('.json,.ndjson,.jsonl');
     if (!file) return;
     const suggested = file.name.replace(/\.(json|ndjson|jsonl)$/i, '');
@@ -545,14 +851,13 @@ function App() {
     try {
       const text = await file.text();
       const docs = parseDocs(text);
-      const result = await inv('import-collection', selectedConnection, dbName, colName.trim(), docs);
-      await refreshCollections(dbName);
+      const result = await inv('import-collection', connId, dbName, colName.trim(), docs);
+      await refreshCollections(connId, dbName);
       alert(`Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${dbName}.${colName.trim()}`);
     } catch (e: any) { alert('Import failed: ' + e.message); }
   };
 
-  const handleImportDatabase = async () => {
-    if (!selectedConnection) return;
+  const handleImportDatabase = async (connId: string) => {
     const file = await pickFile('.json');
     if (!file) return;
     const suggested = file.name.replace(/\.json$/i, '');
@@ -561,43 +866,41 @@ function App() {
     try {
       const text = await file.text();
       const collections = parseDatabaseFile(text);
-      const result = await inv('import-database', selectedConnection, dbName.trim(), collections);
-      await refreshDatabases(selectedConnection);
+      const result = await inv('import-database', connId, dbName.trim(), collections);
+      await refreshDatabases(connId);
       alert(`Imported ${result.documents} documents across ${result.collections} collections into "${dbName.trim()}"`);
     } catch (e: any) { alert('Import failed: ' + e.message); }
   };
 
-  const handleImportCsvDocuments = async (dbName: string, colName: string) => {
-    if (!selectedConnection) return;
+  const handleImportCsvDocuments = async (connId: string, dbName: string, colName: string) => {
     const file = await pickFile('.csv,.tsv');
     if (!file) return;
     try {
       const text = await file.text();
       const { headers, rows } = parseCsv(text);
-      setCsvImport({ dbName, colName, headers, rows, fileName: file.name });
+      setCsvImport({ connId, dbName, colName, headers, rows, fileName: file.name });
     } catch (e: any) { showAlert({ title: 'Import failed', message: e.message, danger: true }); }
   };
 
-  const handleImportCsvCollection = async (dbName: string) => {
-    if (!selectedConnection) return;
+  const handleImportCsvCollection = async (connId: string, dbName: string) => {
     const file = await pickFile('.csv,.tsv');
     if (!file) return;
     try {
       const text = await file.text();
       const { headers, rows } = parseCsv(text);
-      setCsvImport({ dbName, headers, rows, fileName: file.name });
+      setCsvImport({ connId, dbName, headers, rows, fileName: file.name });
     } catch (e: any) { showAlert({ title: 'Import failed', message: e.message, danger: true }); }
   };
 
   const handleCsvImportConfirm = async (docs: any[], colName: string) => {
-    if (!csvImport || !selectedConnection) return;
+    if (!csvImport) return;
     try {
       if (csvImport.colName) {
-        const result = await inv('insert-documents', selectedConnection, csvImport.dbName, colName, docs);
+        const result = await inv('insert-documents', csvImport.connId, csvImport.dbName, colName, docs);
         showAlert({ title: 'Import complete', message: `Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${csvImport.dbName}.${colName}` });
       } else {
-        const result = await inv('import-collection', selectedConnection, csvImport.dbName, colName, docs);
-        await refreshCollections(csvImport.dbName);
+        const result = await inv('import-collection', csvImport.connId, csvImport.dbName, colName, docs);
+        await refreshCollections(csvImport.connId, csvImport.dbName);
         showAlert({ title: 'Import complete', message: `Imported ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} into ${csvImport.dbName}.${colName}` });
       }
     } catch (e: any) {
@@ -607,22 +910,28 @@ function App() {
     }
   };
 
-  const handleClearCollection = async (dbName: string, colName: string) => {
-    if (!await showConfirm({ title: 'Clear Collection', message: `Delete ALL documents in "${colName}"? This cannot be undone.`, danger: true, confirmText: 'Clear' })) return;
+  const handleClearCollection = async (connId: string, dbName: string, colName: string) => {
+    if (!await showConfirm({
+      title: 'Clear Collection',
+      message: `Delete ALL documents in "${colName}"? The collection stays, its contents do not. This cannot be undone.`,
+      danger: true, confirmText: 'Clear',
+      requireTyped: colName,
+      impact: await dropImpact(connId, dbName, colName),
+    })) return;
     try {
-      await inv('clear-collection', selectedConnection, dbName, colName);
+      await inv('clear-collection', connId, dbName, colName);
     } catch (e: any) { alert('Error: ' + e.message); }
   };
 
-  const handleSelectCollection = (dbName: string, collection: string) => {
+  const handleSelectCollection = (connId: string, dbName: string, collection: string) => {
     setSelectedCollection(collection);
-    openTab('documents', collection, dbName, collection);
+    openTab('documents', collection, dbName, collection, connId);
   };
 
   // ── Tabs ──────────────────────────────────────────────────────────────────────
-  const openTab = (type: Tab['type'], title: string, dbName?: string, collection?: string) => {
+  const openTab = (type: Tab['type'], title: string, dbName?: string, collection?: string, connId?: string) => {
     const tabId = `${type}-${dbName}-${collection}-${Date.now()}`;
-    const newTab: Tab = { id: tabId, type, title, database: dbName, collection, connectionId: selectedConnection! };
+    const newTab: Tab = { id: tabId, type, title, database: dbName, collection, connectionId: connId ?? selectedConnection! };
     setTabs(prev => [...prev, newTab]);
     setActiveTab(tabId);
   };
@@ -665,9 +974,12 @@ function App() {
         />
       )}
       <DialogModal />
+      <ToastHost />
+      {showPalette && <CommandPalette items={paletteItems()} onClose={() => setShowPalette(false)} />}
       <Sidebar
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
         connections={connections}
+        folders={folders}
         selectedConnection={selectedConnection}
         collapsedConns={collapsedConns}
         connectedIds={connectedIds}
@@ -697,10 +1009,19 @@ function App() {
         onRenameCollection={handleRenameCollection}
         onDuplicateCollection={handleDuplicateCollection}
         onCopyCollectionName={handleCopyCollectionName}
+        pinnedCollections={pinnedCollections}
+        onTogglePin={handleTogglePin}
+        collectionClipboard={collectionClipboard}
+        onCopyCollection={handleCopyCollection}
+        onPasteCollection={handlePasteCollection}
+        databaseClipboard={databaseClipboard}
+        onCopyDatabase={handleCopyDatabase}
+        onPasteDatabase={handlePasteDatabase}
+        connectionHealth={connectionHealth}
         onClearCollection={handleClearCollection}
         onDropDatabase={handleDropDatabase}
         onClearDatabase={handleClearDatabase}
-        onManageUsers={db => setUsersRolesDb(db)}
+        onManageUsers={(connId, db) => setUsersRoles({ connId, db })}
         onImportDocuments={handleImportDocuments}
         onImportCollection={handleImportCollection}
         onImportDatabase={handleImportDatabase}
@@ -764,11 +1085,11 @@ function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
-      {usersRolesDb && selectedConnection && (
+      {usersRoles && (
         <UsersRolesModal
-          connectionId={selectedConnection}
-          database={usersRolesDb}
-          onClose={() => setUsersRolesDb(null)}
+          connectionId={usersRoles.connId}
+          database={usersRoles.db}
+          onClose={() => setUsersRoles(null)}
         />
       )}
     </div>

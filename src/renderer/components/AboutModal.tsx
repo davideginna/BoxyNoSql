@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Icon from './Icon';
 import { getCheckOnStartup, setCheckOnStartup } from '../utils/updates';
+import { isEscapeKey } from '../utils/keys';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -32,7 +33,7 @@ export default function AboutModal({
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e)) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);

@@ -2,9 +2,21 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
-import { showConfirm } from '../dialog';
+import { showConfirm, showAlert } from '../dialog';
 import { isTypingTarget } from '../utils/dom';
+import { onEscape, onRunKey } from '../utils/keys';
 import { buildFilter, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
+import {
+  cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
+  loadHiddenFields, saveHiddenFields, sortTooltip, SORT_DIR_LABEL, SORT_DIR_HINT,
+  type SortKey, type SortDir,
+} from '../utils/docTable';
+import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
+import { useVirtualRows, VirtualSpacer } from './VirtualRows';
+import BulkEditModal from './BulkEditModal';
+import ExplainModal from './ExplainModal';
+import { showToast } from '../toast';
+import { previewLabel, type QueryEntry } from '../utils/queryHistory';
 
 type ViewMode = 'table' | 'tree';
 
@@ -12,6 +24,11 @@ interface DocumentsViewProps {
   connectionId: string;
   database: string;
   collection: string;
+  /** False for a tab that is mounted but not on screen — see `MainContent`. */
+  active?: boolean;
+  /** Connection flag: every write is refused by the main process anyway, this
+   *  only keeps the buttons from offering what will be rejected. */
+  readOnly?: boolean;
 }
 
 // Shell-style pretty print: {$oid:"x"} → ObjectId("x"), {$date:"x"} → ISODate("x")
@@ -125,12 +142,21 @@ const LINE_NUMBERS_KEY = 'docLineNumbers';
 export const loadLineNumbers = () => localStorage.getItem(LINE_NUMBERS_KEY) !== 'false';
 export const saveLineNumbers = (on: boolean) => localStorage.setItem(LINE_NUMBERS_KEY, String(on));
 
+const WRAP_KEY = 'docEditorWrap';
+export const loadWrap = () => localStorage.getItem(WRAP_KEY) === 'true';
+export const saveWrap = (on: boolean) => localStorage.setItem(WRAP_KEY, String(on));
+
 interface JsonEditorProps {
   value: string;
   onChange: (value: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   taRef?: React.RefObject<HTMLTextAreaElement>;
   lineNumbers: boolean;
+  /** Soft-wraps long lines. Mutually exclusive with the gutter in practice —
+   * a wrapped logical line spans several visual rows, so a numbering gutter
+   * built for one-row-per-line would drift; the gutter is hidden while wrap
+   * is on rather than shown misaligned. */
+  wrap?: boolean;
   className?: string;
 }
 
@@ -147,10 +173,11 @@ interface JsonEditorProps {
  * Neither layer wraps (`white-space: pre` + horizontal scroll), so one `\n` is
  * exactly one visual row and the numbering can never drift.
  */
-function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, className = '' }: JsonEditorProps) {
+function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, wrap = false, className = '' }: JsonEditorProps) {
   const hlRef = useRef<HTMLPreElement>(null);
   const gutterRef = useRef<HTMLPreElement>(null);
   const lines = value.split('\n').length;
+  const showGutter = lineNumbers && !wrap;
 
   // The textarea owns the scroll position; the other layers only follow it.
   const follow = (scrollTop: number, scrollLeft: number) => {
@@ -165,11 +192,11 @@ function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, className 
   useLayoutEffect(() => {
     const ta = taRef?.current;
     if (ta) follow(ta.scrollTop, ta.scrollLeft);
-  }, [lineNumbers]);
+  }, [lineNumbers, wrap]);
 
   return (
     <div
-      className={`json-editor-wrap${lineNumbers ? ' with-gutter' : ''}${className ? ' ' + className : ''}`}
+      className={`json-editor-wrap${showGutter ? ' with-gutter' : ''}${wrap ? ' wrap-on' : ''}${className ? ' ' + className : ''}`}
       // Width of the gutter, in monospace glyphs: the digit count of the last
       // line. Both the gutter and the text layers offset by it, so they stay
       // aligned however long the document gets.
@@ -186,12 +213,12 @@ function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, className 
         className="json-editor-ta"
         value={value}
         spellCheck={false}
-        wrap="off"
+        wrap={wrap ? 'soft' : 'off'}
         onChange={e => onChange(e.target.value)}
         onScroll={syncScroll}
         onKeyDown={onKeyDown}
       />
-      {lineNumbers && (
+      {showGutter && (
         // One text node laid out by the same `<pre>` rules as the highlight
         // layer — same font, size, line-height and padding — so the rows line up
         // by construction. The trailing "\n" mirrors the one above.
@@ -211,7 +238,15 @@ function idToString(id: any): string {
 
 let condId = 0;
 
-export default function DocumentsView({ connectionId, database, collection }: DocumentsViewProps) {
+// Starting guesses for the row heights of the two view modes, used only until a
+// row of that kind has actually been on screen. Both are a collapsed row: a
+// table row is one line of text, a tree row is its header plus the gap.
+// Exported so the tests can fake a layout that matches, and the arithmetic in
+// their assertions stays exact.
+export const TABLE_ROW_ESTIMATE = 28;
+export const TREE_ROW_ESTIMATE = 32;
+
+export default function DocumentsView({ connectionId, database, collection, active = true, readOnly = false }: DocumentsViewProps) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   // Closed by default: an empty builder took ~20% of the width to show a
@@ -259,13 +294,51 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   const editFindRef = useRef<HTMLInputElement>(null);
   // Line-number gutter, shared by the add and edit editors and remembered.
   const [lineNumbers, setLineNumbers] = useState(loadLineNumbers);
+  // Soft-wrap, edit editor only, also remembered.
+  const [editWrap, setEditWrap] = useState(loadWrap);
+  // Edit modal fills the window while true; not persisted, resets per session.
+  const [editMaximized, setEditMaximized] = useState(false);
+  // Sort keys (in precedence order) and hidden fields. Both go to the server on
+  // every load — see utils/docTable.ts. Sort resets per collection; the hidden
+  // fields are remembered per collection in localStorage.
+  const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
+  const [hiddenFields, setHiddenFields] = useState<string[]>([]);
+  const [showFieldsMenu, setShowFieldsMenu] = useState(false);
+  const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [showExplain, setShowExplain] = useState(false);
 
   useEffect(() => { saveLineNumbers(lineNumbers); }, [lineNumbers]);
+  useEffect(() => { saveWrap(editWrap); }, [editWrap]);
 
-  const loadDocuments = async (filter: any, lim: number, pg: number) => {
+  // Both view modes are windowed: a page limit of a few thousand used to put a
+  // few thousand rows — or a few thousand `DocumentTree`s — in the DOM at once,
+  // and laying that out is what locked the UI. Selection stays keyed by the
+  // index into `documents`, never by what happens to be mounted, so select-all,
+  // shift-ranges and the bulk bar count are unaffected by which rows exist.
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableBodyRef = useRef<HTMLTableSectionElement>(null);
+  const tableWin = useVirtualRows({
+    scrollerRef: tableScrollRef, listRef: tableBodyRef, count: documents.length,
+    estimate: TABLE_ROW_ESTIMATE, resetKey: documents,
+  });
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const treeListRef = useRef<HTMLDivElement>(null);
+  const treeWin = useVirtualRows({
+    scrollerRef: treeScrollRef, listRef: treeListRef, count: documents.length,
+    estimate: TREE_ROW_ESTIMATE, resetKey: documents,
+  });
+
+  // `keys`/`hidden` are explicit rather than read from state because every
+  // caller that changes them loads in the same handler, before React has
+  // re-rendered with the new value.
+  const loadDocuments = async (filter: any, lim: number, pg: number, keys: SortKey[] = sortKeys, hidden: string[] = hiddenFields) => {
     setLoading(true); setError(null);
     try {
-      const result = await inv('get-documents', connectionId, database, collection, filter, lim, pg * lim);
+      const result = await inv(
+        'get-documents', connectionId, database, collection, filter, lim, pg * lim,
+        buildSort(keys), buildProjection(hidden),
+      );
       setDocuments(result.docs);
       setTotal(result.total);
       setTotalEstimated(!!result.estimated);
@@ -276,22 +349,100 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   useEffect(() => {
     setConditions([]); setSelectedIndices(new Set()); setDocExpands({});
     setPage(0); setTotal(0);
-    loadDocuments({}, limit, 0);
+    const hidden = loadHiddenFields(connectionId, database, collection);
+    setSortKeys([]); setHiddenFields(hidden); setShowFieldsMenu(false);
+    loadDocuments({}, limit, 0, [], hidden);
   }, [connectionId, database, collection]);
 
-  const applyFilter = () => { setPage(0); loadDocuments(buildFilter(conditions, matchAll), limit, 0); };
+  const history = useQueryHistory('filter', connectionId, database, collection);
+
+  const applyFilter = () => {
+    const filter = buildFilter(conditions, matchAll);
+    // An empty filter is not worth remembering — it is what Reset does.
+    if (conditions.length > 0) {
+      history.record(
+        JSON.stringify({ matchAll, conditions: conditions.map(({ id: _id, ...rest }) => rest) }),
+        previewLabel(JSON.stringify(filter)),
+      );
+    }
+    setPage(0);
+    loadDocuments(filter, limit, 0);
+  };
+
+  // A recalled filter carries no condition ids — they are per-session UI keys.
+  const recallFilter = (entry: QueryEntry) => {
+    let parsed: { matchAll: boolean; conditions: Omit<Condition, 'id'>[] };
+    try { parsed = JSON.parse(entry.body); } catch { return; }
+    const restored = parsed.conditions.map(c => ({ ...c, id: ++condId }));
+    setConditions(restored);
+    setMatchAll(parsed.matchAll);
+    setShowQB(true);
+    setPage(0);
+    loadDocuments(buildFilter(restored, parsed.matchAll), limit, 0);
+  };
   const resetFilter = () => { setConditions([]); setPage(0); loadDocuments({}, limit, 0); };
   const goToPage = (pg: number) => { setPage(pg); loadDocuments(buildFilter(conditions, matchAll), limit, pg); };
 
-  const openEdit = useCallback((doc: any) => {
-    const json = prettyDoc(doc);
-    setEditingDoc(doc);
+  // Sorting and hiding both re-run the query from page 0: the current page of a
+  // differently-sorted result is a different set of documents, and a stale page
+  // number would point past the end of nothing in particular.
+  const applySort = (keys: SortKey[]) => {
+    setSortKeys(keys); setPage(0); setSelectedIndices(new Set());
+    loadDocuments(buildFilter(conditions, matchAll), limit, 0, keys);
+  };
+  const headerSort = (field: string, additive: boolean) => applySort(cycleSort(sortKeys, field, additive));
+  const sortField = (field: string, dir: SortDir) => {
+    const current = sortKeys.find(k => k.field === field);
+    applySort(current && current.dir === dir ? sortKeys.filter(k => k.field !== field) : [{ field, dir }]);
+  };
+
+  const applyHidden = (hidden: string[]) => {
+    setHiddenFields(hidden);
+    saveHiddenFields(connectionId, database, collection, hidden);
+    setPage(0);
+    loadDocuments(buildFilter(conditions, matchAll), limit, 0, sortKeys, hidden);
+  };
+
+  // The fields popover is a plain absolutely-positioned div, not a modal, so it
+  // needs its own outside-click handling; Escape rides the shared stack.
+  const fieldsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showFieldsMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!fieldsMenuRef.current?.contains(e.target as Node)) setShowFieldsMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    const offEsc = onEscape(() => setShowFieldsMenu(false));
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      offEsc();
+    };
+  }, [showFieldsMenu]);
+
+  /**
+   * The document as it is stored, not as the list shows it. While fields are
+   * hidden the rows come back projected, and saving one of those would
+   * `replaceOne` the hidden fields out of existence — so re-read the whole
+   * document by `_id` before it reaches an editor or a viewer.
+   */
+  const fetchFull = async (doc: any): Promise<any> => {
+    if (hiddenFields.length === 0) return doc;
+    try {
+      const res = await inv('get-documents', connectionId, database, collection, { _id: doc._id }, 1, 0, null, null);
+      return res.docs?.[0] ?? doc;
+    } catch { return doc; }
+  };
+
+  const openEdit = useCallback(async (doc: any) => {
+    const full = await fetchFull(doc);
+    const json = prettyDoc(full);
+    setEditingDoc(full);
     setEditJson(json);
     setOriginalEditJson(json);
     setEditError(null);
     setShowEditFind(false);
     setEditFind('');
-  }, []);
+  }, [hiddenFields, connectionId, database, collection]);
 
   const closeEdit = useCallback(async (skipConfirm = false) => {
     const isDirty = editJson !== originalEditJson;
@@ -301,6 +452,36 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     }
     setEditingDoc(null);
   }, [editJson, originalEditJson]);
+
+  // Escape closes whatever is innermost. Registered per modal so the stack
+  // order matches what the user sees; the find bar goes before its modal.
+  useEffect(() => {
+    if (!active || !editingDoc) return;
+    return onEscape(() => {
+      if (showEditFind) { setShowEditFind(false); setEditFind(''); return; }
+      // Same path as the Cancel button: it asks before throwing away edits.
+      closeEdit();
+    });
+  }, [active, editingDoc, showEditFind, closeEdit]);
+
+  useEffect(() => {
+    if (!active || !viewingDoc) return;
+    return onEscape(() => {
+      if (showViewFind) { setShowViewFind(false); setViewFind(''); return; }
+      setViewingDoc(null);
+    });
+  }, [active, viewingDoc, showViewFind]);
+
+  useEffect(() => active && showAddDoc ? onEscape(() => setShowAddDoc(false)) : undefined, [active, showAddDoc]);
+  useEffect(() => active && showQueryModal ? onEscape(() => setShowQueryModal(false)) : undefined, [active, showQueryModal]);
+
+  // Alt+Enter runs, from anywhere in the view — including from inside the
+  // filter fields, which is where you are when you want to run. Ctrl+Enter in
+  // the modals keeps its own meaning (save), so this only fires with no modal.
+  useEffect(() => {
+    if (!active || editingDoc || viewingDoc || showAddDoc || showQueryModal || showExplain) return;
+    return onRunKey(e => { e.preventDefault(); applyFilter(); });
+  }, [active, editingDoc, viewingDoc, showAddDoc, showQueryModal, showExplain, conditions, matchAll, limit, sortKeys, hiddenFields]);
 
   const openAddDoc = useCallback(() => {
     setAddJson('{\n  \n}');
@@ -326,11 +507,11 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     } catch (err: any) { setAddError(err.message); }
   };
 
-  const openView = useCallback((doc: any) => {
-    setViewingDoc(doc);
+  const openView = useCallback(async (doc: any) => {
+    setViewingDoc(await fetchFull(doc));
     setShowViewFind(false);
     setViewFind('');
-  }, []);
+  }, [hiddenFields, connectionId, database, collection]);
 
   // Multi-select click handler
   const handleDocClick = useCallback((idx: number, e: React.MouseEvent) => {
@@ -355,6 +536,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   }, []);
 
   const handleBulkDelete = useCallback(async () => {
+    if (readOnly) return;
     if (selectedIndices.size === 0) return;
     const count = selectedIndices.size;
     const ok = await showConfirm({ message: `Delete ${count} document${count !== 1 ? 's' : ''}?`, danger: true, confirmText: 'Delete' });
@@ -376,7 +558,24 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     navigator.clipboard.writeText(text);
   }, [selectedIndices, documents]);
 
+  /**
+   * One field across the selection. Typed confirmation is deliberately not
+   * used here — this is reversible per field, unlike a drop — but the update
+   * document is shown in the modal before it runs.
+   */
+  const applyBulkEdit = async (update: Record<string, any>, description: string) => {
+    const ids = [...selectedIndices].map(i => documents[i]).filter(Boolean).map(d => idToString(d._id));
+    if (!await showConfirm({ title: 'Edit field', message: `${description}?`, confirmText: 'Apply' })) return;
+    try {
+      const res = await inv('bulk-update-documents', connectionId, database, collection, ids, update);
+      setShowBulkEdit(false);
+      showToast({ message: `${res.modifiedCount} document${res.modifiedCount === 1 ? '' : 's'} updated`, kind: 'success' });
+      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+    } catch (err: any) { setError(err.message); }
+  };
+
   const handlePaste = useCallback(async () => {
+    if (readOnly) return;
     try {
       const text = await navigator.clipboard.readText();
       let parsed: any;
@@ -389,35 +588,28 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     } catch (err: any) { setError('Paste failed: ' + err.message); }
   }, [connectionId, database, collection, conditions, limit]);
 
-  // Global keyboard shortcuts
+  // Global keyboard shortcuts. Bound only by the tab on screen: every tab ever
+  // opened stays mounted, so an unguarded handler would fire Ctrl+D once per
+  // open documents tab.
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
+      // Escape is not handled here at all: it goes through the shared stack
+      // below, so the innermost thing open is the one that closes.
       // Inside a text field these keys belong to the field: Ctrl+C/V/X are the
       // clipboard, Delete/Backspace delete characters — not documents.
-      if (isTypingTarget(e.target)) {
-        if (e.key === 'Escape') {
-          if (editingDoc) { e.preventDefault(); closeEdit(); }
-          else if (viewingDoc) { e.preventDefault(); setViewingDoc(null); }
-          else if (showAddDoc) { e.preventDefault(); setShowAddDoc(false); }
-        }
-        return;
-      }
-      if (showAddDoc) {
-        if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
-        return;
-      }
+      if (isTypingTarget(e.target)) return;
+      if (showAddDoc || showExplain) return;
       if (editingDoc) {
-        if (e.key === 'Escape') { e.preventDefault(); closeEdit(); return; }
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
         if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
         return;
       }
       if (viewingDoc) {
-        if (e.key === 'Escape') { e.preventDefault(); setViewingDoc(null); return; }
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); }
         return;
       }
-      if (e.ctrlKey && e.key === 'd') { e.preventDefault(); openAddDoc(); return; }
+      if (e.ctrlKey && e.key === 'd') { e.preventDefault(); if (!readOnly) openAddDoc(); return; }
       if (e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -447,7 +639,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, openEdit, openView, openAddDoc, closeEdit, handleBulkDelete, handleBulkCopy, handlePaste]);
+  }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
 
   // Find in edit textarea
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {
@@ -550,11 +742,52 @@ export default function DocumentsView({ connectionId, database, collection }: Do
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * Export through the main process: the documents never come back to the
+   * renderer, they go from the cursor straight to the file the native dialog
+   * picked. `scope: 'view'` is what the toolbar shows — same filter, same sort,
+   * same visible fields; `'all'` ignores every one of them.
+   */
+  const exportDocuments = async (format: 'json' | 'ndjson' | 'csv', scope: 'view' | 'all') => {
+    const isView = scope === 'view';
+    try {
+      const res = await inv('export-documents', {
+        connectionId, dbName: database, collection, format,
+        filter: isView ? buildFilter(conditions, matchAll) : {},
+        sort: isView ? buildSort(sortKeys) : null,
+        projection: isView ? buildProjection(hiddenFields) : null,
+        filtered: isView && conditions.length > 0,
+      });
+      if (res.canceled) return;
+      await showAlert({
+        title: 'Export complete',
+        message: `${res.count} document${res.count === 1 ? '' : 's'} written.`,
+        detail: res.filePath,
+      });
+    } catch (err: any) { setError(err.message); }
+  };
+
+  const exportItems = (): ContextMenuEntry[] => {
+    const forScope = (scope: 'view' | 'all'): ContextMenuEntry[] =>
+      (['json', 'ndjson', 'csv'] as const).map(f => ({
+        label: f.toUpperCase(),
+        icon: 'download' as const,
+        onClick: () => exportDocuments(f, scope),
+      }));
+    return [
+      { label: `Current view — filter, sort, ${hiddenFields.length > 0 ? 'visible fields only' : 'all fields'}`, icon: 'filter', disabled: true, onClick: () => {} },
+      ...forScope('view'),
+      { separator: true },
+      { label: 'Whole collection', icon: 'collection', disabled: true, onClick: () => {} },
+      ...forScope('all'),
+    ];
+  };
+
   const buildCtxItems = (idx: number): ContextMenuEntry[] => {
     const doc = documents[idx];
     return [
       { label: 'View', icon: 'eye', shortcut: 'F3', onClick: () => openView(doc) },
-      { label: 'Edit', icon: 'edit', shortcut: 'Ctrl+J', onClick: () => openEdit(doc) },
+      { label: 'Edit', icon: 'edit', shortcut: 'Ctrl+J', disabled: readOnly, onClick: () => openEdit(doc) },
       { separator: true },
       { label: 'Expand all', icon: 'expandAll', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: true } })) },
       { label: 'Collapse all', icon: 'collapseAll', onClick: () => setDocExpands(p => ({ ...p, [idx]: { tick: (p[idx]?.tick || 0) + 1, target: false } })) },
@@ -562,14 +795,14 @@ export default function DocumentsView({ connectionId, database, collection }: Do
       { label: 'Copy', icon: 'copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(doc) },
       { label: 'Export JSON', icon: 'save', onClick: () => handleExport(doc) },
       { separator: true },
-      { label: 'Add field', icon: 'plus', onClick: () => {
-        const updated = { ...doc, newField: '' };
+      { label: 'Add field', icon: 'plus', disabled: readOnly, onClick: async () => {
+        const updated = { ...await fetchFull(doc), newField: '' };
         setEditingDoc(updated);
         setEditJson(prettyDoc(updated));
         setEditError(null);
       }},
       { separator: true },
-      { label: 'Delete', icon: 'trash', onClick: () => handleDelete(doc) },
+      { label: 'Delete', icon: 'trash', disabled: readOnly, onClick: () => handleDelete(doc) },
     ];
   };
 
@@ -581,6 +814,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
   };
 
   const keys = getKeys();
+  const fieldOptions = knownFields(documents, hiddenFields).sort((a, b) => a === '_id' ? -1 : b === '_id' ? 1 : a.localeCompare(b));
   const jsonValid = validateJson(editJson);
 
   const findMatchCount = (text: string, query: string) => {
@@ -611,14 +845,119 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         >
           <span className="toolbar-label"><Icon name="filter" size={13} /> Filter{conditions.length > 0 ? ` (${conditions.length})` : ''}</span>
         </button>
+        <button
+          className="secondary"
+          title="Export documents"
+          onClick={e => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setExportMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+        >
+          <span className="toolbar-label"><Icon name="download" size={13} /> Export</span>
+        </button>
+        <QueryHistoryMenu
+          history={history}
+          onPick={recallFilter}
+          current={() => ({
+            body: JSON.stringify({ matchAll, conditions: conditions.map(({ id: _id, ...rest }) => rest) }),
+            label: previewLabel(JSON.stringify(buildFilter(conditions, matchAll))),
+          })}
+        />
+        <div className="fields-menu-wrap" ref={fieldsMenuRef}>
+          <button
+            className={`secondary${showFieldsMenu ? ' active-secondary' : ''}`}
+            onClick={() => setShowFieldsMenu(v => !v)}
+            title="Show/hide fields and sort"
+          >
+            <span className="toolbar-label">
+              <Icon name="columns" size={13} /> Fields{hiddenFields.length > 0 ? ` (${hiddenFields.length} hidden)` : ''}
+            </span>
+          </button>
+          {showFieldsMenu && (
+            <div className="fields-menu">
+              <div className="fields-menu-head">
+                <span>Fields</span>
+                <span className="fields-menu-hint">ASC = A→Z, oldest first · shift-click a column header to add a second key</span>
+              </div>
+              <div className="fields-menu-list">
+                {fieldOptions.length === 0 && <div className="fields-menu-empty">No fields yet</div>}
+                {fieldOptions.map(field => {
+                  const key = sortKeys.find(k => k.field === field);
+                  const hidden = hiddenFields.includes(field);
+                  return (
+                    <div key={field} className="fields-menu-row">
+                      <label className="fields-menu-name" title={field === '_id' ? '_id is always shown — edit and delete need it' : field}>
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          disabled={field === '_id'}
+                          onChange={() => applyHidden(toggleHidden(hiddenFields, field))}
+                        />
+                        <span className={hidden ? 'fields-menu-hidden' : ''}>{field}</span>
+                      </label>
+                      <button
+                        className={`fields-sort-btn${key?.dir === 1 ? ' active' : ''}`}
+                        title={`Sort ${field} ascending — ${SORT_DIR_HINT[1]}${key?.dir === 1 ? ' (click again to remove)' : ''}`}
+                        onClick={() => sortField(field, 1)}
+                      ><Icon name="arrowUp" size={11} /> ASC</button>
+                      <button
+                        className={`fields-sort-btn${key?.dir === -1 ? ' active' : ''}`}
+                        title={`Sort ${field} descending — ${SORT_DIR_HINT[-1]}${key?.dir === -1 ? ' (click again to remove)' : ''}`}
+                        onClick={() => sortField(field, -1)}
+                      ><Icon name="arrowDown" size={11} /> DESC</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="fields-menu-foot">
+                <button className="secondary btn-xs" disabled={hiddenFields.length === 0} onClick={() => applyHidden([])}>Show all</button>
+                <button className="secondary btn-xs" disabled={sortKeys.length === 0} onClick={() => applySort([])}>Clear sort</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {sortKeys.length > 0 && (
+          <div className="sort-chips">
+            {sortKeys.map(k => (
+              <button
+                key={k.field}
+                className="sort-chip"
+                title={`Sorted ${SORT_DIR_LABEL[k.dir]} by ${k.field} (${SORT_DIR_HINT[k.dir]}).\nClick to remove this sort key.`}
+                onClick={() => applySort(sortKeys.filter(s => s.field !== k.field))}
+              >
+                {k.field}
+                <Icon name={k.dir === 1 ? 'arrowUp' : 'arrowDown'} size={10} />
+                {k.dir === 1 ? 'ASC' : 'DESC'}
+                <Icon name="close" size={10} />
+              </button>
+            ))}
+          </div>
+        )}
         <span className="toolbar-label toolbar-limit-label">Limit:</span>
-        <input type="number" className="toolbar-limit-input" value={limit} onChange={e => setLimit(Number(e.target.value))} />
+        {/* Clamped to 1: `limit: 0` is "no limit" to MongoDB, so an emptied
+            field used to fetch the whole collection. Big pages are fine now —
+            the rows are windowed — but they are still one round trip. */}
+        <input
+          type="number" className="toolbar-limit-input" min={1} value={limit}
+          title="Documents per page. Rows are windowed, so a few thousand scroll without freezing"
+          onChange={e => setLimit(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+        />
         <button onClick={applyFilter} disabled={loading}>{loading ? '…' : <><Icon name="play" size={12} /> Run</>}</button>
         <button className="secondary" onClick={resetFilter}><Icon name="refresh" size={13} /> Reset</button>
-        <button className="secondary" title="Add document (Ctrl+D)" onClick={openAddDoc}><Icon name="plus" size={13} /> Add</button>
+        <button
+          className="secondary" onClick={() => setShowExplain(true)}
+          title="Explain this filter — index usage, documents examined, timings"
+        ><Icon name="plan" size={13} /> Explain</button>
+        <button
+          className="secondary" onClick={openAddDoc} disabled={readOnly}
+          title={readOnly ? 'This connection is read-only' : 'Add document (Ctrl+D)'}
+        ><Icon name="plus" size={13} /> Add</button>
         {/* Paste creates documents, so it belongs next to Add — it is the one
             bulk action that works with nothing selected. */}
-        <button className="secondary" title="Paste from clipboard (Ctrl+V)" onClick={handlePaste}><Icon name="pin" size={13} /> Paste</button>
+        <button
+          className="secondary" onClick={handlePaste} disabled={readOnly}
+          title={readOnly ? 'This connection is read-only' : 'Paste from clipboard (Ctrl+V)'}
+        ><Icon name="pin" size={13} /> Paste</button>
         {viewMode === 'tree' && (
           <>
             <div className="toolbar-divider" />
@@ -634,7 +973,14 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         <div className="bulk-action-bar bulk-action-bar--active">
           <span>{selectedIndices.size} selected</span>
           <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
-          <button className="danger" onClick={handleBulkDelete} title="Delete selected (Del)"><Icon name="trash" size={13} /> Delete</button>
+          <button
+            className="secondary" onClick={() => setShowBulkEdit(true)} disabled={readOnly}
+            title={readOnly ? 'This connection is read-only' : 'Set, rename or unset a field on every selected document'}
+          ><Icon name="edit" size={13} /> Edit field</button>
+          <button
+            className="danger" onClick={handleBulkDelete} disabled={readOnly}
+            title={readOnly ? 'This connection is read-only' : 'Delete selected (Del)'}
+          ><Icon name="trash" size={13} /> Delete</button>
           <button className="secondary" onClick={() => setSelectedIndices(new Set())}><Icon name="close" size={13} /> Deselect all</button>
         </div>
       )}
@@ -652,7 +998,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
           )}
 
           {viewMode === 'table' && keys.length > 0 && (
-            <div className="document-table">
+            <div className={`document-table${tableWin.windowed ? ' windowed' : ''}`} ref={tableScrollRef}>
               <table>
                 <thead>
                   <tr>
@@ -667,59 +1013,101 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                         }}
                       />
                     </th>
-                    {keys.map(k => <th key={k}>{k}</th>)}
+                    {keys.map(k => {
+                      const sk = sortKeys.find(s => s.field === k);
+                      const rank = sortKeys.findIndex(s => s.field === k);
+                      return (
+                        <th
+                          key={k}
+                          className={`doc-th-sortable${sk ? ' sorted' : ''}`}
+                          title={sortTooltip(k, sk?.dir ?? null)}
+                          onClick={e => headerSort(k, e.shiftKey)}
+                          // Shift-click on a header extends the text selection otherwise.
+                          onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
+                        >
+                          {k}
+                          {sk && (
+                            // Arrow *and* the word: an arrow alone leaves people
+                            // guessing which end a date or a string sorts from.
+                            <span className="doc-th-sort">
+                              <Icon name={sk.dir === 1 ? 'arrowUp' : 'arrowDown'} size={11} />
+                              {sk.dir === 1 ? 'ASC' : 'DESC'}
+                              {sortKeys.length > 1 && <span className="doc-th-rank">{rank + 1}</span>}
+                            </span>
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
-                <tbody>
-                  {documents.map((doc, idx) => (
-                    <tr key={idx}
-                      className={selectedIndices.has(idx) ? 'doc-row-selected' : ''}
-                      onClick={e => handleDocClick(idx, e)}
-                      onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
-                      onDoubleClick={() => openEdit(doc)}
-                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
-                    >
-                      <td className="doc-check-cell" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIndices.has(idx)}
-                          onChange={() => {
-                            setSelectedIndices(prev => {
-                              const n = new Set(prev);
-                              if (n.has(idx)) n.delete(idx); else n.add(idx);
-                              return n;
-                            });
-                            lastSelectedIdx.current = idx;
-                          }}
-                        />
-                      </td>
-                      {keys.map(k => (
-                        <td key={k}>
-                          {doc[k] === undefined ? '' : typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k])}
+                <tbody ref={tableBodyRef}>
+                  <VirtualSpacer height={tableWin.padTop} colSpan={keys.length + 1} />
+                  {documents.slice(tableWin.start, tableWin.end).map((doc, i) => {
+                    const idx = tableWin.start + i;
+                    return (
+                      <tr key={idx}
+                        ref={tableWin.rowRef(idx)}
+                        className={selectedIndices.has(idx) ? 'doc-row-selected' : ''}
+                        onClick={e => handleDocClick(idx, e)}
+                        onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
+                        onDoubleClick={() => openEdit(doc)}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
+                      >
+                        <td className="doc-check-cell" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIndices.has(idx)}
+                            onChange={() => {
+                              setSelectedIndices(prev => {
+                                const n = new Set(prev);
+                                if (n.has(idx)) n.delete(idx); else n.add(idx);
+                                return n;
+                              });
+                              lastSelectedIdx.current = idx;
+                            }}
+                          />
                         </td>
-                      ))}
-                    </tr>
-                  ))}
+                        {keys.map(k => (
+                          <td key={k}>
+                            {doc[k] === undefined ? '' : typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k])}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                  <VirtualSpacer height={tableWin.padBottom} colSpan={keys.length + 1} />
                 </tbody>
               </table>
             </div>
           )}
 
           {viewMode === 'tree' && (
-            <div className="tree-view-container">
-              {documents.map((doc, idx) => (
-                <DocumentTree
-                  key={idx}
-                  doc={doc}
-                  selected={selectedIndices.has(idx)}
-                  onSelect={e => handleDocClick(idx, e)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
-                  expandTick={expandTick}
-                  expandTarget={expandTarget}
-                  docExpTick={docExpands[idx]?.tick ?? 0}
-                  docExpTarget={docExpands[idx]?.target ?? true}
-                />
-              ))}
+            <div className="tree-view-container" ref={treeScrollRef}>
+              <div ref={treeListRef}>
+                <VirtualSpacer height={treeWin.padTop} />
+                {documents.slice(treeWin.start, treeWin.end).map((doc, i) => {
+                  const idx = treeWin.start + i;
+                  return (
+                    // The wrapper is what gets measured, and `flow-root` (in
+                    // index.css) keeps the item's bottom margin inside it —
+                    // otherwise every row would measure 5px short and the
+                    // scroll height would drift by that much per document.
+                    <div key={idx} className="doc-tree-row" ref={treeWin.rowRef(idx)}>
+                      <DocumentTree
+                        doc={doc}
+                        selected={selectedIndices.has(idx)}
+                        onSelect={e => handleDocClick(idx, e)}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
+                        expandTick={expandTick}
+                        expandTarget={expandTarget}
+                        docExpTick={docExpands[idx]?.tick ?? 0}
+                        docExpTarget={docExpands[idx]?.target ?? true}
+                      />
+                    </div>
+                  );
+                })}
+                <VirtualSpacer height={treeWin.padBottom} />
+              </div>
             </div>
           )}
         </div>
@@ -882,11 +1270,43 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         />
       )}
 
+      {showBulkEdit && (
+        <BulkEditModal
+          count={selectedIndices.size}
+          fields={fieldOptions}
+          onApply={applyBulkEdit}
+          onClose={() => setShowBulkEdit(false)}
+        />
+      )}
+
+      {/* Same filter, sort and projection `get-documents` runs — explaining a
+          different query than the list shows would answer the wrong question. */}
+      {showExplain && (
+        <ExplainModal
+          what="filter"
+          namespace={`${database}.${collection}`}
+          load={() => inv(
+            'explain-find', connectionId, database, collection,
+            buildFilter(conditions, matchAll), buildSort(sortKeys), buildProjection(hiddenFields),
+          )}
+          onClose={() => setShowExplain(false)}
+        />
+      )}
+
+      {/* Export menu, anchored under the toolbar button */}
+      {exportMenu && (
+        <ContextMenu
+          x={exportMenu.x} y={exportMenu.y}
+          items={exportItems()}
+          onClose={() => setExportMenu(null)}
+        />
+      )}
+
       {/* Empty area context menu */}
       {emptyCtxMenu && (
         <ContextMenu
           x={emptyCtxMenu.x} y={emptyCtxMenu.y}
-          items={[{ label: 'Add document', icon: 'plus', shortcut: 'Ctrl+D', onClick: openAddDoc }]}
+          items={[{ label: 'Add document', icon: 'plus', shortcut: 'Ctrl+D', disabled: readOnly, onClick: openAddDoc }]}
           onClose={() => setEmptyCtxMenu(null)}
         />
       )}
@@ -965,8 +1385,8 @@ export default function DocumentsView({ connectionId, database, collection }: Do
         const isDirty = editJson !== originalEditJson;
         const diff = isDirty ? computeDiff(originalEditJson, editJson) : null;
         return (
-          <div className="modal-overlay" onClick={() => closeEdit()}>
-            <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+          <div className="modal-overlay">
+            <div className={`modal modal-wide${editMaximized ? ' modal-maximized' : ''}`}>
               <div className="modal-header">
                 <h3>
                   Edit — {idToString(editingDoc._id)}
@@ -980,10 +1400,17 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                       onChange={e => setLineNumbers(e.target.checked)} />
                     Line numbers
                   </label>
+                  <label className="editor-toggle" title="Wrap long lines">
+                    <input type="checkbox" checked={editWrap}
+                      onChange={e => setEditWrap(e.target.checked)} />
+                    Wrap
+                  </label>
                   {jsonValid
                     ? <span className="json-status invalid"><Icon name="close" size={11} /> {jsonValid}</span>
                     : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
-                  <button className="icon-btn" onClick={() => closeEdit()}><Icon name="close" size={14} /></button>
+                  <button className="icon-btn" title={editMaximized ? 'Restore size' : 'Maximize'}
+                    onClick={() => setEditMaximized(m => !m)}><Icon name="expand" size={13} /></button>
+                  <button className="icon-btn" title="Close" onClick={() => closeEdit()}><Icon name="close" size={14} /></button>
                 </div>
               </div>
               {showEditFind && (
@@ -1009,6 +1436,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   value={editJson}
                   taRef={editTextareaRef}
                   lineNumbers={lineNumbers}
+                  wrap={editWrap}
                   onChange={v => { setEditJson(v); setEditError(null); }}
                   onKeyDown={e => {
                     if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
@@ -1037,7 +1465,7 @@ export default function DocumentsView({ connectionId, database, collection }: Do
                   </div>
                 )}
                 <div className="modal-hint">
-                  Ctrl+Enter save · Ctrl+F find · Esc close
+                  Ctrl+Enter save · Ctrl+F find · Esc clears search
                 </div>
               </div>
               <div className="modal-footer">

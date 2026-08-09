@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import Icon from './Icon';
+import { isEscapeKey } from '../utils/keys';
 
 interface ShortcutGroup {
   title: string;
@@ -11,6 +12,9 @@ const GROUPS: ShortcutGroup[] = [
     title: 'Global',
     items: [
       { keys: ['F1'], label: 'Show this cheat sheet' },
+      { keys: ['Ctrl', 'P'], label: 'Command palette — jump to a connection, database, collection or action' },
+      { keys: ['Alt', 'Enter'], label: 'Run the current filter, query or pipeline' },
+      { keys: ['Esc'], label: 'Cancel / close whatever is open' },
       { keys: ['F5'], label: 'Refresh the database/collection tree' },
       { keys: ['Ctrl', 'R'], label: 'Refresh the database/collection tree' },
       { keys: ['Ctrl', 'M'], label: 'Open the connection manager' },
@@ -37,6 +41,7 @@ const GROUPS: ShortcutGroup[] = [
   {
     title: 'Query editor',
     items: [
+      { keys: ['Alt', 'Enter'], label: 'Run the query' },
       { keys: ['Ctrl', 'Enter'], label: 'Run the query' },
       { keys: ['Ctrl', 'Space'], label: 'Show completions' },
     ],
@@ -63,7 +68,7 @@ const GROUPS: ShortcutGroup[] = [
 
 export default function ShortcutsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'F1') { e.preventDefault(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (isEscapeKey(e) || e.key === 'F1') { e.preventDefault(); onClose(); } };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);

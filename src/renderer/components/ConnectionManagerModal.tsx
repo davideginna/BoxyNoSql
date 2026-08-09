@@ -7,6 +7,7 @@ import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
 import { pickFile } from '../utils/fileImport';
 import { parseStudio3TExport, ImportedConnection } from '../utils/uriImport';
 import { showAlert } from '../dialog';
+import { onEscape, SWALLOW_ESCAPE } from '../utils/keys';
 
 interface Connection {
   id: string; name: string; uri: string; database?: string;
@@ -64,13 +65,12 @@ export default function ConnectionManagerModal(props: Props) {
   // Parsed .uri file waiting for confirmation in ImportConnectionsModal.
   const [importPreview, setImportPreview] = useState<{ items: ImportedConnection[]; fileName: string } | null>(null);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !disableEsc && !importPreview) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [disableEsc, importPreview, onClose]);
+  // `disableEsc` while a child modal of its own is open, `importPreview`
+  // because that preview handles Escape itself.
+  useEffect(
+    () => onEscape(disableEsc || importPreview ? SWALLOW_ESCAPE : onClose),
+    [disableEsc, importPreview, onClose],
+  );
 
   const handlePickUriFile = async () => {
     const file = await pickFile('.uri,.txt');
