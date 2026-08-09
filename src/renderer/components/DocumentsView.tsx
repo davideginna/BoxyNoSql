@@ -12,6 +12,7 @@ import {
   type SortKey, type SortDir,
 } from '../utils/docTable';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
+import { useVirtualRows, VirtualSpacer } from './VirtualRows';
 import BulkEditModal from './BulkEditModal';
 import { showToast } from '../toast';
 import { previewLabel, type QueryEntry } from '../utils/queryHistory';
@@ -236,6 +237,14 @@ function idToString(id: any): string {
 
 let condId = 0;
 
+// Starting guesses for the row heights of the two view modes, used only until a
+// row of that kind has actually been on screen. Both are a collapsed row: a
+// table row is one line of text, a tree row is its header plus the gap.
+// Exported so the tests can fake a layout that matches, and the arithmetic in
+// their assertions stays exact.
+export const TABLE_ROW_ESTIMATE = 28;
+export const TREE_ROW_ESTIMATE = 32;
+
 export default function DocumentsView({ connectionId, database, collection, active = true, readOnly = false }: DocumentsViewProps) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
@@ -299,6 +308,24 @@ export default function DocumentsView({ connectionId, database, collection, acti
 
   useEffect(() => { saveLineNumbers(lineNumbers); }, [lineNumbers]);
   useEffect(() => { saveWrap(editWrap); }, [editWrap]);
+
+  // Both view modes are windowed: a page limit of a few thousand used to put a
+  // few thousand rows — or a few thousand `DocumentTree`s — in the DOM at once,
+  // and laying that out is what locked the UI. Selection stays keyed by the
+  // index into `documents`, never by what happens to be mounted, so select-all,
+  // shift-ranges and the bulk bar count are unaffected by which rows exist.
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableBodyRef = useRef<HTMLTableSectionElement>(null);
+  const tableWin = useVirtualRows({
+    scrollerRef: tableScrollRef, listRef: tableBodyRef, count: documents.length,
+    estimate: TABLE_ROW_ESTIMATE, resetKey: documents,
+  });
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const treeListRef = useRef<HTMLDivElement>(null);
+  const treeWin = useVirtualRows({
+    scrollerRef: treeScrollRef, listRef: treeListRef, count: documents.length,
+    estimate: TREE_ROW_ESTIMATE, resetKey: documents,
+  });
 
   // `keys`/`hidden` are explicit rather than read from state because every
   // caller that changes them loads in the same handler, before React has
@@ -905,7 +932,14 @@ export default function DocumentsView({ connectionId, database, collection, acti
           </div>
         )}
         <span className="toolbar-label toolbar-limit-label">Limit:</span>
-        <input type="number" className="toolbar-limit-input" value={limit} onChange={e => setLimit(Number(e.target.value))} />
+        {/* Clamped to 1: `limit: 0` is "no limit" to MongoDB, so an emptied
+            field used to fetch the whole collection. Big pages are fine now —
+            the rows are windowed — but they are still one round trip. */}
+        <input
+          type="number" className="toolbar-limit-input" min={1} value={limit}
+          title="Documents per page. Rows are windowed, so a few thousand scroll without freezing"
+          onChange={e => setLimit(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+        />
         <button onClick={applyFilter} disabled={loading}>{loading ? '…' : <><Icon name="play" size={12} /> Run</>}</button>
         <button className="secondary" onClick={resetFilter}><Icon name="refresh" size={13} /> Reset</button>
         <button
@@ -958,7 +992,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
           )}
 
           {viewMode === 'table' && keys.length > 0 && (
-            <div className="document-table">
+            <div className={`document-table${tableWin.windowed ? ' windowed' : ''}`} ref={tableScrollRef}>
               <table>
                 <thead>
                   <tr>
@@ -1000,56 +1034,74 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     })}
                   </tr>
                 </thead>
-                <tbody>
-                  {documents.map((doc, idx) => (
-                    <tr key={idx}
-                      className={selectedIndices.has(idx) ? 'doc-row-selected' : ''}
-                      onClick={e => handleDocClick(idx, e)}
-                      onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
-                      onDoubleClick={() => openEdit(doc)}
-                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
-                    >
-                      <td className="doc-check-cell" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIndices.has(idx)}
-                          onChange={() => {
-                            setSelectedIndices(prev => {
-                              const n = new Set(prev);
-                              if (n.has(idx)) n.delete(idx); else n.add(idx);
-                              return n;
-                            });
-                            lastSelectedIdx.current = idx;
-                          }}
-                        />
-                      </td>
-                      {keys.map(k => (
-                        <td key={k}>
-                          {doc[k] === undefined ? '' : typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k])}
+                <tbody ref={tableBodyRef}>
+                  <VirtualSpacer height={tableWin.padTop} colSpan={keys.length + 1} />
+                  {documents.slice(tableWin.start, tableWin.end).map((doc, i) => {
+                    const idx = tableWin.start + i;
+                    return (
+                      <tr key={idx}
+                        ref={tableWin.rowRef(idx)}
+                        className={selectedIndices.has(idx) ? 'doc-row-selected' : ''}
+                        onClick={e => handleDocClick(idx, e)}
+                        onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
+                        onDoubleClick={() => openEdit(doc)}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
+                      >
+                        <td className="doc-check-cell" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIndices.has(idx)}
+                            onChange={() => {
+                              setSelectedIndices(prev => {
+                                const n = new Set(prev);
+                                if (n.has(idx)) n.delete(idx); else n.add(idx);
+                                return n;
+                              });
+                              lastSelectedIdx.current = idx;
+                            }}
+                          />
                         </td>
-                      ))}
-                    </tr>
-                  ))}
+                        {keys.map(k => (
+                          <td key={k}>
+                            {doc[k] === undefined ? '' : typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k])}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                  <VirtualSpacer height={tableWin.padBottom} colSpan={keys.length + 1} />
                 </tbody>
               </table>
             </div>
           )}
 
           {viewMode === 'tree' && (
-            <div className="tree-view-container">
-              {documents.map((doc, idx) => (
-                <DocumentTree
-                  key={idx}
-                  doc={doc}
-                  selected={selectedIndices.has(idx)}
-                  onSelect={e => handleDocClick(idx, e)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
-                  expandTick={expandTick}
-                  expandTarget={expandTarget}
-                  docExpTick={docExpands[idx]?.tick ?? 0}
-                  docExpTarget={docExpands[idx]?.target ?? true}
-                />
-              ))}
+            <div className="tree-view-container" ref={treeScrollRef}>
+              <div ref={treeListRef}>
+                <VirtualSpacer height={treeWin.padTop} />
+                {documents.slice(treeWin.start, treeWin.end).map((doc, i) => {
+                  const idx = treeWin.start + i;
+                  return (
+                    // The wrapper is what gets measured, and `flow-root` (in
+                    // index.css) keeps the item's bottom margin inside it —
+                    // otherwise every row would measure 5px short and the
+                    // scroll height would drift by that much per document.
+                    <div key={idx} className="doc-tree-row" ref={treeWin.rowRef(idx)}>
+                      <DocumentTree
+                        doc={doc}
+                        selected={selectedIndices.has(idx)}
+                        onSelect={e => handleDocClick(idx, e)}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
+                        expandTick={expandTick}
+                        expandTarget={expandTarget}
+                        docExpTick={docExpands[idx]?.tick ?? 0}
+                        docExpTarget={docExpands[idx]?.target ?? true}
+                      />
+                    </div>
+                  );
+                })}
+                <VirtualSpacer height={treeWin.padBottom} />
+              </div>
             </div>
           )}
         </div>

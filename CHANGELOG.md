@@ -19,6 +19,7 @@
 - **Bulk field edit** — set, rename or unset a field across the selected documents, with the update document shown before it runs
 - **Schema explorer** — a Schema tab that samples the collection and lists every field with its types, how many of the sampled documents have it and a few example values
 - **Command palette (`Ctrl+P`)** — fuzzy jump to any connection, database, collection or action without walking the tree
+- **Large pages without the freeze** — both document views are windowed (`utils/virtualList.ts` + `components/VirtualRows.tsx`): only the rows near the viewport are in the DOM, with fillers standing in for the rest so the scrollbar still spans the page. A 5000-document page went from ~30k DOM nodes (table) / ~70k (tree) to a couple of hundred. Row heights are measured rather than assumed, because a tree row grows when its document is expanded and a fixed-height virtualizer would misplace everything under it; pages of 200 rows or fewer are left exactly as they were. Selection is unaffected — it was always keyed by the index into the page, not by what is mounted, so select-all, shift-ranges, the bulk bar count and bulk copy/delete still cover documents that are nowhere in the DOM
 - `npm run check` — typecheck main + renderer and run the tests in one command
 
 ### Changed
@@ -28,6 +29,7 @@
 
 ### Fixed
 - **Window-level shortcuts fired in every open tab.** `MainContent` keeps every tab ever opened mounted, so `Ctrl+D`, `Delete` and the clipboard shortcuts were bound once per documents tab; views now bind them only while they are the tab on screen
+- **An emptied Limit field fetched the whole collection.** `Number('')` is `0`, and `limit: 0` means "no limit" to MongoDB; the field now clamps to 1
 
 ## [1.4.2] - 2026-07-29
 

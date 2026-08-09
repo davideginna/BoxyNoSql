@@ -23,6 +23,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Export to JSON / NDJSON / CSV through a native save dialog: the current filtered+sorted view, the whole collection, or a query/aggregation result
 - ✅ User/role management per database
 - ✅ Per-tab persistent state: switching between collections/views keeps filters and results
+- ✅ Large pages without the freeze: both document views are windowed, so only the rows near the viewport are in the DOM and a limit of a few thousand scrolls instead of locking up
 - ✅ Read-only connections: a per-connection flag that refuses every write in the main process, not just in the UI
 - ✅ Typed confirmation on drop/clear: retype the name, with the document count shown up front
 - ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊
@@ -48,10 +49,6 @@ Planned, not shipped. 🔥 = high impact, low effort.
 ### Data & safety
 
 - ⬜ **Lint** — `npm run check` typechecks main + renderer and runs the tests; a linter is still missing from it
-
-### Comfort & discoverability
-
-- ⬜ **Large collections without the freeze** — virtualized rows and streamed pages so a big result set scrolls instead of locking the UI
 
 ## Install
 
