@@ -32,6 +32,8 @@ Guida all'installazione, all'aggiornamento e alla build su Linux. Testata su Ubu
 
 2. Avvia con doppio click o `~/Applications/BoxyNoSql.AppImage`.
 
+   Se si chiude subito con un errore tipo `sandbox/linux/suid/client/setuid_sandbox_host.cc: ... aborting now`, lancialo con due flag in più: `~/Applications/BoxyNoSql.AppImage --no-sandbox --disable-namespace-sandbox`. Capita su alcune macchine (dipende dall'host), non su altre — vedi il passo 3 per renderlo permanente nella voce di menu.
+
 3. **Integrazione nel menu app e nella dock** (facoltativa ma comoda — un AppImage da solo non compare cercando fra le "app installate"):
 
    ```bash
@@ -59,7 +61,7 @@ Guida all'installazione, all'aggiornamento e alla build su Linux. Testata su Ubu
 
    L'`Exec=` punta a un percorso fisso (`BoxyNoSql.AppImage`, non `BoxyNoSql-1.6.0.AppImage`): l'auto-update sostituisce il file **in place**, stesso nome, quindi la voce di menu resta valida dopo ogni aggiornamento senza bisogno di rifare questo passaggio.
 
-   I due flag in `Exec=` servono solo per l'avvio da Attività/ricerca di GNOME: quel percorso esegue l'app in uno scope systemd con un profilo AppArmor che nega `CAP_SYS_ADMIN`, il che rompe il sandbox namespace di Chromium e la fa fallire all'avvio. Avviata con doppio click o da terminale l'app non ha questo problema — il sandbox di Chromium funziona da solo — ma i flag qui non fanno danno in nessun caso.
+   I due flag in `Exec=` evitano un crash all'avvio (`sandbox/linux/suid/client/setuid_sandbox_host.cc: ... aborting now`) dovuto al sandbox namespace di Chromium che non riesce a partire — su Attività/ricerca di GNOME è sicuro, per via di un profilo AppArmor che nega `CAP_SYS_ADMIN` a quel percorso di avvio; ma capita anche con un lancio diretto (doppio click o terminale) su alcune macchine, dipende dall'host. Se l'app parte già senza questi flag sul tuo sistema, non fanno danno lasciarli comunque.
 
 ### Aggiornamento (AppImage)
 
