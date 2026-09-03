@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1] - 2026-09-03
+
+### Added
+- **See what changed after an update.** The first launch after an auto-update shows a "what's new" popup scoped to the versions since you last opened it; a "Changelog" button in About opens the full history on demand. Reads `CHANGELOG.md` itself — this file — so there's nothing else to keep in sync
+
+### Fixed
+- **The AppImage build wouldn't start on Ubuntu 24.04+** (`FATAL: sandbox/linux/suid/client/setuid_sandbox_host.cc`). The SUID sandbox helper ships inside the squashfs and remounts at a fresh `/tmp/.mount_XXXXXX` path on every launch, so — unlike the `.deb`, whose postinst fixes its ownership once at install time — it can never be corrected; Chromium aborts rather than run unsandboxed, and Ubuntu 24.04's AppArmor also blocks the unprivileged-userns fallback outright. The sandbox is now disabled specifically on the AppImage build (detected via `process.env.APPIMAGE`, including on the app's own self-relaunch after an update) — the `.deb` and Windows builds are unaffected
+
 ## [1.6.0] - 2026-09-03
 
 ### Added
