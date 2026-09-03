@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.4] - 2026-09-03
+
+### Fixed
+- **The AppImage's white screen on launch, for real this time.** 1.6.3's `--disable-dev-shm-usage` only moved the symptom (from `/dev/shm` to `/tmp`) — the GPU process still spun forever failing to create shared memory, and disabling GPU acceleration just moved the same failure to the renderer instead, which crashed outright. The actual cause was forcing `--no-sandbox` in the first place (added in 1.6.1 for a different, real bug): with the sandbox off, Chromium's child processes self-manage shared memory via a POSIX `shm_open()` path that fails on this kind of host. Current Electron/Chromium's own sandbox init already falls back to an unprivileged user-namespace sandbox when the SUID helper isn't usable — verified working even from the AppImage's real read-only, `nosuid`-mounted squashfs, launched the same way GNOME launches it (desktop entry, systemd scope). The forced `--no-sandbox` is removed; Chromium's own detection is trusted to disable sandboxing only where it truly can't run
+
 ## [1.6.3] - 2026-09-03
 
 ### Fixed
