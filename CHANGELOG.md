@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.3] - 2026-09-03
+
+### Fixed
+- **A pinned AppImage launcher would stop working after an update**, failing with "Program … not found". electron-builder's default AppImage name bakes in the version (`BoxyNoSql-1.6.0.AppImage`), and electron-updater's self-updater only overwrites the running file in place when its name has no version — with a versioned name, it instead deleted the old file and wrote the new one under a new filename, orphaning any taskbar/dash pin that pointed at the old path. The AppImage now always builds as `BoxyNoSql.AppImage`, so updates overwrite the same file and a pin survives them
+
 ## [1.6.2] - 2026-09-03
 
 ### Fixed
