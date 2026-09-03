@@ -41,7 +41,15 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 
 ## Roadmap
 
-- [ ] Search on collection oltre che database
+- [ ] **Search reaching collections whose database was never expanded.** The sidebar's search box (`Sidebar.tsx` `db-search-input`) already matches collection names, not just database names (`matchingCols`, auto-expands a db that only matched through a collection) — but it filters `collections[connId][db]`, which `App.tsx`'s `handleExpandDb` only populates lazily, on that db's first manual expand. Typing a collection name today only finds it if its parent db happens to already be expanded; an unexpanded db's collections are invisible to search. `CommandPalette` has the same gap, for the same reason (`collections[connId]` is its source too, per its own comment: it "deliberately does not list databases it has not fetched, or the palette would hit every server on each keystroke").
+
+  Design (not yet implemented):
+  - No server-side "search collections across databases" primitive exists in MongoDB — reaching an unfetched db's collections always means calling `get-collections` for it, same IPC `handleExpandAll` already batches for one connection's "Expand all" button.
+  - Stay explicit, matching the app's existing stance (schema sampling, palette's own db-listing) of never firing background requests just because a keystroke happened: don't fetch-as-you-type. Instead, when a search term matches no already-loaded database or collection name, show a hint under the (empty) results — e.g. "12 databases not expanded — search there too?" — with a button that does the one-time batched `get-collections` fetch (mirrors `handleExpandAll`'s `Promise.all` over the not-yet-loaded databases of that connection) and merges into the existing `collections` state.
+  - Once merged, the existing `matchingCols`/`filteredDbs` filtering in `Sidebar.tsx` needs no changes — it already searches whatever's in `collections[connId]`. `CommandPalette`'s item list (built in `App.tsx`) benefits the same way for free, since both read the same state.
+  - Debounce the button's appearance (only offer it after the user pauses typing, not on every keystroke) so a fast typist doesn't see it flash on intermediate substrings.
+  - Cap or explicitly warn for connections with a very large database count before firing that many `get-collections` calls at once — no cap exists on `handleExpandAll` today either, but that's a user-initiated "Expand all" click, not a per-keystroke-adjacent action; worth deciding a threshold (e.g. warn past ~30 databases) rather than copying that precedent blindly.
+  - Files to touch: `App.tsx` (new handler alongside `handleExpandDb`/`handleExpandAll`), `Sidebar.tsx` (the hint + button, no filtering-logic changes), possibly `utils/palette.ts` only if the hint should also surface from `Ctrl+P`.
 
 Everything else that was on it has shipped — see the Features list above and `CHANGELOG.md`.
 
