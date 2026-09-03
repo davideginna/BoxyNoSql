@@ -41,7 +41,9 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 
 ## Roadmap
 
-Everything that was on it has shipped — see the Features list above and `CHANGELOG.md`.
+- [ ] Search on collection oltre che database
+
+Everything else that was on it has shipped — see the Features list above and `CHANGELOG.md`.
 
 ## Install
 
