@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.6] - 2026-09-03
+
+### Fixed
+- **The AppImage's sandbox crash from the GNOME dash/search, this time confirmed at the source.** 1.6.5's `ELECTRON_DISABLE_SANDBOX` env var (set from JS) turned out not to reliably reach whatever handles the sandbox transition for that launch path — same FATAL, reproduced again. The two switches that actually fix it, `--no-sandbox --disable-namespace-sandbox`, only work when they're on the process's *real* command line from the start, which a JS-side `app.commandLine.appendSwitch()` call doesn't guarantee. They're no longer forced in app code at all — a plain launch (double-click, terminal, the app's own self-relaunch after an update) needs no override and keeps the full sandbox, verified. Only `INSTALL_LINUX.md`'s desktop-entry instructions carry the two switches now, in the one place they're actually needed: the `Exec=` line GNOME's dash/search runs. `build.appImage.executableArgs` also sets them as the AppImage's own internal default, for any desktop-integration tool that reads that instead
+
 ## [1.6.5] - 2026-09-03
 
 ### Fixed
