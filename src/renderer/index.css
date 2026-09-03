@@ -2001,7 +2001,8 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(
 .jl { color: var(--val-null); }              /* null */
 .jo { color: var(--val-oid); }              /* ObjectId / ISODate wrappers */
 
-/* Layered editor: transparent textarea over highlighted <pre> */
+/* Host for the Monaco add/edit-document editor. Monaco draws its own gutter,
+   wrapping and highlighting; this wrapper only sizes and frames it. */
 .json-editor-wrap {
   position: relative;
   width: 100%;
@@ -2009,74 +2010,6 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   overflow: hidden;
-}
-.json-editor-hl,
-.json-editor-ta {
-  margin: 0;
-  padding: 12px;
-  width: 100%;
-  height: 100%;
-  border: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
-  line-height: 1.45;
-  white-space: pre;
-  tab-size: 2;
-  box-sizing: border-box;
-}
-.json-editor-hl {
-  position: absolute;
-  inset: 0;
-  color: var(--text-primary);
-  overflow: auto;
-  pointer-events: none;
-  background: transparent;
-}
-.json-editor-ta {
-  position: relative;
-  color: transparent;
-  caret-color: var(--text-primary);
-  background: transparent;
-  resize: none;
-  outline: none;
-  overflow: auto;
-}
-.json-editor-ta::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); color: transparent; }
-
-/* Line-number gutter — a sibling of the textarea, so the numbers are not part of
-   its value and can never be selected or copied with the JSON. `user-select` and
-   `pointer-events` cover a document-level drag; the opaque background hides the
-   text that scrolls underneath it. Font metrics and vertical padding are copied
-   from the two layers above, which is what keeps the rows aligned. */
-.json-editor-gutter {
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: calc(var(--gutter-digits, 2) * 1ch + var(--space-4) * 2);
-  margin: 0;
-  padding: 12px var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
-  line-height: 1.45;
-  white-space: pre;
-  tab-size: 2;
-  box-sizing: border-box;
-  text-align: right;
-  color: var(--text-secondary);
-  background: var(--bg-primary);
-  border-right: 1px solid var(--border);
-  overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
-  pointer-events: none;
-}
-/* Same offset on both layers, so the JSON starts to the right of the gutter. */
-.json-editor-wrap.with-gutter .json-editor-hl,
-.json-editor-wrap.with-gutter .json-editor-ta {
-  padding-left: calc(var(--gutter-digits, 2) * 1ch + var(--space-4) * 2 + 12px);
-}
-.json-editor-wrap.wrap-on .json-editor-hl,
-.json-editor-wrap.wrap-on .json-editor-ta {
-  white-space: pre-wrap; word-break: break-word; overflow-x: hidden;
 }
 .editor-toggle {
   display: inline-flex; align-items: center; gap: var(--space-2);

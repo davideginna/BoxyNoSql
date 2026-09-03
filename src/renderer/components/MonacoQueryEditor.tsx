@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
+// The `editor.api` entry point is deliberately minimal — folding is a "contrib"
+// module and is not registered without this import, which left `folding:
+// lineNumbers` below a silent no-op (see MonacoJsonEditor.tsx for the same fix).
+import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js';
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution';
 import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
 import 'monaco-editor/esm/vs/language/json/monaco.contribution';
@@ -81,10 +85,14 @@ function registerJsonCompletions() {
     },
   });
 
-  // The stage bodies are hand-written JSON: keep the syntax errors, drop the
-  // schema noise Monaco would otherwise invent.
+  // Off, not just schema noise: `jsonDefaults` is one global shared with
+  // MonacoJsonEditor's document editor, which needs it off — a document round
+  // -trips through `prettyDoc` as shell-style `ObjectId("…")`/`ISODate("…")`,
+  // not valid JSON, so Monaco's validator would red-squiggle every _id. A
+  // stage body's own syntax errors are already shown by `parseStage` in
+  // AggregationBuilder, so this isn't a loss here either.
   monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-    validate: true,
+    validate: false,
     allowComments: false,
     schemas: [],
     enableSchemaRequest: false,

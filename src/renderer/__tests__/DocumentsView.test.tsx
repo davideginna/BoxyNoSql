@@ -2,7 +2,35 @@
 // tsconfig.json's `src/renderer` include — this import is what types them.
 import '@testing-library/jest-dom/vitest';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { forwardRef } from 'react';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+
+// Monaco needs a real layout engine and web workers, neither of which jsdom
+// has (same call as AggregationBuilder.test.tsx). The add/edit-document editor
+// is a controlled value/onChange box plus a couple of keyboard shortcuts — a
+// textarea with the same props recorded as data attributes covers what this
+// suite needs to assert, without pulling Monaco's DOM into the picture. Line
+// numbering / folding themselves are Monaco's own behaviour now, not this
+// app's — no longer this file's concern (see PIANO_TEST.md 7.24 for the
+// manual check).
+vi.mock('../components/MonacoJsonEditor', () => ({
+  default: forwardRef(({ value, onChange, lineNumbers, wrap, className, onSave, onFindShortcut }: any, ref: any) => (
+    <textarea
+      data-testid="doc-json-editor"
+      data-line-numbers={String(!!lineNumbers)}
+      data-wrap={String(!!wrap)}
+      className={className}
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => {
+        if (e.ctrlKey && e.key === 'Enter') onSave?.();
+        if (e.ctrlKey && e.key === 'f') onFindShortcut?.();
+      }}
+    />
+  )),
+}));
+
 import DocumentsView, { TABLE_ROW_ESTIMATE, TREE_ROW_ESTIMATE } from '../components/DocumentsView';
 
 const OID = 'a'.repeat(24);
@@ -59,92 +87,65 @@ beforeEach(() => {
 const view = () => render(<DocumentsView connectionId="c1" database="db" collection="col" />);
 
 // Table mode gives a row that can simply be double-clicked to open the editor.
-const openEdit = async (container: HTMLElement) => {
+const openEdit = async (_container: HTMLElement) => {
   fireEvent.click(screen.getByRole('button', { name: /Table/ }));
   fireEvent.doubleClick(await screen.findByText('alpha'));
   await screen.findByRole('heading', { name: /^Edit —/ });
-  return {
-    ta: container.querySelector('.json-editor-ta') as HTMLTextAreaElement,
-    gutter: () => container.querySelector('.json-editor-gutter') as HTMLPreElement | null,
-  };
+  return { ta: screen.getByTestId('doc-json-editor') as HTMLTextAreaElement };
 };
 
-const numbers = (n: number) => Array.from({ length: n }, (_, i) => i + 1).join('\n') + '\n';
-
 describe('DocumentsView — JSON editor line numbers', () => {
-  it('shows the gutter by default, with one number per line', async () => {
+  it('opens the editor with the document JSON and line numbers on by default', async () => {
     const { container } = view();
-    const { ta, gutter } = await openEdit(container);
+    const { ta } = await openEdit(container);
 
     expect(ta.value).toBe(EXPECTED_JSON);
-    expect(gutter()).toHaveTextContent(/^1 2 3 4 5 6 7 8$/);
-    expect(gutter()!.textContent).toBe(numbers(8));
+    expect(ta).toHaveAttribute('data-line-numbers', 'true');
   });
 
-  it('keeps the numbers out of the editable value and out of the textarea subtree', async () => {
+  it('drops the toggle when the switch is turned off', async () => {
     const { container } = view();
-    const { ta, gutter } = await openEdit(container);
-
-    // The gutter is a sibling of the textarea, never a descendant of it, so a
-    // selection or a copy inside the field cannot pick the numbers up.
-    expect(ta.contains(gutter())).toBe(false);
-    expect(ta.value).not.toMatch(/^\s*\d+\s/m);
-    expect(gutter()).toHaveAttribute('aria-hidden', 'true');
-  });
-
-  it('renumbers as lines are added and removed', async () => {
-    const { container } = view();
-    const { ta, gutter } = await openEdit(container);
-
-    fireEvent.change(ta, { target: { value: 'a\nb\nc' } });
-    expect(gutter()!.textContent).toBe(numbers(3));
-
-    fireEvent.change(ta, { target: { value: 'a' } });
-    expect(gutter()!.textContent).toBe(numbers(1));
-  });
-
-  it('drops the gutter when the switch is turned off', async () => {
-    const { container } = view();
-    const { gutter } = await openEdit(container);
+    const { ta } = await openEdit(container);
     const header = screen.getByRole('heading', { name: /^Edit —/ }).parentElement!;
     const toggle = within(header).getByRole('checkbox', { name: /Line numbers/i }) as HTMLInputElement;
 
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);
 
-    expect(gutter()).toBeNull();
+    expect(ta).toHaveAttribute('data-line-numbers', 'false');
     expect(toggle).not.toBeChecked();
   });
 
   it('persists the preference in localStorage and restores it on a remount', async () => {
     const first = view();
-    const { gutter } = await openEdit(first.container);
+    const { ta } = await openEdit(first.container);
     const header = screen.getByRole('heading', { name: /^Edit —/ }).parentElement!;
 
     fireEvent.click(within(header).getByRole('checkbox', { name: /Line numbers/i }));
-    expect(gutter()).toBeNull();
+    expect(ta).toHaveAttribute('data-line-numbers', 'false');
     expect(localStorage.getItem('docLineNumbers')).toBe('false');
 
     first.unmount();
     const second = view();
     const reopened = await openEdit(second.container);
-    expect(reopened.gutter()).toBeNull();
+    expect(reopened.ta).toHaveAttribute('data-line-numbers', 'false');
     expect(within(screen.getByRole('heading', { name: /^Edit —/ }).parentElement!)
       .getByRole('checkbox', { name: /Line numbers/i })).not.toBeChecked();
   });
 
   it('applies the same switch to the add-document editor', async () => {
-    const { container } = view();
+    view();
     fireEvent.click(screen.getByRole('button', { name: /Add/ }));
     await screen.findByRole('heading', { name: /Add document/ });
 
-    const gutter = () => container.querySelector('.json-editor-gutter');
-    // `openAddDoc` seeds "{\n  \n}" — three lines.
-    expect(gutter()!.textContent).toBe(numbers(3));
+    const ta = screen.getByTestId('doc-json-editor');
+    // `openAddDoc` seeds "{\n  \n}".
+    expect(ta).toHaveValue('{\n  \n}');
+    expect(ta).toHaveAttribute('data-line-numbers', 'true');
 
     const header = screen.getByRole('heading', { name: /Add document/ }).parentElement!;
     fireEvent.click(within(header).getByRole('checkbox'));
-    expect(gutter()).toBeNull();
+    expect(ta).toHaveAttribute('data-line-numbers', 'false');
     expect(localStorage.getItem('docLineNumbers')).toBe('false');
   });
 });
@@ -259,15 +260,14 @@ describe('DocumentsView — field visibility', () => {
 
   it('re-reads the whole document before editing, so a save cannot drop hidden fields', async () => {
     localStorage.setItem('hiddenFields', JSON.stringify({ 'c1|db|col': ['nested'] }));
-    const { container } = view();
+    view();
     await showTable();
     expect(screen.queryByRole('columnheader', { name: /^nested/ })).toBeNull();
 
     fireEvent.doubleClick(screen.getByText('alpha'));
     await screen.findByRole('heading', { name: /^Edit —/ });
 
-    const ta = container.querySelector('.json-editor-ta') as HTMLTextAreaElement;
-    expect(ta.value).toBe(EXPECTED_JSON);
+    expect(screen.getByTestId('doc-json-editor')).toHaveValue(EXPECTED_JSON);
 
     const reread = lastLoad();
     expect(reread[4]).toEqual({ _id: { $oid: OID } });

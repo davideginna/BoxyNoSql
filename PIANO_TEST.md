@@ -254,6 +254,7 @@ DOM: sotto le 200 righe non cambia nulla, sopra parte il windowing.
 | 7.21 | Ctrl+A sulla checkbox header | Tutti selezionati |
 | 7.22 | Ctrl+F in Edit modal | Find bar appare, match count, navigate ↑/↓ |
 | 7.23 | Ctrl+F in View modal | Find highlights con `<mark>` |
+| 7.24 | Editor Add/Edit: click sulla freccina di fold accanto a una riga `{`/`[` | La sezione si collassa/espande (Monaco), il resto del documento resta leggibile |
 
 ---
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
@@ -17,6 +17,8 @@ import BulkEditModal from './BulkEditModal';
 import ExplainModal from './ExplainModal';
 import { showToast } from '../toast';
 import { previewLabel, type QueryEntry } from '../utils/queryHistory';
+import MonacoJsonEditor, { type MonacoJsonEditorHandle } from './MonacoJsonEditor';
+import type { MonacoThemeName } from './MonacoQueryEditor';
 
 type ViewMode = 'table' | 'tree';
 
@@ -146,90 +148,6 @@ const WRAP_KEY = 'docEditorWrap';
 export const loadWrap = () => localStorage.getItem(WRAP_KEY) === 'true';
 export const saveWrap = (on: boolean) => localStorage.setItem(WRAP_KEY, String(on));
 
-interface JsonEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  taRef?: React.RefObject<HTMLTextAreaElement>;
-  lineNumbers: boolean;
-  /** Soft-wraps long lines. Mutually exclusive with the gutter in practice —
-   * a wrapped logical line spans several visual rows, so a numbering gutter
-   * built for one-row-per-line would drift; the gutter is hidden while wrap
-   * is on rather than shown misaligned. */
-  wrap?: boolean;
-  className?: string;
-}
-
-/**
- * Layered JSON editor: a highlighted <pre> under a transparent <textarea>, plus
- * an optional line-number gutter.
- *
- * The gutter is a *sibling* of the textarea, never part of its value, so the
- * numbers cannot end up in a selection or on the clipboard — that is structural,
- * not something a selection handler has to patch. `user-select: none` and
- * `pointer-events: none` (in index.css) are belt and braces for a document-level
- * drag or Ctrl+A outside the field.
- *
- * Neither layer wraps (`white-space: pre` + horizontal scroll), so one `\n` is
- * exactly one visual row and the numbering can never drift.
- */
-function JsonEditor({ value, onChange, onKeyDown, taRef, lineNumbers, wrap = false, className = '' }: JsonEditorProps) {
-  const hlRef = useRef<HTMLPreElement>(null);
-  const gutterRef = useRef<HTMLPreElement>(null);
-  const lines = value.split('\n').length;
-  const showGutter = lineNumbers && !wrap;
-
-  // The textarea owns the scroll position; the other layers only follow it.
-  const follow = (scrollTop: number, scrollLeft: number) => {
-    if (hlRef.current) { hlRef.current.scrollTop = scrollTop; hlRef.current.scrollLeft = scrollLeft; }
-    if (gutterRef.current) gutterRef.current.scrollTop = scrollTop;
-  };
-  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) =>
-    follow(e.currentTarget.scrollTop, e.currentTarget.scrollLeft);
-
-  // Toggling the gutter mounts it at scrollTop 0 and shifts the text padding, so
-  // re-read the textarea — still the source of truth — instead of guessing.
-  useLayoutEffect(() => {
-    const ta = taRef?.current;
-    if (ta) follow(ta.scrollTop, ta.scrollLeft);
-  }, [lineNumbers, wrap]);
-
-  return (
-    <div
-      className={`json-editor-wrap${showGutter ? ' with-gutter' : ''}${wrap ? ' wrap-on' : ''}${className ? ' ' + className : ''}`}
-      // Width of the gutter, in monospace glyphs: the digit count of the last
-      // line. Both the gutter and the text layers offset by it, so they stay
-      // aligned however long the document gets.
-      style={{ '--gutter-digits': `${String(lines).length}` } as React.CSSProperties}
-    >
-      <pre
-        ref={hlRef}
-        className="json-editor-hl"
-        aria-hidden="true"
-        dangerouslySetInnerHTML={{ __html: highlightJson(value) + '\n' }}
-      />
-      <textarea
-        ref={taRef}
-        className="json-editor-ta"
-        value={value}
-        spellCheck={false}
-        wrap={wrap ? 'soft' : 'off'}
-        onChange={e => onChange(e.target.value)}
-        onScroll={syncScroll}
-        onKeyDown={onKeyDown}
-      />
-      {showGutter && (
-        // One text node laid out by the same `<pre>` rules as the highlight
-        // layer — same font, size, line-height and padding — so the rows line up
-        // by construction. The trailing "\n" mirrors the one above.
-        <pre ref={gutterRef} className="json-editor-gutter" aria-hidden="true">
-          {Array.from({ length: lines }, (_, i) => i + 1).join('\n') + '\n'}
-        </pre>
-      )}
-    </div>
-  );
-}
-
 function idToString(id: any): string {
   if (id === null || id === undefined) return '';
   if (typeof id === 'object' && '$oid' in id) return id.$oid;
@@ -247,6 +165,13 @@ export const TABLE_ROW_ESTIMATE = 28;
 export const TREE_ROW_ESTIMATE = 32;
 
 export default function DocumentsView({ connectionId, database, collection, active = true, readOnly = false }: DocumentsViewProps) {
+  // Same detection as QueryTerminal/AggregationBuilder: App re-renders this
+  // tree on theme change.
+  const monacoTheme: MonacoThemeName =
+    document.body.classList.contains('theme-light') ? 'vs'
+    : document.body.classList.contains('theme-hc') ? 'hc-black'
+    : document.body.classList.contains('theme-solarized') ? 'boxy-solarized'
+    : 'vs-dark';
   const [documents, setDocuments] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   // Closed by default: an empty builder took ~20% of the width to show a
@@ -281,7 +206,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [addJson, setAddJson] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
-  const addTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const addEditorRef = useRef<MonacoJsonEditorHandle>(null);
   // Find in view modal
   const [viewFind, setViewFind] = useState('');
   const [showViewFind, setShowViewFind] = useState(false);
@@ -289,7 +214,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [editFind, setEditFind] = useState('');
   const [showEditFind, setShowEditFind] = useState(false);
   const [editFindIdx, setEditFindIdx] = useState(0);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editEditorRef = useRef<MonacoJsonEditorHandle>(null);
   const viewFindRef = useRef<HTMLInputElement>(null);
   const editFindRef = useRef<HTMLInputElement>(null);
   // Line-number gutter, shared by the add and edit editors and remembered.
@@ -487,10 +412,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     setAddJson('{\n  \n}');
     setAddError(null);
     setShowAddDoc(true);
-    setTimeout(() => {
-      const ta = addTextareaRef.current;
-      if (ta) { ta.focus(); ta.setSelectionRange(4, 4); }
-    }, 50);
+    setTimeout(() => addEditorRef.current?.selectOffsetRange(4, 4), 50);
   }, []);
 
   const handleAddSave = async () => {
@@ -641,10 +563,9 @@ export default function DocumentsView({ connectionId, database, collection, acti
     return () => window.removeEventListener('keydown', onKey);
   }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
 
-  // Find in edit textarea
+  // Find in edit editor
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {
-    const ta = editTextareaRef.current;
-    if (!ta || !editFind) return;
+    if (!editFind) return;
     const text = editJson.toLowerCase();
     const query = editFind.toLowerCase();
     const positions: number[] = [];
@@ -654,11 +575,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     const next = ((editFindIdx + dir) % positions.length + positions.length) % positions.length;
     setEditFindIdx(next);
     const start = positions[next];
-    ta.focus();
-    ta.setSelectionRange(start, start + editFind.length);
-    const lineHeight = 18;
-    const lines = editJson.substring(0, start).split('\n').length;
-    ta.scrollTop = Math.max(0, (lines - 5) * lineHeight);
+    editEditorRef.current?.selectOffsetRange(start, start + editFind.length);
   }, [editJson, editFind, editFindIdx]);
 
   const allFields = (): { field: string; type: FieldType }[] => {
@@ -1356,16 +1273,14 @@ export default function DocumentsView({ connectionId, database, collection, acti
               </div>
               <div className="modal-body">
                 {addError && <div className="modal-error">{addError}</div>}
-                <JsonEditor
+                <MonacoJsonEditor
                   className={`tall${addValid ? ' invalid' : ''}`}
                   value={addJson}
-                  taRef={addTextareaRef}
+                  ref={addEditorRef}
                   lineNumbers={lineNumbers}
+                  theme={monacoTheme}
                   onChange={v => { setAddJson(v); setAddError(null); }}
-                  onKeyDown={e => {
-                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleAddSave(); }
-                    if (e.key === 'Escape') { e.preventDefault(); setShowAddDoc(false); }
-                  }}
+                  onSave={handleAddSave}
                 />
                 <div className="modal-hint">
                   Ctrl+Enter save · Esc close · Paste an array [ ] to insert multiple
@@ -1431,17 +1346,16 @@ export default function DocumentsView({ connectionId, database, collection, acti
               )}
               <div className="modal-body">
                 {editError && <div className="modal-error">{editError}</div>}
-                <JsonEditor
+                <MonacoJsonEditor
                   className={`${diff && diff.length > 0 ? 'short' : 'tall'}${jsonValid ? ' invalid' : ''}`}
                   value={editJson}
-                  taRef={editTextareaRef}
+                  ref={editEditorRef}
                   lineNumbers={lineNumbers}
                   wrap={editWrap}
+                  theme={monacoTheme}
                   onChange={v => { setEditJson(v); setEditError(null); }}
-                  onKeyDown={e => {
-                    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
-                    if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
-                  }}
+                  onSave={handleSave}
+                  onFindShortcut={() => { setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }}
                 />
                 {diff && diff.length > 0 && (
                   <div className="edit-diff-panel">
