@@ -1808,6 +1808,14 @@ button,
   color: var(--text-secondary); font-size: var(--fs-sm);
 }
 .welcome-recent-time { color: var(--text-secondary); font-size: var(--fs-sm); flex-shrink: 0; }
+.welcome-recent-remove {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; padding: 3px; border-radius: var(--radius-sm); opacity: 0.6;
+}
+.welcome-recent-item:hover .welcome-recent-remove,
+.welcome-recent-remove:focus-visible { opacity: 1; }
+.welcome-recent-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── Modal ───────────────────────────────────────────────────────────────────── */
 .modal-overlay {
@@ -1870,7 +1878,7 @@ button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
    an accent fill plus --accent-text ink: that is how the tab label became white
    on a near-white background in the light theme (1.32:1) and near-black on
    near-black in hc/solarized. */
-button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item) {
+button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove) {
   background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }

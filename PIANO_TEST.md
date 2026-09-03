@@ -91,6 +91,8 @@ npm run dev
 | 2.10 | Test con URI contenente `?3t.optionName=xxx` | Sanitizzazione rimuove param 3t.* prima di connettersi |
 | 2.11 | Paste URI da "Export" (con commento `// MyName` sopra) | Nome pre-popolato dal commento |
 | 2.12 | Riavvio app | Connessioni persistite, stato "disconnesso" (non auto-riconnesso) |
+| 2.13 | Chiudere tutte le tab (schermata di benvenuto) → sulla card "recent", `✕` (appare in hover) oppure right-click → "Remove from recents" | La card sparisce dalla lista recenti; la connessione resta in sidebar e si può ancora aprire da lì |
+| 2.14 | Dopo 2.13, ricollegarsi alla stessa connessione | La card ricompare nei recenti (nuova connessione = nuova voce, non è un blocco permanente) |
 
 ---
 

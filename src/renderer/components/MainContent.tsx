@@ -8,6 +8,7 @@ import IndexesView from './IndexesView';
 import SchemaView from './SchemaView';
 import StatsView from './StatsView';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
+import { loadHiddenRecents, saveHiddenRecents, isHiddenRecent, hideRecent } from '../utils/recentConnections';
 
 interface Tab {
   id: string;
@@ -82,7 +83,17 @@ export default function MainContent({
   const [mountedViews, setMountedViews] = useState<Record<string, Set<string>>>({});
   const [tabsOverflow, setTabsOverflow] = useState(false);
   const [tabCtxMenu, setTabCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+  const [hiddenRecents, setHiddenRecents] = useState(() => loadHiddenRecents());
+  const [recentCtxMenu, setRecentCtxMenu] = useState<{ x: number; y: number; connId: string; lastConnectedAt: number } | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
+
+  const removeFromRecents = useCallback((connId: string, lastConnectedAt: number) => {
+    setHiddenRecents(prev => {
+      const next = hideRecent(prev, connId, lastConnectedAt);
+      saveHiddenRecents(next);
+      return next;
+    });
+  }, []);
 
   // Mark active (tabId, type) as mounted
   useEffect(() => {
@@ -163,7 +174,7 @@ export default function MainContent({
   if (!activeTabData) {
     const isFirstRun = connections.length === 0;
     const recent = connections
-      .filter(c => c.lastConnectedAt)
+      .filter(c => c.lastConnectedAt && !isHiddenRecent(hiddenRecents, c.id, c.lastConnectedAt))
       .sort((a, b) => (b.lastConnectedAt ?? 0) - (a.lastConnectedAt ?? 0))
       .slice(0, 10);
     return (
@@ -189,11 +200,18 @@ export default function MainContent({
                   const leafFolder = folderChain[folderChain.length - 1];
                   const connColor = c.color || DEFAULT_CONNECTION_COLOR;
                   return (
-                    <button
+                    <div
                       key={c.id}
+                      role="button"
+                      tabIndex={0}
                       className="welcome-recent-item"
                       style={{ '--recent-border': connColor } as CSSProperties}
                       onClick={() => onConnect(c.id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onConnect(c.id); } }}
+                      onContextMenu={e => {
+                        e.preventDefault();
+                        setRecentCtxMenu({ x: e.clientX, y: e.clientY, connId: c.id, lastConnectedAt: c.lastConnectedAt! });
+                      }}
                     >
                       <Icon name="plug" size={14} color={connColor} />
                       <span className="welcome-recent-name">{c.name}</span>
@@ -203,7 +221,14 @@ export default function MainContent({
                         </span>
                       )}
                       <span className="welcome-recent-time">{formatRelativeTime(c.lastConnectedAt!)}</span>
-                    </button>
+                      <button
+                        className="welcome-recent-remove"
+                        title="Remove from recents"
+                        onClick={e => { e.stopPropagation(); removeFromRecents(c.id, c.lastConnectedAt!); }}
+                      >
+                        <Icon name="close" size={11} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -222,6 +247,19 @@ export default function MainContent({
             </>
           )}
         </div>
+        {recentCtxMenu && (
+          <ContextMenu
+            x={recentCtxMenu.x}
+            y={recentCtxMenu.y}
+            items={[
+              {
+                label: 'Remove from recents', icon: 'close',
+                onClick: () => { removeFromRecents(recentCtxMenu.connId, recentCtxMenu.lastConnectedAt); setRecentCtxMenu(null); },
+              },
+            ]}
+            onClose={() => setRecentCtxMenu(null)}
+          />
+        )}
       </div>
     );
   }
