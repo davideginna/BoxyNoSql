@@ -12,6 +12,19 @@ import { initUpdater } from './updater';
 
 declare const __dirname: string;
 
+// AppImage-only: the SUID sandbox helper ships inside the squashfs, remounted
+// at a fresh /tmp/.mount_XXXXXX path on every launch, so it can never be
+// chown-root/chmod-4755'd the way the .deb's postinst does once at install
+// time. Without this, Chromium aborts on startup rather than run unsandboxed
+// — worse on Ubuntu 24.04+, where AppArmor also denies the unprivileged
+// user-namespace fallback outright. `APPIMAGE` is set by electron-builder's
+// AppImage launcher (including on the app's own self-relaunch after an
+// auto-update), so this only touches the one distribution channel that needs
+// it — the .deb and Windows builds keep the sandbox.
+if (process.env.APPIMAGE) {
+  app.commandLine.appendSwitch('no-sandbox');
+}
+
 function getAdminDb(client: MongoClient): Db {
   return client.db('admin') as Db;
 }
