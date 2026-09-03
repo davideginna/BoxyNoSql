@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Icon from './Icon';
 import { isEscapeKey } from '../utils/keys';
 import { parseChangelog, sectionsSince, type ChangelogSection } from '../utils/changelog';
+import { renderMarkdownLite } from '../utils/markdownLite';
 
 interface Props {
   raw: string;
@@ -42,7 +43,7 @@ export default function ChangelogModal({ raw, sinceVersion, onClose }: Props) {
                   <span className="changelog-version">v{s.version}</span>
                   <span className="changelog-date">{s.date}</span>
                 </div>
-                <div className="changelog-notes">{s.body}</div>
+                <div className="changelog-notes">{renderMarkdownLite(s.body)}</div>
               </div>
             ))}
         </div>

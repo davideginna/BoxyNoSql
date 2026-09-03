@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Icon from './Icon';
 import { UpdateStatus, formatBytes, formatSpeed } from '../utils/updates';
 import { isEscapeKey } from '../utils/keys';
+import { renderMarkdownLite } from '../utils/markdownLite';
 
 interface Props {
   status: UpdateStatus;
@@ -69,7 +70,7 @@ export default function UpdateModal({
               <strong>BoxyNoSql {status.version}</strong> is available — you have {currentVersion}.
             </p>
             {status.notes && (
-              <div className="update-notes">{status.notes}</div>
+              <div className="update-notes">{renderMarkdownLite(status.notes)}</div>
             )}
             <p className="update-hint">
               {status.canAutoInstall

@@ -13,25 +13,37 @@ import { initUpdater } from './updater';
 declare const __dirname: string;
 
 // AppImage-only: the SUID sandbox helper ships inside the squashfs, remounted
-// at a fresh /tmp/.mount_XXXXXX path on every launch, so it can never be
-// chown-root/chmod-4755'd the way the .deb's postinst does once at install
-// time. Without this, Chromium aborts on startup rather than run unsandboxed
-// — worse on Ubuntu 24.04+, where AppArmor also denies the unprivileged
-// user-namespace fallback outright. `APPIMAGE` is set by electron-builder's
-// AppImage launcher (including on the app's own self-relaunch after an
-// auto-update), so this only touches the one distribution channel that needs
-// it — the .deb and Windows builds keep the sandbox.
-// Chromium's own sandbox init falls back to an unprivileged user-namespace
-// sandbox when the SUID helper isn't usable (as on a read-only, nosuid-mounted
-// AppImage squashfs) — verified on this build: it works even from the real
-// nosuid FUSE mount. Forcing `--no-sandbox` used to work around a startup
-// FATAL on Ubuntu 24.04+, but on current Electron/Chromium it does more harm
-// than good: the sandboxed-off code path routes shared memory through a
-// self-managed POSIX shm_open() call that some hosts fail with a spinning
-// "Creating shared memory in /dev/shm/… failed: No such process" — the GPU
-// and renderer processes never getting a usable region, hence a blank window.
-// No override needed here anymore; if a host's namespace sandbox is genuinely
-// unavailable, Chromium's own detection still disables it appropriately.
+// read-only+nosuid at a fresh /tmp/.mount_XXXXXX path on every launch, so it
+// can never be chown-root/chmod-4755'd the way the .deb's postinst does once
+// at install time. Chromium's own sandbox init normally falls back to an
+// unprivileged user-namespace sandbox when the SUID helper isn't usable, and
+// that works fine on its own for most launches — but an app started from
+// GNOME's dash/search goes through a systemd scope that transitions into a
+// restricted `unprivileged_userns` AppArmor profile denying CAP_SYS_ADMIN,
+// which breaks the namespace fallback too, so without any override Chromium
+// falls through to requiring the (unusable) SUID helper and aborts with
+// `sandbox/linux/suid/client/setuid_sandbox_host.cc: … aborting now`.
+//
+// The obvious fix, `app.commandLine.appendSwitch('no-sandbox')`, causes a
+// *different* crash: Chromium's own sandbox-setup step is also what wires up
+// the shared-memory broker for child processes, so skipping it via a
+// commandLine switch left the GPU/renderer processes trying to self-manage
+// shared memory via a raw POSIX shm_open() that some hosts fail outright —
+// "Creating shared memory in /dev/shm/… failed: No such process", spinning
+// forever in the GPU process or crashing the renderer straight away.
+//
+// `ELECTRON_DISABLE_SANDBOX` (an env var Electron's native startup code reads
+// itself, before any of Chromium's sandbox/broker setup runs at all) avoids
+// both: verified directly — no AppArmor userns_create attempt in the audit
+// log, no shared-memory errors, launched exactly as GNOME launches it
+// (desktop entry, "Application launched by gnome-shell" systemd scope).
+// `APPIMAGE` is set by electron-builder's AppImage launcher (including on the
+// app's own self-relaunch after an auto-update), so this only touches the one
+// distribution channel that needs it — the .deb and Windows builds keep the
+// sandbox.
+if (process.env.APPIMAGE) {
+  process.env.ELECTRON_DISABLE_SANDBOX = 'true';
+}
 
 function getAdminDb(client: MongoClient): Db {
   return client.db('admin') as Db;

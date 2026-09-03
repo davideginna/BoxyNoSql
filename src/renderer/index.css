@@ -1506,10 +1506,10 @@ button,
 /* ── Update dialog ────────────────────────────────────────────────────────── */
 .update-line { font-size: var(--fs-md); color: var(--text-primary); margin: 0 0 var(--space-4); }
 .update-hint { font-size: var(--fs-sm); color: var(--text-secondary); margin: var(--space-4) 0 0; }
-/* Release notes arrive as raw markdown/plain text — keep the newlines, cap the
-   height so a long changelog can't push the buttons off-screen. */
+/* Release notes render through renderMarkdownLite (heading/bullet/bold/code
+   subset) — cap the height so a long changelog can't push the buttons off-screen. */
 .update-notes {
-  white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-secondary);
+  font-size: var(--fs-sm); color: var(--text-secondary);
   background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 10px 12px;
   max-height: 220px; overflow: auto;
@@ -1543,9 +1543,22 @@ button,
 }
 .changelog-version { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); }
 .changelog-date { font-size: var(--fs-sm); color: var(--text-secondary); }
-/* Same "raw markdown/plain text, keep the newlines" treatment as .update-notes. */
+/* Same renderMarkdownLite treatment as .update-notes. */
 .changelog-notes {
-  white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-secondary);
+  font-size: var(--fs-sm); color: var(--text-secondary);
+}
+.update-notes h4, .changelog-notes h4 {
+  margin: var(--space-3) 0 var(--space-2); color: var(--text-primary); font-size: var(--fs-sm);
+}
+.update-notes h4:first-child, .changelog-notes h4:first-child { margin-top: 0; }
+.update-notes p, .changelog-notes p { margin: 0 0 var(--space-2); }
+.update-notes ul, .changelog-notes ul { margin: 0 0 var(--space-2); padding-left: 1.2em; }
+.update-notes li, .changelog-notes li { margin-bottom: var(--space-2); }
+.update-notes li:last-child, .changelog-notes li:last-child { margin-bottom: 0; }
+.update-notes strong, .changelog-notes strong { color: var(--text-primary); }
+.update-notes code, .changelog-notes code {
+  font-family: var(--font-mono); font-size: 0.9em; background: var(--bg-hover);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 4px;
 }
 
 /* ── About dialog ─────────────────────────────────────────────────────────── */
