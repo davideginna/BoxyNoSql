@@ -21,14 +21,17 @@ declare const __dirname: string;
 // AppImage launcher (including on the app's own self-relaunch after an
 // auto-update), so this only touches the one distribution channel that needs
 // it — the .deb and Windows builds keep the sandbox.
-if (process.env.APPIMAGE) {
-  app.commandLine.appendSwitch('no-sandbox');
-  // With the sandbox off, the GPU/renderer helpers fall back to a shared-memory
-  // path that some hosts refuse (FATAL "Creating shared memory in /dev/shm/…
-  // failed", even with /dev/shm at the normal 1777) — this is the standard
-  // Chromium workaround: keep anonymous shared memory off /dev/shm entirely.
-  app.commandLine.appendSwitch('disable-dev-shm-usage');
-}
+// Chromium's own sandbox init falls back to an unprivileged user-namespace
+// sandbox when the SUID helper isn't usable (as on a read-only, nosuid-mounted
+// AppImage squashfs) — verified on this build: it works even from the real
+// nosuid FUSE mount. Forcing `--no-sandbox` used to work around a startup
+// FATAL on Ubuntu 24.04+, but on current Electron/Chromium it does more harm
+// than good: the sandboxed-off code path routes shared memory through a
+// self-managed POSIX shm_open() call that some hosts fail with a spinning
+// "Creating shared memory in /dev/shm/… failed: No such process" — the GPU
+// and renderer processes never getting a usable region, hence a blank window.
+// No override needed here anymore; if a host's namespace sandbox is genuinely
+// unavailable, Chromium's own detection still disables it appropriately.
 
 function getAdminDb(client: MongoClient): Db {
   return client.db('admin') as Db;
