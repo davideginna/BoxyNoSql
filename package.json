@@ -1,6 +1,6 @@
 {
   "name": "boxynosql",
-  "version": "1.6.5",
+  "version": "1.6.6",
   "description": "BoxyNoSql \u2014 desktop NoSQL GUI client",
   "homepage": "https://github.com/davideginna/BoxyNoSql",
   "author": "Davide Ginnasio",
@@ -97,7 +97,8 @@
       "maintainer": "Davide Ginnasio"
     },
     "appImage": {
-      "artifactName": "${productName}.AppImage"
+      "artifactName": "${productName}.AppImage",
+      "executableArgs": ["--no-sandbox", "--disable-namespace-sandbox"]
     },
     "win": {
       "target": [

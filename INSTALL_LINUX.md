@@ -45,7 +45,7 @@ Guida all'installazione, all'aggiornamento e alla build su Linux. Testata su Ubu
    Type=Application
    Name=BoxyNoSql
    Comment=Desktop NoSQL GUI client
-   Exec=$HOME/Applications/BoxyNoSql.AppImage
+   Exec=$HOME/Applications/BoxyNoSql.AppImage --no-sandbox --disable-namespace-sandbox
    Icon=$HOME/.local/share/icons/boxynosql.png
    Terminal=false
    Categories=Development;Database;
@@ -58,6 +58,8 @@ Guida all'installazione, all'aggiornamento e alla build su Linux. Testata su Ubu
    Poi cerca "BoxyNoSql" in Attività → tasto destro sull'icona → **Aggiungi ai preferiti** per pinnarla nella dock. Se non compare subito, riavvia GNOME Shell (`Alt+F2` → `r` → Invio, solo su Xorg) o rifai il login.
 
    L'`Exec=` punta a un percorso fisso (`BoxyNoSql.AppImage`, non `BoxyNoSql-1.6.0.AppImage`): l'auto-update sostituisce il file **in place**, stesso nome, quindi la voce di menu resta valida dopo ogni aggiornamento senza bisogno di rifare questo passaggio.
+
+   I due flag in `Exec=` servono solo per l'avvio da Attività/ricerca di GNOME: quel percorso esegue l'app in uno scope systemd con un profilo AppArmor che nega `CAP_SYS_ADMIN`, il che rompe il sandbox namespace di Chromium e la fa fallire all'avvio. Avviata con doppio click o da terminale l'app non ha questo problema — il sandbox di Chromium funziona da solo — ma i flag qui non fanno danno in nessun caso.
 
 ### Aggiornamento (AppImage)
 
