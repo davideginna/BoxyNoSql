@@ -12,32 +12,29 @@ import { initUpdater } from './updater';
 
 declare const __dirname: string;
 
-// No sandbox override lives here on purpose — see docs/INSTALL_LINUX.md and
-// `build.appImage.executableArgs` in package.json.
+// No sandbox override lives here — see docs/INSTALL_LINUX.md and
+// `build.appImage.executableArgs` in package.json for why, and the roadmap
+// entry in README.md for what a fully automatic fix would take.
 //
-// A plain launch of the AppImage (double-click, terminal, gtk-launch, and the
-// app's own self-relaunch after an auto-update) is unconfined: Chromium's
-// namespace-sandbox fallback works fine on its own even though the SUID
-// helper inside the squashfs can never be chown-root/chmod-4755'd (it's
-// read-only+nosuid, remounted at a fresh /tmp/.mount_XXXXXX path every
-// launch) — verified directly, no override needed, full sandbox stays on.
-//
-// The one launch path that needs help is GNOME's dash/search: it runs the
-// app in a systemd scope that transitions into a restricted
-// `unprivileged_userns` AppArmor profile denying CAP_SYS_ADMIN, breaking the
-// namespace fallback too, so Chromium falls through to requiring the
-// (unusable) SUID helper and aborts with `sandbox/linux/suid/client/
-// setuid_sandbox_host.cc: … aborting now`. That can only be fixed by putting
-// `--no-sandbox --disable-namespace-sandbox` on the process's *real* argv
-// from the start — a switch appended here from JS, after Electron's own
-// sandbox-relevant native startup has already run, does not reliably reach
-// whatever handles that transition (verified: reproduced the same FATAL with
-// both switches appended in JS). `--disable-namespace-sandbox` is what stops
-// Chromium from even attempting the namespace unshare(), so there's nothing
-// for AppArmor to transition/deny; without it, `--no-sandbox` alone avoids
-// the FATAL but skips the sandbox-setup step that also wires up the
-// shared-memory broker for child processes, so they try to self-manage
-// shared memory via a raw POSIX shm_open() that fails outright instead.
+// Whether Chromium's namespace-sandbox fallback works when the bundled SUID
+// helper can't be (it ships read-only+nosuid, remounted at a fresh
+// /tmp/.mount_XXXXXX path every launch, so it can never be
+// chown-root/chmod-4755'd) depends on the host: confined and broken under
+// GNOME's dash/search specifically (AppArmor denies CAP_SYS_ADMIN there), but
+// also seen failing on a plain direct launch on a second Ubuntu machine, with
+// the identical FATAL. `--no-sandbox --disable-namespace-sandbox` avoids it
+// everywhere tried — but only when the two switches are on the process's
+// *real* argv from the very start, which nothing in app code can guarantee:
+// `app.commandLine.appendSwitch()` after Electron's own sandbox-relevant
+// native startup does not reliably reach whatever handles this (reproduced
+// the same FATAL, and separately the shared-memory crash `--no-sandbox` alone
+// causes, with both appended that way). `app.relaunch()` was also tried, to
+// re-exec with the flags on a genuinely fresh argv — but for the packaged
+// AppImage specifically it crashes even earlier, natively, before any JS
+// runs: relaunch re-execs `process.execPath` (the boxynosql binary inside the
+// current FUSE mount) directly, bypassing the AppRun wrapper script that sets
+// up LD_LIBRARY_PATH/XDG_DATA_DIRS/etc. a second time — reproduced reliably
+// with debug markers showing zero JS ever running in the relaunched process.
 
 function getAdminDb(client: MongoClient): Db {
   return client.db('admin') as Db;
