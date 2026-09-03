@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.2] - 2026-09-03
+
+### Fixed
+- **`fast-uri` forced past six SSRF/host-confusion advisories** (GHSA-f65p-4m7j-42xc and five related). Transitive via `electron-store` → `conf` → `ajv`/`ajv-formats`, and the only open Dependabot alert whose dependency actually ships in the packaged app — everything else flagged lives in the electron-builder/vite build toolchain and isn't distributed. Overridden to `^4.1.3`, the first fixed line
+
 ## [1.6.1] - 2026-09-03
 
 ### Added
