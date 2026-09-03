@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.5] - 2026-09-03
+
+### Fixed
+- **The AppImage's sandbox crash, for the launch path that actually mattered.** 1.6.4 fixed direct/terminal launches but not GNOME's dash/search: that path runs the app in a systemd scope that transitions into a restricted AppArmor profile denying `CAP_SYS_ADMIN`, breaking Chromium's namespace-sandbox fallback too, so it fell through to requiring the (unusable, read-only-mounted) SUID helper and aborted — the exact FATAL from 1.6.1, just via a different launcher than the one already tested. Switched from the `app.commandLine` no-sandbox switch (which caused 1.6.3/1.6.4's shared-memory bugs) to the `ELECTRON_DISABLE_SANDBOX` environment variable, which Electron reads before any of Chromium's sandbox or shared-memory-broker setup runs — verified with no AppArmor `userns_create` attempt at all, launched exactly as GNOME launches it (desktop entry, "Application launched by gnome-shell" scope)
+
+### Changed
+- **The changelog and update-notes viewers render markdown now** instead of dumping raw `### heading` / `- bullet` / `**bold**` text with the asterisks and hashes showing
+
 ## [1.6.4] - 2026-09-03
 
 ### Fixed
