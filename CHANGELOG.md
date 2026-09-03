@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.0] - 2026-09-03
+
+### Added
+- **Fold/collapse in the add/edit document JSON editor.** The hand-rolled textarea+`<pre>` editor is now Monaco, same as the query terminal and aggregation stage bodies, so a document with nested objects can be collapsed instead of scrolled past. Ctrl+F still opens the modal's own find bar (remapped from Monaco's default find widget) and Ctrl+Enter/Alt+Enter still save
+- **Remove a connection from the welcome screen's recents** without touching the connection itself — right-click a card, or the now-always-visible ✕ (0.6 opacity, full on hover/focus). The recents list has no history log of its own (it is derived live from each connection's `lastConnectedAt`), so this records the timestamp that was on screen when dismissed; a later real connect bumps `lastConnectedAt` past that mark and the card comes back on its own
+
+### Fixed
+- **`ObjectId("…")`/`ISODate("…")` red-squiggled as invalid JSON** in both the new document editor and the aggregation stage editor. Both share one process-wide `jsonDefaults` diagnostics setting; it validated strict JSON, which the app's own shell-style extended dialect is not. The app already shows its own dialect-aware validity status next to the editor, so Monaco's diagnostics were only ever redundant or wrong — turned off in both places together, so one editor mounting can't silently re-enable it for the other
+- **Folding never worked in any Monaco editor in the app**, document or stage body: `folding`/`showFoldingControls` were silent no-ops because Monaco's minimal `editor.api` entry point doesn't register the folding contribution without an explicit import
+
 ## [1.5.1] - 2026-08-09
 
 ### Fixed
