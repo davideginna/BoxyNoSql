@@ -4,6 +4,7 @@
 
 ### Fixed
 - **A pinned AppImage launcher would stop working after an update**, failing with "Program … not found". electron-builder's default AppImage name bakes in the version (`BoxyNoSql-1.6.0.AppImage`), and electron-updater's self-updater only overwrites the running file in place when its name has no version — with a versioned name, it instead deleted the old file and wrote the new one under a new filename, orphaning any taskbar/dash pin that pointed at the old path. The AppImage now always builds as `BoxyNoSql.AppImage`, so updates overwrite the same file and a pin survives them
+- **The AppImage build could crash on launch with a white screen**, Chromium aborting fatally on shared memory ("Creating shared memory in /dev/shm/… failed") even when `/dev/shm` had normal permissions. A side effect of running with the sandbox off (see 1.6.1) — `--disable-dev-shm-usage` keeps Chromium's anonymous shared memory off `/dev/shm` entirely, same workaround long used for Chrome in containers/CI
 
 ## [1.6.2] - 2026-09-03
 

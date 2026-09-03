@@ -23,6 +23,11 @@ declare const __dirname: string;
 // it — the .deb and Windows builds keep the sandbox.
 if (process.env.APPIMAGE) {
   app.commandLine.appendSwitch('no-sandbox');
+  // With the sandbox off, the GPU/renderer helpers fall back to a shared-memory
+  // path that some hosts refuse (FATAL "Creating shared memory in /dev/shm/…
+  // failed", even with /dev/shm at the normal 1777) — this is the standard
+  // Chromium workaround: keep anonymous shared memory off /dev/shm entirely.
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
 }
 
 function getAdminDb(client: MongoClient): Db {
