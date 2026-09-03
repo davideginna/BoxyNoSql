@@ -23,8 +23,8 @@ function formatBuildDate(iso: string | null): string {
 }
 
 export default function AboutModal({
-  onClose, onCheckUpdates,
-}: { onClose: () => void; onCheckUpdates: () => void }) {
+  onClose, onCheckUpdates, onViewChangelog,
+}: { onClose: () => void; onCheckUpdates: () => void; onViewChangelog: () => void }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [checkStartup, setCheckStartup] = useState(() => getCheckOnStartup());
 
@@ -89,6 +89,10 @@ export default function AboutModal({
             <button className="secondary" onClick={onCheckUpdates}>
               <Icon name="download" size={14} style={{ marginRight: 6 }} />
               Check for updates
+            </button>
+            <button className="secondary" onClick={onViewChangelog}>
+              <Icon name="history" size={14} style={{ marginRight: 6 }} />
+              Changelog
             </button>
             <label>
               <input

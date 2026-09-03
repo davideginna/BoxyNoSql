@@ -643,6 +643,19 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 
 ---
 
+## 15b. Test: Changelog
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 15b.1 | Prima installazione (nessun `lastSeenChangelogVersion` in localStorage) → avvio | Nessun popup changelog; `lastSeenChangelogVersion` viene comunque scritto in silenzio |
+| 15b.2 | `localStorage.setItem('lastSeenChangelogVersion', '0.0.1')` (versione vecchia/inventata) → riavvia | Popup "What's new" con solo l'ultima sezione del changelog (fallback, versione non trovata nel file) |
+| 15b.3 | `localStorage.setItem('lastSeenChangelogVersion', '<versione precedente reale>')` → riavvia | Popup "What's new" con solo le sezioni più recenti di quella versione |
+| 15b.4 | Riavvia di nuovo dopo 15b.2/15b.3 (senza toccare localStorage) | Nessun popup — `lastSeenChangelogVersion` ora combacia con la versione corrente |
+| 15b.5 | About → bottone "Changelog" | Apre il changelog completo (tutte le versioni), non solo le ultime |
+| 15b.6 | Changelog aperto → Esc / Close | Si chiude, nessun effetto sullo stato "what's new" |
+
+---
+
 ## 16. Test: Produzione (packaged)
 
 | # | Azione | Risultato atteso |

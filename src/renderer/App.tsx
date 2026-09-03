@@ -9,12 +9,14 @@ import SettingsModal from './components/SettingsModal';
 import AboutModal from './components/AboutModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import UpdateModal from './components/UpdateModal';
+import ChangelogModal from './components/ChangelogModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
 import { PinnedCollection, loadPinned, savePinned, togglePinned } from './utils/pinnedCollections';
 import { loadSession, saveSession } from './utils/session';
 import {
   UpdateStatus, getCheckOnStartup, getSkippedVersion, setSkippedVersion, shouldShow,
 } from './utils/updates';
+import { getLastSeenVersion, setLastSeenVersion } from './utils/changelog';
 import { showConfirm, showInput, showAlert } from './dialog';
 import { showToast } from './toast';
 import ToastHost from './components/ToastHost';
@@ -229,8 +231,34 @@ function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [appVersion, setAppVersion] = useState('');
 
+  // ── Changelog ────────────────────────────────────────────────────────────────
+  const [changelogRaw, setChangelogRaw] = useState<string | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
+  // Set for the auto "what's new" popup (only sections since this version);
+  // null for the on-demand "View changelog" button, which shows everything.
+  const [changelogSince, setChangelogSince] = useState<string | null>(null);
+
+  const openChangelog = useCallback(async (since: string | null) => {
+    let raw = changelogRaw;
+    if (!raw) {
+      raw = await inv('get-changelog').catch(() => null);
+      if (raw) setChangelogRaw(raw);
+    }
+    if (raw) { setChangelogSince(since); setShowChangelog(true); }
+  }, [changelogRaw]);
+
   useEffect(() => {
-    inv('get-app-info').then((i: any) => setAppVersion(i?.version ?? '')).catch(() => {});
+    inv('get-app-info').then(async (i: any) => {
+      const v = i?.version ?? '';
+      setAppVersion(v);
+      if (!v) return;
+      // `lastSeenChangelogVersion` is unset on a first-ever install — nothing
+      // to diff against, so seed it silently rather than popping "what's new"
+      // at someone who just installed the app.
+      const last = getLastSeenVersion();
+      setLastSeenVersion(v);
+      if (last && last !== v) openChangelog(last);
+    }).catch(() => {});
 
     const off = (window as any).electron.on('update:status', (status: UpdateStatus) => {
       if (shouldShow(status, getSkippedVersion())) setUpdateStatus(status);
@@ -243,6 +271,7 @@ function App() {
       timer = window.setTimeout(() => inv('update:check', false).catch(() => {}), 3000);
     }
     return () => { off?.(); if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkForUpdates = useCallback(() => {
@@ -296,7 +325,7 @@ function App() {
   // Global keyboard shortcuts. Skipped while a modal is open (they own Escape) or
   // while typing in a field.
   const [showPalette, setShowPalette] = useState(false);
-  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRoles || !!updateStatus || !!csvImport;
+  const anyModalOpen = showConnModal || showConnManager || showSettings || showAbout || showShortcuts || !!usersRoles || !!updateStatus || !!csvImport || showChangelog;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setShowShortcuts(true); return; }
@@ -961,7 +990,20 @@ function App() {
           onClose={() => setUpdateStatus(null)}
         />
       )}
-      {showAbout && <AboutModal onClose={() => setShowAbout(false)} onCheckUpdates={checkForUpdates} />}
+      {showAbout && (
+        <AboutModal
+          onClose={() => setShowAbout(false)}
+          onCheckUpdates={checkForUpdates}
+          onViewChangelog={() => openChangelog(null)}
+        />
+      )}
+      {showChangelog && changelogRaw && (
+        <ChangelogModal
+          raw={changelogRaw}
+          sinceVersion={changelogSince}
+          onClose={() => setShowChangelog(false)}
+        />
+      )}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
       {csvImport && (
         <ImportCsvModal

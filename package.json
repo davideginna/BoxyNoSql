@@ -114,6 +114,7 @@
       "dist/main/**/*",
       "dist/renderer/**/*",
       "package.json",
+      "CHANGELOG.md",
       "!node_modules/monaco-editor/**"
     ]
   }

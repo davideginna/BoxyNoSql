@@ -249,6 +249,16 @@ ipcMain.handle('get-app-info', () => {
   };
 });
 
+// Same dev/packaged path fallback as the `package.json` lookup above —
+// CHANGELOG.md sits next to it at the repo root, and gets packaged next to it
+// too (see `build.files` in package.json).
+ipcMain.handle('get-changelog', () => {
+  for (const p of [path.join(__dirname, '../../CHANGELOG.md'), path.join(__dirname, '../CHANGELOG.md')]) {
+    try { return fs.readFileSync(p, 'utf-8'); } catch { /* try next */ }
+  }
+  return null;
+});
+
 // ── Connection management ────────────────────────────────────────────────────
 ipcMain.handle('get-connections', () => store.get('connections'));
 
