@@ -201,6 +201,22 @@ describe('DocumentsView — expand / collapse all in the document modals', () =>
   });
 });
 
+describe('DocumentsView — edit modal maximize', () => {
+  it('a double-click on the title bar toggles maximize, one on its controls does not', async () => {
+    const { container } = view();
+    await openEdit(container);
+    const header = screen.getByRole('heading', { name: /^Edit —/ }).parentElement!;
+    const modal = header.parentElement!;
+
+    fireEvent.doubleClick(header);
+    expect(modal).toHaveClass('modal-maximized');
+    fireEvent.doubleClick(within(header).getByRole('button', { name: /Collapse all/ }));
+    expect(modal).toHaveClass('modal-maximized');
+    fireEvent.doubleClick(screen.getByRole('heading', { name: /^Edit —/ }));
+    expect(modal).not.toHaveClass('modal-maximized');
+  });
+});
+
 describe('DocumentsView — column sort', () => {
   it('starts unsorted, so no sort reaches the server', async () => {
     view();

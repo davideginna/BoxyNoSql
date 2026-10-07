@@ -1286,7 +1286,13 @@ export default function DocumentsView({ connectionId, database, collection, acti
         return (
           <div className="modal-overlay">
             <div className={`modal modal-wide${editMaximized ? ' modal-maximized' : ''}`}>
-              <div className="modal-header">
+              {/* Double-click on the title bar toggles maximize, like a native window — not on its controls. */}
+              <div className="modal-header"
+                onDoubleClick={e => {
+                  if ((e.target as HTMLElement).closest('button, input, label')) return;
+                  window.getSelection()?.removeAllRanges();
+                  setEditMaximized(m => !m);
+                }}>
                 <h3>
                   Edit — {idToString(editingDoc._id)}
                   {isDirty && <span className="edit-dirty-badge">● modified</span>}

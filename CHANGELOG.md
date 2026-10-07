@@ -4,6 +4,7 @@
 
 ### Added
 - **A success sound when Test Connection works**, to pair with the error sound on a failed test. Off together with the other sounds in Appearance (`Ctrl+,`)
+- **Double-click the Edit window's title bar to maximize it**, and again to restore — like a native window
 
 ## [1.7.1] - 2026-10-07
 
