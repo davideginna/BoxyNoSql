@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Connections imported from Studio 3T with `sslInvalidHostNameAllowed=true` now connect.** The MongoDB Node driver refused the whole connection string ("option sslinvalidhostnameallowed is not supported") before even trying the server; the option is now translated to its Node equivalent, `tlsAllowInvalidHostnames`. Works for already-saved connections too, no re-import needed
+- **Test Connection no longer gets stuck on "Testing…".** A connection string the driver could not parse made the test hang forever without a word; the error now shows up in the log and the button comes back
+
+### Changed
+- **Bigger Test Connection log**, in both the new and the edit connection window: taller, resizable by dragging its corner, and scrolled into view as soon as a test starts
+
 ## [1.7.2] - 2026-10-07
 
 ### Added

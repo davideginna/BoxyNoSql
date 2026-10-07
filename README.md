@@ -6,6 +6,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 
 - ✅ Connection management (saved in `~/.config/BoxyNoSql/connections.json`)
 - ✅ Folder organization with drag & drop, color coding
+- ✅ Import connections from a Studio 3T `.uri` export: folders, colors and client certificates come along, Studio 3T-only options are translated or stripped
 - ✅ Database/collection tree view with search, plus a command palette (`Ctrl+P`) over connections, databases, collections and actions
 - ✅ Document viewer (tree + table), multi-select, bulk copy/paste/delete and bulk field edit (set/rename/unset across the selection)
 - ✅ Paginated document browsing with configurable limit
