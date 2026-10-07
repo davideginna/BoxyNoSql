@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.1] - 2026-10-07
+
+### Added
+- **Expand all / Collapse all in the document Edit and View windows.** Collapse folds the whole document down to one line, root included
+- **The View window can fold too** — it now uses the same editor as Edit, read-only, with find matches highlighted and Enter / Shift+Enter to step through them
+
+### Fixed
+- **The fold controls in the document editor showed up as empty squares.** They are now a boxed − on an open section and a boxed + on a closed one, in the theme's colours
+- **The Edit window's header no longer runs out of the window** when it isn't maximized: on a narrow window the actions move to a second row instead of pushing past the edge
+
 ## [1.7.0] - 2026-10-07
 
 ### Added
