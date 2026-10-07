@@ -60,6 +60,19 @@ function parseEditable(raw: string): any {
   return JSON.parse(normalizePretty(raw));
 }
 
+/** Case-insensitive match stepping shared by the edit and view find bars. */
+function stepMatch(text: string, query: string, idx: number, dir: 1 | -1): { idx: number; start: number } | null {
+  if (!query) return null;
+  const hay = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const positions: number[] = [];
+  let pos = 0;
+  while ((pos = hay.indexOf(needle, pos)) !== -1) { positions.push(pos); pos++; }
+  if (positions.length === 0) return null;
+  const next = ((idx + dir) % positions.length + positions.length) % positions.length;
+  return { idx: next, start: positions[next] };
+}
+
 function escapeRe(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 interface DiffEntry {
@@ -103,37 +116,6 @@ function computeDiff(origJson: string, currJson: string): DiffEntry[] | null {
 function truncate(v: any, max = 60): string {
   const s = JSON.stringify(v);
   return s.length > max ? s.slice(0, max) + '…' : s;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// Single-pass JSON tokenizer → colored HTML. No HTML attr collision.
-function highlightJson(raw: string): string {
-  const safe = escapeHtml(raw);
-  const re = /(ObjectId|ISODate)\(("(?:\\.|[^"\\])*")\)|("(?:\\.|[^"\\])*")(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false|null)\b/g;
-  return safe.replace(re, (_m, wrap, wrapStr, str, colon, num, kw) => {
-    if (wrap) return `<span class="jo">${wrap}(</span><span class="js">${wrapStr}</span><span class="jo">)</span>`;
-    if (str) return colon
-      ? `<span class="jk">${str}</span>${colon}`
-      : `<span class="js">${str}</span>`;
-    if (num) return `<span class="jn">${num}</span>`;
-    if (kw) return kw === 'null'
-      ? `<span class="jl">null</span>`
-      : `<span class="jb">${kw}</span>`;
-    return _m;
-  });
-}
-
-function highlightText(text: string, query: string): string {
-  const colored = highlightJson(text);
-  if (!query) return colored;
-  // Highlight find matches on top; match against escaped raw (case-insensitive)
-  // Simple approach: re-highlight using escaped query over the already-colored string;
-  // skip inside tags.
-  const q = escapeRe(escapeHtml(query));
-  return colored.replace(new RegExp(`(${q})(?![^<]*>)`, 'gi'), '<mark class="find-mark">$1</mark>');
 }
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
@@ -215,6 +197,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [showEditFind, setShowEditFind] = useState(false);
   const [editFindIdx, setEditFindIdx] = useState(0);
   const editEditorRef = useRef<MonacoJsonEditorHandle>(null);
+  const viewEditorRef = useRef<MonacoJsonEditorHandle>(null);
+  const [viewFindIdx, setViewFindIdx] = useState(0);
   const viewFindRef = useRef<HTMLInputElement>(null);
   const editFindRef = useRef<HTMLInputElement>(null);
   // Line-number gutter, shared by the add and edit editors and remembered.
@@ -563,19 +547,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
     return () => window.removeEventListener('keydown', onKey);
   }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
 
-  // Find in edit editor
+  // Find in the edit / view editors: step to the next (or previous) match and select it.
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {
-    if (!editFind) return;
-    const text = editJson.toLowerCase();
-    const query = editFind.toLowerCase();
-    const positions: number[] = [];
-    let pos = 0;
-    while ((pos = text.indexOf(query, pos)) !== -1) { positions.push(pos); pos++; }
-    if (positions.length === 0) return;
-    const next = ((editFindIdx + dir) % positions.length + positions.length) % positions.length;
-    setEditFindIdx(next);
-    const start = positions[next];
-    editEditorRef.current?.selectOffsetRange(start, start + editFind.length);
+    const next = stepMatch(editJson, editFind, editFindIdx, dir);
+    if (!next) return;
+    setEditFindIdx(next.idx);
+    editEditorRef.current?.selectOffsetRange(next.start, next.start + editFind.length);
   }, [editJson, editFind, editFindIdx]);
 
   const allFields = (): { field: string; type: FieldType }[] => {
@@ -741,6 +718,13 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const editMatchCount = findMatchCount(editJson, editFind);
   const viewText = viewingDoc ? prettyDoc(viewingDoc) : '';
   const viewMatchCount = findMatchCount(viewText, viewFind);
+  const findInView = (dir: 1 | -1) => {
+    const next = stepMatch(viewText, viewFind, viewFindIdx, dir);
+    if (!next) return;
+    setViewFindIdx(next.idx);
+    viewEditorRef.current?.selectOffsetRange(next.start, next.start + viewFind.length);
+  };
+  const toggleViewFind = () => { setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); };
 
   const hasSelection = selectedIndices.size > 0;
 
@@ -1308,6 +1292,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
                   {isDirty && <span className="edit-dirty-badge">● modified</span>}
                 </h3>
                 <div className="modal-header-actions">
+                  <button className="icon-btn" title="Expand all" aria-label="Expand all"
+                    onClick={() => editEditorRef.current?.unfoldAll()}><Icon name="expandAll" size={14} /></button>
+                  <button className="icon-btn" title="Collapse all" aria-label="Collapse all"
+                    onClick={() => editEditorRef.current?.foldAll()}><Icon name="collapseAll" size={14} /></button>
                   <button className="secondary btn-xs"
                     onClick={() => setEditJson(formatJson(editJson))}>Format</button>
                   <label className="editor-toggle" title="Show line numbers">
@@ -1398,6 +1386,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
             <div className="modal-header">
               <h3>View — {idToString(viewingDoc._id)}</h3>
               <div className="modal-header-actions">
+                <button className="icon-btn" title="Expand all" aria-label="Expand all"
+                  onClick={() => viewEditorRef.current?.unfoldAll()}><Icon name="expandAll" size={14} /></button>
+                <button className="icon-btn" title="Collapse all" aria-label="Collapse all"
+                  onClick={() => viewEditorRef.current?.foldAll()}><Icon name="collapseAll" size={14} /></button>
                 <button className="secondary btn-sm"
                   onClick={() => { openEdit(viewingDoc); setViewingDoc(null); }}>Edit (Ctrl+J)</button>
                 <button className="icon-btn" onClick={() => setViewingDoc(null)}><Icon name="close" size={14} /></button>
@@ -1410,22 +1402,34 @@ export default function DocumentsView({ connectionId, database, collection, acti
                   className="find-input"
                   placeholder="Find…"
                   value={viewFind}
-                  onChange={e => setViewFind(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Escape') { setShowViewFind(false); setViewFind(''); } }}
+                  onChange={e => { setViewFind(e.target.value); setViewFindIdx(0); }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') findInView(e.shiftKey ? -1 : 1);
+                    if (e.key === 'Escape') { setShowViewFind(false); setViewFind(''); }
+                  }}
                 />
                 <span className="find-count">{viewFind ? `${viewMatchCount} match${viewMatchCount !== 1 ? 'es' : ''}` : ''}</span>
+                <button className="find-nav" onClick={() => findInView(-1)}>↑</button>
+                <button className="find-nav" onClick={() => findInView(1)}>↓</button>
                 <button className="find-close" onClick={() => { setShowViewFind(false); setViewFind(''); }}><Icon name="close" size={14} /></button>
               </div>
             )}
             <div className="modal-body" onKeyDown={e => {
-              if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); }
+              if (e.ctrlKey && e.key === 'f') { e.preventDefault(); toggleViewFind(); }
             }} tabIndex={-1}>
-              <pre
-                className="code-block break-all"
-                dangerouslySetInnerHTML={{ __html: highlightText(viewText, viewFind) }}
+              <MonacoJsonEditor
+                className="tall"
+                value={viewText}
+                ref={viewEditorRef}
+                readOnly
+                highlight={viewFind}
+                lineNumbers={lineNumbers}
+                wrap
+                theme={monacoTheme}
+                onFindShortcut={toggleViewFind}
               />
               <div className="modal-hint">
-                Ctrl+F find
+                Ctrl+F find · Enter / Shift+Enter next / previous match
               </div>
             </div>
             <div className="modal-footer">

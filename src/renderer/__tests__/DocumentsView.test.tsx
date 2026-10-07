@@ -2,7 +2,7 @@
 // tsconfig.json's `src/renderer` include — this import is what types them.
 import '@testing-library/jest-dom/vitest';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { forwardRef } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 
 // Monaco needs a real layout engine and web workers, neither of which jsdom
@@ -13,22 +13,28 @@ import { render, screen, fireEvent, within, waitFor } from '@testing-library/rea
 // numbering / folding themselves are Monaco's own behaviour now, not this
 // app's — no longer this file's concern (see PIANO_TEST.md 7.24 for the
 // manual check).
+// Fold calls are recorded instead: Expand all / Collapse all only have to reach
+// the editor's handle, the folding itself is Monaco's.
+const fold = vi.hoisted(() => ({ foldAll: vi.fn(), unfoldAll: vi.fn() }));
 vi.mock('../components/MonacoJsonEditor', () => ({
-  default: forwardRef(({ value, onChange, lineNumbers, wrap, className, onSave, onFindShortcut }: any, ref: any) => (
+  default: forwardRef(({ value, onChange, readOnly, lineNumbers, wrap, className, onSave, onFindShortcut }: any, ref: any) => {
+    useImperativeHandle(ref, () => ({ focus: () => {}, selectOffsetRange: () => {}, ...fold }), []);
+    return (
     <textarea
       data-testid="doc-json-editor"
       data-line-numbers={String(!!lineNumbers)}
       data-wrap={String(!!wrap)}
       className={className}
-      ref={ref}
+      readOnly={!!readOnly}
       value={value}
-      onChange={e => onChange(e.target.value)}
+      onChange={e => onChange?.(e.target.value)}
       onKeyDown={e => {
         if (e.ctrlKey && e.key === 'Enter') onSave?.();
         if (e.ctrlKey && e.key === 'f') onFindShortcut?.();
       }}
     />
-  )),
+    );
+  }),
 }));
 
 import DocumentsView, { TABLE_ROW_ESTIMATE, TREE_ROW_ESTIMATE } from '../components/DocumentsView';
@@ -164,6 +170,36 @@ const showTable = async () => {
   fireEvent.click(screen.getByRole('button', { name: /Table/ }));
   return await screen.findByRole('columnheader', { name: /^name/ });
 };
+
+describe('DocumentsView — expand / collapse all in the document modals', () => {
+  it('the edit modal folds and unfolds its editor', async () => {
+    const { container } = view();
+    await openEdit(container);
+    const header = screen.getByRole('heading', { name: /^Edit —/ }).parentElement!;
+
+    fireEvent.click(within(header).getByRole('button', { name: /Collapse all/ }));
+    expect(fold.foldAll).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(header).getByRole('button', { name: /Expand all/ }));
+    expect(fold.unfoldAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('the view modal shows the document read-only, with the same two buttons', async () => {
+    view();
+    fireEvent.click(screen.getByRole('button', { name: /Table/ }));
+    fireEvent.click(await screen.findByText('alpha'));
+    fireEvent.keyDown(window, { key: 'F3' });
+    const header = (await screen.findByRole('heading', { name: /^View —/ })).parentElement!;
+
+    const ta = screen.getByTestId('doc-json-editor') as HTMLTextAreaElement;
+    expect(ta.value).toBe(EXPECTED_JSON);
+    expect(ta).toHaveAttribute('readonly');
+
+    fireEvent.click(within(header).getByRole('button', { name: /Collapse all/ }));
+    fireEvent.click(within(header).getByRole('button', { name: /Expand all/ }));
+    expect(fold.foldAll).toHaveBeenCalledTimes(1);
+    expect(fold.unfoldAll).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('DocumentsView — column sort', () => {
   it('starts unsorted, so no sort reaches the server', async () => {

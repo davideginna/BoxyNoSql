@@ -1352,7 +1352,12 @@ button,
 .status-range { font-size: var(--fs-xs); white-space: nowrap; }
 
 /* Modal header controls shared by add / edit / view */
-.modal-header-actions { display: flex; gap: var(--space-3); align-items: center; }
+.modal-header-actions { display: flex; gap: var(--space-3); align-items: center; flex-shrink: 0; white-space: nowrap; }
+/* When title + actions don't fit (a long _id, a narrow window) the actions drop
+   to their own row, right-aligned, instead of running out of the modal. */
+.modal-header { flex-wrap: wrap; row-gap: var(--space-3); column-gap: var(--space-4); }
+.modal-header h3 { min-width: 0; overflow-wrap: anywhere; }
+.modal-header .modal-header-actions { margin-left: auto; }
 .btn-xs { font-size: var(--fs-xs); padding: 2px var(--space-4); }
 .btn-sm { font-size: var(--fs-sm); }
 .json-status { font-size: var(--fs-xs); display: inline-flex; align-items: center; gap: var(--space-1); }
@@ -2122,3 +2127,35 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: var(--radius-md); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ── Monaco fold controls ────────────────────────────────────────────────────
+   Monaco draws them as codicon font glyphs, which come out as empty boxes here.
+   Replace the glyph with a drawn square: "−" on an open region, "+" on a folded
+   one. Colours follow the app theme, not Monaco's. */
+.monaco-editor .margin-view-overlays .codicon-folding-expanded::before,
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-expanded::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed::before {
+  content: '' !important;
+  display: block;
+  width: 9px; height: 9px;
+  box-sizing: border-box;
+  border: 1px solid var(--text-secondary);
+  border-radius: var(--radius-xs);
+  background:
+    linear-gradient(var(--text-primary), var(--text-primary)) center / 5px 1px no-repeat,
+    var(--bg-primary);
+}
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed::before {
+  background:
+    linear-gradient(var(--text-primary), var(--text-primary)) center / 5px 1px no-repeat,
+    linear-gradient(var(--text-primary), var(--text-primary)) center / 1px 5px no-repeat,
+    var(--bg-primary);
+}
+.monaco-editor .margin-view-overlays .codicon-folding-expanded:hover::before,
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed:hover::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-expanded:hover::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed:hover::before {
+  border-color: var(--accent);
+}

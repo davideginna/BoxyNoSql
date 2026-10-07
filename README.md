@@ -13,7 +13,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Query history per collection (filters, queries, pipelines) with named saved queries, kept across restarts
 - ✅ Pinned collections, restored last session, connection health with auto-reconnect
 - ✅ Shortcut cheat sheet (F1), guided welcome screen, connection clone, CSV/TSV import
-- ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)`
+- ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)`, foldable sections with expand/collapse all, and find
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
 - ✅ Aggregation pipeline builder with a Monaco editor per stage, completions, stage templates and a document counter per stage
 - ✅ Explain plan on the current filter, query or pipeline: index used or collection scan, documents and keys examined, stage timings, a verdict when far more is read than returned, and the raw output one click away

@@ -35,11 +35,18 @@ export interface MonacoJsonEditorHandle {
   /** Select a range by plain character offset into the current value (e.g. a
    *  find-in-document match) and scroll it into view. */
   selectOffsetRange: (start: number, end: number) => void;
+  /** Fold / unfold every object and array — the modals' Expand all / Collapse all. */
+  foldAll: () => void;
+  unfoldAll: () => void;
 }
 
 interface Props {
   value: string;
-  onChange: (v: string) => void;
+  onChange?: (v: string) => void;
+  /** View modal: folding and selection, no typing. */
+  readOnly?: boolean;
+  /** Marks every case-insensitive match (the modal's own find bar). */
+  highlight?: string;
   lineNumbers: boolean;
   wrap?: boolean;
   theme?: MonacoThemeName;
@@ -59,7 +66,7 @@ interface Props {
  * replaced had no parse tree to fold against.
  */
 const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function MonacoJsonEditor({
-  value, onChange, lineNumbers, wrap = false, theme = 'vs-dark', className = '', onSave, onFindShortcut,
+  value, onChange, readOnly = false, highlight = '', lineNumbers, wrap = false, theme = 'vs-dark', className = '', onSave, onFindShortcut,
 }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -81,6 +88,9 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
       ed.revealRangeInCenter(range);
       ed.focus();
     },
+    // Both actions are registered by the folding contrib imported above.
+    foldAll: () => { void editorRef.current?.getAction('editor.foldAll')?.run(); },
+    unfoldAll: () => { void editorRef.current?.getAction('editor.unfoldAll')?.run(); },
   }), []);
 
   useEffect(() => {
@@ -90,6 +100,8 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
       value,
       language: 'json',
       theme,
+      readOnly,
+      domReadOnly: readOnly,
       automaticLayout: true,
       minimap: { enabled: false },
       fontFamily: 'Consolas, Monaco, monospace',
@@ -109,7 +121,7 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
     editorRef.current = editor;
 
     const sub = editor.onDidChangeModelContent(() => {
-      onChangeRef.current(editor.getValue());
+      onChangeRef.current?.(editor.getValue());
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onSaveRef.current?.());
@@ -148,6 +160,18 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
   }, [wrap]);
 
   useEffect(() => { monaco.editor.setTheme(theme); }, [theme]);
+
+  // Find highlights. Re-run on value too: the matches move when the text does.
+  useEffect(() => {
+    const ed = editorRef.current;
+    const model = ed?.getModel();
+    if (!ed || !model) return;
+    const matches = highlight ? model.findMatches(highlight, false, false, false, null, false) : [];
+    const deco = ed.createDecorationsCollection(
+      matches.map(m => ({ range: m.range, options: { inlineClassName: 'find-mark' } }))
+    );
+    return () => deco.clear();
+  }, [highlight, value]);
 
   return (
     <div className={`json-editor-wrap${className ? ' ' + className : ''}`}>
