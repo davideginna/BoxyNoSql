@@ -1410,7 +1410,9 @@ button,
   background: var(--bg-primary); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: var(--space-4) var(--space-5);
   font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-secondary);
-  max-height: 220px; overflow-y: auto; overflow-x: auto; line-height: 1.6;
+  /* Tall enough for a full TLS + auth trace; the grip resizes it further. */
+  height: clamp(200px, 40vh, 480px); min-height: 120px; resize: vertical;
+  overflow-y: auto; overflow-x: auto; line-height: 1.6; flex-shrink: 0;
   margin-top: var(--space-4); white-space: pre;
 }
 .conn-log.wrap { overflow-x: hidden; white-space: pre-wrap; word-break: break-word; }

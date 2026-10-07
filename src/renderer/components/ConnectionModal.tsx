@@ -228,6 +228,11 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
+  // The log sits below the tabs, so on a tall General tab it starts off-screen.
+  useEffect(() => {
+    if (testing) logRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [testing]);
+
   const handleUriPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const text = e.clipboardData.getData('text');
     const parsed = parseConnectionExport(text);
@@ -256,10 +261,17 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     setLogs([]);
     setTestResult(null);
     setTesting(true);
-    const result = await (window as any).electron.invoke('test-connection', uri, tlsSettings());
+    let result: { success: boolean; error?: string };
+    try {
+      result = await (window as any).electron.invoke('test-connection', uri, tlsSettings());
+    } catch (e: any) {
+      // A rejected invoke would otherwise leave the button on "Testing…" forever.
+      result = { success: false, error: e?.message || String(e) };
+      setLogs(prev => [...prev, `✕ ${result.error}`]);
+    }
     setTestResult(result);
     setTesting(false);
-    playSound(result?.success ? 'success' : 'error');
+    playSound(result.success ? 'success' : 'error');
   };
 
   const handleSubmit = () => {

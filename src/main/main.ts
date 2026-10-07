@@ -41,6 +41,12 @@ function getAdminDb(client: MongoClient): Db {
 }
 
 
+// Option names the Java driver (and so Studio 3T) accepts but the Node driver
+// rejects outright with "option … is not supported", before even connecting.
+const LEGACY_URI_OPTIONS: Record<string, string> = {
+  sslinvalidhostnameallowed: 'tlsAllowInvalidHostnames',
+};
+
 function sanitizeUri(uri: string): string {
   const qIdx = uri.indexOf('?');
   if (qIdx === -1) return uri;
@@ -48,6 +54,12 @@ function sanitizeUri(uri: string): string {
   const cleaned = uri.substring(qIdx + 1)
     .split('&')
     .filter(p => !p.toLowerCase().startsWith('3t.'))
+    .map(p => {
+      const eq = p.indexOf('=');
+      const key = eq === -1 ? p : p.substring(0, eq);
+      const renamed = LEGACY_URI_OPTIONS[key.toLowerCase()];
+      return renamed ? renamed + p.substring(key.length) : p;
+    })
     .join('&');
   return cleaned ? `${base}?${cleaned}` : base;
 }
@@ -381,9 +393,12 @@ ipcMain.handle('test-connection', async (_, uri: string, tls?: TlsSettings) => {
     return { success: false, error: e.message };
   }
 
-  const client = new MongoClient(clean, { serverSelectionTimeoutMS: 5000, ...tlsOptions });
+  // Constructed inside the try: the driver parses the URI here and throws on an
+  // option it does not know, which must reach the log, not reject the invoke.
+  let client: MongoClient | undefined;
   try {
     log(`→ Parsing URI...`);
+    client = new MongoClient(clean, { serverSelectionTimeoutMS: 5000, ...tlsOptions });
     if (tlsOptions.tls) {
       log(`→ TLS on${tlsOptions.tlsCertificateKeyFile ? ' · client certificate' : ''}${tlsOptions.tlsCAFile ? ' · custom CA' : ''}${tlsOptions.servername ? ` · SNI ${tlsOptions.servername}` : ''}${tlsOptions.tlsAllowInvalidCertificates ? ' · certificate validation OFF' : ''}`);
     }
@@ -399,7 +414,7 @@ ipcMain.handle('test-connection', async (_, uri: string, tls?: TlsSettings) => {
     return { success: true };
   } catch (error: any) {
     log(`✕ ${error.message}`);
-    try { await client.close(); } catch {}
+    try { await client?.close(); } catch {}
     return { success: false, error: error.message };
   }
 });
