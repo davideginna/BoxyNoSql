@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.7.0] - 2026-10-07
 
 ### Added
 - **Sounds on connect, disconnect, tree refresh and connection errors** — a failed test, a timeout, a server that drops and won't come back. Can be turned off in Appearance (`Ctrl+,`)
