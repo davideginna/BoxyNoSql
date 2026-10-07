@@ -7,6 +7,7 @@ import {
 import ColorEditor from './ColorEditor';
 import Icon from './Icon';
 import { onEscape } from '../utils/keys';
+import { playSound } from '../utils/sounds';
 
 interface Connection {
   id: string; name: string; uri: string; readOnly?: boolean; database?: string;
@@ -258,6 +259,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     const result = await (window as any).electron.invoke('test-connection', uri, tlsSettings());
     setTestResult(result);
     setTesting(false);
+    if (!result?.success) playSound('error');
   };
 
   const handleSubmit = () => {

@@ -11,13 +11,16 @@
   --radius-xl:   8px;
   --radius-pill: 50%;
 
-  /* type scale — base body size is --fs-md */
-  --fs-2xs: 10px;
-  --fs-xs:  11px;
-  --fs-sm:  12px;
-  --fs-md:  13px;
-  --fs-lg:  14px;
-  --fs-xl:  15px;
+  /* type scale — base body size is --fs-md. --font-scale is the user's
+     "Text size" setting (utils/fontScale.ts), set on <html> at startup.
+     1.2 is the default ("100%" in the UI) — the px values below read small. */
+  --font-scale: 1.2;
+  --fs-2xs: calc(10px * var(--font-scale));
+  --fs-xs:  calc(11px * var(--font-scale));
+  --fs-sm:  calc(12px * var(--font-scale));
+  --fs-md:  calc(13px * var(--font-scale));
+  --fs-lg:  calc(14px * var(--font-scale));
+  --fs-xl:  calc(15px * var(--font-scale));
 
   --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, sans-serif;
   --font-mono: Consolas, Monaco, 'DejaVu Sans Mono', monospace;
@@ -735,7 +738,7 @@ button,
   display: flex; align-items: center; gap: 5px;
   padding: 3px 10px 3px 26px; cursor: pointer;
   white-space: nowrap; min-width: max-content;
-  font-size: var(--fs-sm); color: var(--text-primary);
+  font-size: var(--fs-md); color: var(--text-primary);
 }
 .collection-item:hover { background: var(--bg-hover); }
 .collection-item.active { background: var(--bg-selected); }
@@ -1818,19 +1821,25 @@ button,
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center; color: var(--text-secondary);
 }
-.welcome-screen h1 { font-size: 24px; margin-bottom: 8px; color: var(--text-primary); }
+.welcome-screen h1 { font-size: calc(24px * var(--font-scale)); margin-bottom: 8px; color: var(--text-primary); }
 .welcome-screen p  { font-size: var(--fs-md); margin-bottom: 6px; }
 .welcome-actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
 .welcome-recent {
   display: flex; flex-direction: column; gap: var(--space-1);
-  margin-top: var(--space-4); width: 340px; max-width: 90vw;
+  margin-top: var(--space-4); width: calc(340px * var(--font-scale)); max-width: 90vw;
 }
 .welcome-recent-item {
   display: flex; align-items: center; gap: var(--space-3);
   background: transparent; border: 1.5px solid var(--recent-border, var(--border));
-  border-radius: var(--radius-md); padding: 10px 14px; cursor: pointer;
+  border-radius: var(--radius-md); cursor: pointer;
+  padding: calc(10px * var(--font-scale)) calc(14px * var(--font-scale));
   color: var(--text-primary); font-size: var(--fs-md); text-align: left;
 }
+/* Icon sizes come in as px attributes; CSS wins over them, so the card's
+   icons follow the "Text size" setting along with its text. */
+.welcome-recent-item > svg { width: calc(14px * var(--font-scale)); height: calc(14px * var(--font-scale)); }
+.welcome-recent-folder svg,
+.welcome-recent-remove svg { width: calc(11px * var(--font-scale)); height: calc(11px * var(--font-scale)); }
 .welcome-recent-item:hover { background: var(--bg-hover); border-color: var(--accent); }
 .welcome-recent-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .welcome-recent-folder {

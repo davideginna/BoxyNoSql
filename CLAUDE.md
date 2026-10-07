@@ -26,7 +26,7 @@ Tests (Vitest):
 ```bash
 npm test               # run all tests once (verbose)
 npm run test:watch     # watch mode
-npm run test:coverage  # v8 coverage (scoped to src/main/serialize.ts + src/renderer/utils/**)
+npm run test:coverage  # v8 coverage (scoped to serialize.ts, exportFormat.ts, version.ts + src/renderer/utils/**)
 npx vitest run src/renderer/__tests__/buildFilter.test.ts  # single file
 npx vitest run -t "substring of test name"                 # single test by name
 ```
@@ -53,6 +53,9 @@ Electron app with two separate TypeScript compilation targets:
 - `components/AggregationBuilder.tsx` — Monaco per stage, stage templates that only replace an untouched body, reorder/remove, per-stage JSON error, and a document counter per stage fed by the `aggregation-stage-counts` IPC (one `slice(0, i+1) + $count` aggregation per stage, so it runs on Run only, never while typing; `$out`/`$merge` and everything after them count `null`). Any edit clears the counters — they belong to the pipeline that ran.
 - `components/Icon.tsx` — the entire icon set: one `IconName` union + SVG path table, all strokes use `currentColor`. Add icons here, never inline SVG in components.
 - `utils/iconColors.ts` — icon color model: per-connection override → `ColorMode` (`mono`/`connection`/`custom`) → default. Settings live in `localStorage`.
+- `utils/sounds.ts` — `playSound('connect'|'disconnect'|'refresh'|'error'|'faaah')`, mp3s imported from `assets/audio/` so Vite bundles them into `dist/renderer`. Played from `handleConnect`/`handleDisconnect`, the connect-failure alert, a failed test in `ConnectionModal`, `inv()` when a reconnect gives up, and `handleRefreshTree`/`handleRefreshDb` (refresh on success, error on failure; the post-paste refresh passes `{ silent: true }`). `faaah` is the easter egg on a click of `AboutModal`'s spinning cube. Not on startup session restore (silent by design). Same sound within 1s is dropped — a dead server fails every in-flight call at once. Unit-tested.
+- `utils/fontScale.ts` — Appearance "Text size": sets `--font-scale` on `<html>`, which every `--fs-*` token multiplies. Steps are 0.96 / 1.2 / 1.44, shown as 80 / 100 / 120% (`fontScaleLabel`, relative to `BASE_FONT_SCALE` 1.2 — the default; the raw token px read small). `:root` defaults `--font-scale` to 1.2 too. Literal px font sizes do not scale — use the tokens. Where text alone is not enough (the welcome screen's recent-connection cards: width, padding, icons, `h1`) the CSS multiplies by `var(--font-scale)` directly. Unit-tested.
+- `utils/mongoUri.ts` — hand-rolled two-way split of a connection string into the connection form's fields (`parseMongoUri`/`buildMongoUri`); not `new URL()`, which mangles multi-host replica-set authorities and `mongodb+srv`. Golden rule: **nothing is lost** — any param without its own field survives in the raw "Other options" residue. The stored value stays the URI; fields become the source of truth only after "Edit fields". Unit-tested.
 - `utils/uriImport.ts` + `components/ImportConnectionsModal.tsx` — Studio 3T `.uri` export import: `3t.group` → nested folder path, `3t.defaultColor` → hex, `3t.*` and empty params stripped from the stored URI. The persistence side (folder reuse/creation, then connection save) lives in `handleImportConnections` in `App.tsx`. Unit-tested.
 - `utils/updates.ts` + `components/UpdateModal.tsx` — update policy and dialog (see **Updates** below). Unit-tested.
 - `utils/dom.ts` — `isTypingTarget()`, the guard every window-level key handler needs (see **Global shortcuts**). Unit-tested.
@@ -81,12 +84,12 @@ Electron app with two separate TypeScript compilation targets:
 
 **Persistence** splits in two:
 - `electron-store` → `~/.config/BoxyNoSql/connections.json`: connections **and** folders (both carry `order`, `color`; folders nest via `parentId`).
-- `localStorage` (renderer-only UI prefs): `theme`, `sidebarWidth`, `queryEditorHeight`, `connManagerWidth`, `iconSettings`, `updateCheckOnStartup`, `updateSkippedVersion`, `pinnedCollections`, `lastSession`, `hiddenFields`, `queryHistory`, `docLineNumbers`, `docEditorWrap`, `hiddenRecents`, `lastSeenChangelogVersion`.
+- `localStorage` (renderer-only UI prefs): `theme`, `sidebarWidth`, `queryEditorHeight`, `connManagerWidth`, `iconSettings`, `updateCheckOnStartup`, `updateSkippedVersion`, `pinnedCollections`, `lastSession`, `hiddenFields`, `queryHistory`, `docLineNumbers`, `docEditorWrap`, `hiddenRecents`, `lastSeenChangelogVersion`, `fontScale`, `soundsEnabled`.
 - Live `MongoClient`s are in-memory only and don't survive a restart on their own, but `utils/session.ts` + `App.tsx`'s startup effect reconnect whichever connections the last session's tabs needed, so a restart can look session-persistent even though the client underneath is fresh. Tab state itself is in-memory — "persistent" there means across tab switches within a run, restored-from-`lastSession` on the next one.
 
 **Updates**: `App.tsx` fires `update:check` 3s after mount (unless `updateCheckOnStartup` is `false`); About has a manual "Check for updates" that also clears `updateSkippedVersion`. Main answers on the one-way `update:status` channel, plus `update:download` / `update:install` / `update:open-download`. Two backends, picked by `canAutoInstall()` in `updater.ts`: **electron-updater** where it can replace the running build (Windows NSIS, Linux AppImage — both read the `latest-*.yml` the release workflow publishes), and the plain **GitHub releases API** everywhere else (a `.deb` install, unpackaged dev), which only notifies and opens the download page. `.deb` is deliberately excluded from self-update — it would need `pkexec dpkg -i`. All policy (show or stay silent, skipped versions) lives in `utils/updates.ts` in the renderer; main just reports what it found.
 
-**Theming**: `src/renderer/index.css` is the only stylesheet (~1000 lines). `:root` defines CSS custom properties for the dark theme; `body.theme-light` / `.theme-hc` / `.theme-solarized` override them. `App.tsx` sets `document.body.className = theme-${theme}`. Components style via inline styles referencing `var(--…)`, so **never hardcode a color** — add a variable to all four theme blocks instead.
+**Theming**: `src/renderer/index.css` is the only stylesheet (~2100 lines). A first `:root` block holds theme-independent design tokens (radius, type scale, spacing, motion) — use them instead of literal px values; a second `:root` defines the dark theme's colors; `body.theme-light` / `.theme-hc` / `.theme-solarized` override them. `App.tsx` sets `document.body.className = theme-${theme}`. Components style via inline styles referencing `var(--…)`, so **never hardcode a color** — add a variable to all four theme blocks instead.
 
 **Views and the active tab**: `MainContent` keeps every tab ever opened mounted, so `DocumentsView`/`QueryTerminal`/`AggregationBuilder` take an `active` prop and bind their window-level shortcuts only when it is true — otherwise Alt+Enter or Ctrl+D would fire once per open tab.
 
@@ -108,3 +111,4 @@ Every one of those handlers must bail out via `utils/dom.ts` → `isTypingTarget
 - Connection URIs pass through `sanitizeUri()`, which strips Studio 3T-specific `3t.*` query params so pasted URIs from that tool still connect.
 - The app menu is disabled (`Menu.setApplicationMenu(null)`) and the window uses `autoHideMenuBar` — all UI affordances must be in-app.
 - Monaco is bundled by `vite-plugin-monaco-editor` with a `customDistPath` override; the workers land in `dist/renderer/monacoeditorwork`. Changing `build.outDir` means revisiting that.
+- Roadmap lives in `README.md` → `## Roadmap`. When asked to design a feature (not build it), write the full design there and do not implement.

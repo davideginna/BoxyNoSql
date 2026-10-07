@@ -1,12 +1,17 @@
 import { useEffect } from 'react';
 import { onEscape } from '../utils/keys';
 import { ColorMode, IconSettings } from '../utils/iconColors';
+import { FONT_SCALES, fontScaleLabel } from '../utils/fontScale';
 import ColorPickerPopup from './ColorPickerPopup';
 import Icon from './Icon';
 
 interface Props {
   settings: IconSettings;
   onChange: (s: IconSettings) => void;
+  fontScale: number;
+  onFontScale: (v: number) => void;
+  soundsEnabled: boolean;
+  onSoundsEnabled: (v: boolean) => void;
   onClose: () => void;
 }
 
@@ -65,7 +70,9 @@ function ColPreview({ color }: { color?: string }) {
   );
 }
 
-export default function SettingsModal({ settings, onChange, onClose }: Props) {
+export default function SettingsModal({
+  settings, onChange, fontScale, onFontScale, soundsEnabled, onSoundsEnabled, onClose,
+}: Props) {
   useEffect(() => onEscape(onClose), [onClose]);
 
   // Preview color when mode is 'connection' uses a sample hue so the user sees it's colored.
@@ -82,6 +89,18 @@ export default function SettingsModal({ settings, onChange, onClose }: Props) {
           <button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button>
         </div>
         <div className="modal-body">
+          <div className="form-group">
+            <label>Text size</label>
+            <select value={fontScale} onChange={e => onFontScale(parseFloat(e.target.value))}>
+              {FONT_SCALES.map(v => <option key={v} value={v}>{fontScaleLabel(v)}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={soundsEnabled} onChange={e => onSoundsEnabled(e.target.checked)} />
+              Play sounds on connect, disconnect, refresh and connection errors
+            </label>
+          </div>
           <p className="modal-intro">
             Icon colors in the database tree. Per-connection overrides live in each connection's form.
           </p>

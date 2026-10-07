@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Sounds on connect, disconnect, tree refresh and connection errors** — a failed test, a timeout, a server that drops and won't come back. Can be turned off in Appearance (`Ctrl+,`)
+- **Text size setting** in Appearance — 80%, 100% or 120% — scales the text across the whole app
+- **An easter egg.** Hint: some things keep turning even when nobody's looking — give them a nudge
+
+### Changed
+- **Bigger text by default.** The new 100% is 20% larger than the previous fixed size
+- **Collections in the sidebar tree use the same font size as databases**, instead of a size smaller
+
 ## [1.6.6] - 2026-09-03
 
 ### Fixed

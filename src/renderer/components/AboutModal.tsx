@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Icon from './Icon';
 import { getCheckOnStartup, setCheckOnStartup } from '../utils/updates';
 import { isEscapeKey } from '../utils/keys';
+import { playSound } from '../utils/sounds';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
 
@@ -51,7 +52,7 @@ export default function AboutModal({
               the flat logo's isometric face colours, so the spin shows the same
               icon from every angle instead of a sprite. */}
           <div className="about-stage">
-            <div className="about-cube" role="img" aria-label="BoxyNoSql logo">
+            <div className="about-cube" role="img" aria-label="BoxyNoSql logo" onClick={() => playSound('faaah')}>
               <div className="cube-face cube-front" />
               <div className="cube-face cube-back" />
               <div className="cube-face cube-right" />

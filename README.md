@@ -27,7 +27,8 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Large pages without the freeze: both document views are windowed, so only the rows near the viewport are in the DOM and a limit of a few thousand scrolls instead of locking up
 - ✅ Read-only connections: a per-connection flag that refuses every write in the main process, not just in the UI
 - ✅ Typed confirmation on drop/clear: retype the name, with the document count shown up front
-- ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊
+- ✅ Four themes: dark 🌙 / light ☀️ / high-contrast ⚡ / solarized 🌊, adjustable text size (80 / 100 / 120%)
+- ✅ Sound cues on connect, disconnect, tree refresh and connection errors (can be turned off)
 
 ## Screenshots
 

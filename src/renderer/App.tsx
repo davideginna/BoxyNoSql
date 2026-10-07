@@ -11,6 +11,8 @@ import ShortcutsModal from './components/ShortcutsModal';
 import UpdateModal from './components/UpdateModal';
 import ChangelogModal from './components/ChangelogModal';
 import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconColors';
+import { playSound, loadSoundsEnabled, saveSoundsEnabled } from './utils/sounds';
+import { applyFontScale, loadFontScale, saveFontScale } from './utils/fontScale';
 import { PinnedCollection, loadPinned, savePinned, togglePinned } from './utils/pinnedCollections';
 import { loadSession, saveSession } from './utils/session';
 import {
@@ -134,6 +136,9 @@ function App() {
     connId: string; dbName: string; colName?: string; headers: string[]; rows: string[][]; fileName: string;
   } | null>(null);
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
+  const [fontScale, setFontScale] = useState(() => loadFontScale());
+  const [soundsEnabled, setSoundsEnabled] = useState(() => loadSoundsEnabled());
+  useEffect(() => applyFontScale(fontScale), [fontScale]);
   const [pinnedCollections, setPinnedCollections] = useState<PinnedCollection[]>(() => loadPinned());
   const [collectionClipboard, setCollectionClipboard] = useState<{ connectionId: string; db: string; col: string } | null>(null);
   const [databaseClipboard, setDatabaseClipboard] = useState<{ connectionId: string; db: string } | null>(null);
@@ -176,6 +181,7 @@ function App() {
         return await electron.invoke(ch, ...a);
       } catch {
         setConnectionHealth(h => ({ ...h, [id]: 'down' }));
+        playSound('error');
         throw e;
       }
     }
@@ -286,7 +292,9 @@ function App() {
   // from the caches; every expanded database is re-listed.
   // (Defined here rather than with the other database handlers below because the
   // shortcut effect depends on it.)
-  const handleRefreshTree = useCallback(async (connIdArg?: string) => {
+  // `silent`: a refresh the app runs on its own (after a paste) gets no sound —
+  // the cue is for the ones the user asked for.
+  const handleRefreshTree = useCallback(async (connIdArg?: string, { silent = false } = {}) => {
     const connId = connIdArg || selectedConnection;
     if (!connId || !connectedIds.has(connId)) return;
     setRefreshing(true);
@@ -305,7 +313,9 @@ function App() {
         loaded.forEach(([db, cols]) => { next[db] = cols; });
         return { ...prev, [connId]: next };
       });
+      if (!silent) playSound('refresh');
     } catch (e: any) {
+      playSound('error');
       showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
     } finally {
       setRefreshing(false);
@@ -317,7 +327,9 @@ function App() {
       const cols = await inv('get-collections', connId, dbName);
       setCollections(prev => ({ ...prev, [connId]: { ...(prev[connId] || {}), [dbName]: cols } }));
       setExpandedDbs(prev => ({ ...prev, [connId]: new Set([...(prev[connId] || new Set<string>()), dbName]) }));
+      playSound('refresh');
     } catch (e: any) {
+      playSound('error');
       showAlert({ title: 'Refresh failed', message: e?.message || String(e), danger: true });
     }
   }, []);
@@ -461,10 +473,12 @@ function App() {
       setCollections(prev => ({ ...prev, [connectionId]: {} }));
       setExpandedDbs(prev => ({ ...prev, [connectionId]: new Set() }));
       setShowConnManager(false);
+      playSound('connect');
       setConnections(await inv('touch-connection', connectionId));
     } catch (e: any) {
       const conn = connections.find(c => c.id === connectionId);
       const { message, detail } = friendlyConnError(e?.message || String(e));
+      playSound('error');
       showAlert({ title: `Can't connect to ${conn?.name || 'server'}`, message, detail, danger: true });
     }
     finally { setConnectingIds(s => { const n = new Set(s); n.delete(connectionId); return n; }); }
@@ -480,6 +494,7 @@ function App() {
 
   const handleDisconnect = async (connectionId: string) => {
     await inv('disconnect-db', connectionId);
+    playSound('disconnect');
     setConnectedIds(s => { const n = new Set(s); n.delete(connectionId); return n; });
     setDatabases(prev => { const n = { ...prev }; delete n[connectionId]; return n; });
     setCollections(prev => { const n = { ...prev }; delete n[connectionId]; return n; });
@@ -774,7 +789,7 @@ function App() {
       });
       // Refresh the target connection, not just this database: the copy can
       // land on a connection whose tree is stale or not listed at all.
-      await handleRefreshTree(connId);
+      await handleRefreshTree(connId, { silent: true });
       showAlert({
         title: 'Collection copied',
         message: `Copied ${result.insertedCount} document${result.insertedCount !== 1 ? 's' : ''} to "${dbName}.${targetCol}"` +
@@ -834,7 +849,7 @@ function App() {
         }
       }
       const result = await inv('copy-database', { sourceConnId, sourceDb, targetConnId, targetDb });
-      await handleRefreshTree(targetConnId);
+      await handleRefreshTree(targetConnId, { silent: true });
       showAlert({
         title: 'Database copied',
         message: `Copied ${result.collectionsCount} collection${result.collectionsCount !== 1 ? 's' : ''} ` +
@@ -1124,6 +1139,10 @@ function App() {
         <SettingsModal
           settings={iconSettings}
           onChange={s => { setIconSettings(s); saveIconSettings(s); }}
+          fontScale={fontScale}
+          onFontScale={v => { setFontScale(v); saveFontScale(v); }}
+          soundsEnabled={soundsEnabled}
+          onSoundsEnabled={v => { setSoundsEnabled(v); saveSoundsEnabled(v); }}
           onClose={() => setShowSettings(false)}
         />
       )}

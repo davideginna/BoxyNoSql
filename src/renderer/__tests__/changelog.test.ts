@@ -23,6 +23,12 @@ const SAMPLE = `# Changelog
 `;
 
 describe('parseChangelog', () => {
+  it('ignores an undated [Unreleased] section until it is released', () => {
+    const sections = parseChangelog(SAMPLE.replace('# Changelog\n', '# Changelog\n\n## [Unreleased]\n\n### Added\n- Not out yet\n'));
+    expect(sections.map(s => s.version)).toEqual(['1.6.0', '1.5.1', '1.5.0']);
+    expect(sections.some(s => s.body.includes('Not out yet'))).toBe(false);
+  });
+
   it('splits on the Keep-a-Changelog version headings, newest first', () => {
     const sections = parseChangelog(SAMPLE);
     expect(sections.map(s => s.version)).toEqual(['1.6.0', '1.5.1', '1.5.0']);
