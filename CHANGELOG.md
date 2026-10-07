@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.7.2] - 2026-10-07
 
 ### Added
 - **A success sound when Test Connection works**, to pair with the error sound on a failed test. Off together with the other sounds in Appearance (`Ctrl+,`)
