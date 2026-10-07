@@ -259,7 +259,7 @@ export default function ConnectionModal({ connection, onSave, onClose }: Connect
     const result = await (window as any).electron.invoke('test-connection', uri, tlsSettings());
     setTestResult(result);
     setTesting(false);
-    if (!result?.success) playSound('error');
+    playSound(result?.success ? 'success' : 'error');
   };
 
   const handleSubmit = () => {

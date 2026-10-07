@@ -26,11 +26,12 @@ describe('ConnectionModal — test connection sound', () => {
     expect(playSound).toHaveBeenCalledWith('error');
   });
 
-  it('stays silent when the test succeeds', async () => {
+  it('plays the success sound when the test succeeds', async () => {
     withTestResult({ success: true });
     render(<ConnectionModal connection={CONNECTION} onSave={vi.fn()} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /Test Connection/i }));
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
-    expect(playSound).not.toHaveBeenCalled();
+    expect(playSound).toHaveBeenCalledWith('success');
+    expect(playSound).not.toHaveBeenCalledWith('error');
   });
 });

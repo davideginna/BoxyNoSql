@@ -1,4 +1,4 @@
-// Connect / disconnect / refresh / error sound cues. The files live in `assets/audio/` and Vite
+// Connect / disconnect / refresh / success / error sound cues. The files live in `assets/audio/` and Vite
 // bundles them as hashed assets, so they ship inside `dist/renderer` with no
 // extra `build.files` entry. On by default; `localStorage['soundsEnabled']`
 // = 'false' turns them off (Appearance settings).
@@ -7,12 +7,13 @@ import disconnectUrl from '../../../assets/audio/disconnect.mp3';
 import errorUrl from '../../../assets/audio/error.mp3';
 import faaahUrl from '../../../assets/audio/faaah.mp3';
 import refreshUrl from '../../../assets/audio/refresh.mp3';
+import successUrl from '../../../assets/audio/success.mp3';
 
 // `faaah` is the About-cube easter egg.
-export type SoundName = 'connect' | 'disconnect' | 'error' | 'refresh' | 'faaah';
+export type SoundName = 'connect' | 'disconnect' | 'error' | 'refresh' | 'success' | 'faaah';
 
 const URLS: Record<SoundName, string> = {
-  connect: connectUrl, disconnect: disconnectUrl, error: errorUrl, refresh: refreshUrl, faaah: faaahUrl,
+  connect: connectUrl, disconnect: disconnectUrl, error: errorUrl, refresh: refreshUrl, success: successUrl, faaah: faaahUrl,
 };
 const KEY = 'soundsEnabled';
 
