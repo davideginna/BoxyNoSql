@@ -260,6 +260,59 @@ DOM: sotto le 200 righe non cambia nulla, sopra parte il windowing.
 
 ---
 
+## 7a. Test: Date (ISODate) in visualizzazione, edit e salvataggio
+
+Preparazione, da mongosh:
+`db.dates.insertOne({ name: "x", insertDate: ISODate("2022-04-26T16:18:05.988Z"), nested: { d: new Date() }, arr: [new Date(0)] })`
+
+| # | Azione | Atteso |
+|---|--------|--------|
+| 7a.1 | Apri `dates` in vista Tree | `insertDate: ISODate("2022-04-26T16:18:05.988Z")`, foglia (non un sotto-oggetto con chiave `$date`); header compresso mostra `ISODate(…)` |
+| 7a.2 | Vista Table | Cella `insertDate` = `2022-04-26T16:18:05.988Z`, senza `{"$date":…}` |
+| 7a.3 | Edit del documento | Editor mostra `"insertDate": ISODate("…")`, anche per `nested.d` e dentro `arr` |
+| 7a.4 | Cambia solo `name` e salva | In mongosh `db.dates.aggregate([{$project:{t:{$type:"$insertDate"},n:{$type:"$nested.d"},a:{$type:{$arrayElemAt:["$arr",0]}}}}])` → tutti `date` |
+| 7a.5 | Edit: incolla `ISODate("2023-01-02T03:04:05.000+0000")` (formato Studio 3T) e salva | Salva senza errori, `$type` = `date`, valore `2023-01-02T03:04:05Z` |
+| 7a.6 | Edit: scrivi `ISODate("pippo")` e salva | Errore che contiene `Invalid date: "pippo"`, documento non modificato |
+| 7a.7 | Filtro builder: trascina `insertDate`, operatore `after`, valore `2022-01-01` | Il documento compare (prima il filtro su date non trovava nulla) |
+| 7a.8 | Ctrl+C sul documento, Ctrl+V nella stessa collection | Il nuovo documento ha `insertDate` di tipo `date` |
+| 7a.9 | Export JSON / CSV | JSON: `"insertDate": {"$date": "…"}`; CSV: colonna `insertDate` = stringa ISO |
+
+Coperto anche da unit test: `extJson.test.ts`, `editableJson.test.ts`, `DocumentTree.test.tsx`, `DocumentsView.test.tsx` (describe "dates"). I documenti salvati con versioni precedenti restano stringhe: questa correzione non li riconverte.
+
+---
+
+## 7a-bis. Test: Sort nel pannello Query, filtro dal tree, info ObjectId
+
+| # | Azione | Atteso |
+|---|--------|--------|
+| 7a.10 | Filter → sezione Sort → "Add sort field", scegli un campo | Documenti riordinati subito, chip di sort nella toolbar e freccia sull'intestazione colonna in tabella |
+| 7a.11 | Aggiungi un secondo campo, ASC↔DESC sul primo, freccia ↑ sul secondo | L'ordine di precedenza cambia (numero 1/2), il risultato segue; un campo non compare mai due volte |
+| 7a.12 | Shift-click su un'intestazione in tabella | La nuova chiave compare anche nella sezione Sort del pannello |
+| 7a.13 | Run con sort attivo, poi History | La voce mostra anche `sort {…}`; richiamarla ripristina condizioni e sort |
+| 7a.14 | ↺ Reset | Spariscono condizioni e sort |
+| 7a.15 | Vista Tree, pannello filtro chiuso: passa sopra un campo | Cursore a mano, riga evidenziata, tooltip "Drag … into the filter", icona imbuto a destra |
+| 7a.16 | Trascina il campo | Il pannello si apre da solo, la drop zone si accende; rilasciando nasce la condizione `campo = valore` |
+| 7a.17 | Clic sull'imbuto di un campo annidato (`profile.city`) | Pannello aperto con condizione su `profile.city` e il suo valore |
+| 7a.18 | Mouse su un ObjectId (header documento, campo nel tree, cella in tabella) | Tooltip: Created (locale + UTC), Timestamp, Machine, PID, Counter, nota sui driver recenti |
+
+---
+
+## 7a-ter. Test: Filtro come JSON, pannello ridimensionabile
+
+| # | Azione | Atteso |
+|---|--------|--------|
+| 7a.19 | Apri una collection | Pannello Query già aperto |
+| 7a.20 | Trascina il bordo sinistro del pannello verso sinistra | Si allarga (min 220, max 900 px); riaprendo l'app resta largo; doppio clic sul bordo → 270 |
+| 7a.21 | Aggiungi 2 condizioni, bottone "JSON" nel pannello | Modale "Filter (JSON)" con filtro indentato, `ObjectId(…)`/`ISODate(…)` |
+| 7a.22 | Copy | Clipboard = testo del modale, toast "Filter copied" |
+| 7a.23 | Cambia un valore nel JSON, Apply (o Ctrl+Enter) | Modale chiuso, condizioni del pannello aggiornate, risultati riletti |
+| 7a.24 | Scrivi `{"tags": {"$elemMatch": {"k": "x"}}}`, Apply | Toast "Kept as a custom JSON filter", scheda "Custom JSON filter" nel pannello, risultati filtrati |
+| 7a.25 | Con la scheda custom aggiungi una condizione e Run | Filtro inviato = `$and` di custom + condizione; cestino sulla scheda la toglie |
+| 7a.26 | JSON non valido o un array | Apply disabilitato / messaggio "A filter is a JSON object", modale resta aperto |
+| 7a.27 | History dopo un Run con filtro custom | Richiamare la voce ripristina anche la scheda custom |
+
+---
+
 ## 7b. Test: Bulk field edit
 
 Selezionare più documenti in `testdb.users`:
@@ -556,6 +609,18 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 
 ---
 
+## 13b-bis. Test: Ricerca collection nella sidebar
+
+| # | Azione | Atteso |
+|---|--------|--------|
+| 13b.10 | Connetti, nessun db espanso. Nel box "Search databases and collections…" scrivi parte del nome di una collection | I db che la contengono si aprono da soli e mostrano solo le collection che corrispondono; gli altri db spariscono |
+| 13b.11 | Scrivi il nome di un db | Il db compare chiuso; aprendolo mostra tutte le collection |
+| 13b.12 | Svuota il box | Albero com'era prima: i db aperti dalla ricerca tornano chiusi |
+| 13b.13 | Utente senza permesso su qualche db, cerca una collection | Gli altri db vengono comunque cercati, nessun errore |
+| 13b.14 | Db espanso | Le collection sono rientrate: icona sotto il nome del db, hover a tutta larghezza |
+
+---
+
 ## 13c. Test: ESC, Alt+Enter, copia/incolla e read-only
 
 ### ESC annulla ovunque
@@ -700,7 +765,6 @@ riguardano fluidità e resa visiva.
 
 ### Tests da aggiungere (raccomandato, non incluso)
 
-- `fromExtJSON` unit tests (round-trip `{$oid}`, `{$date}`, nested)
 - `sanitizeUri` removes `3t.*` query params
 - `diffObjects` in DocumentsView (added/removed/changed)
 - `parseConnectionExport` in ConnectionModal

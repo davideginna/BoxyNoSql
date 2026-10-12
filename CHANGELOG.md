@@ -2,12 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+- **Edit the filter as JSON.** A JSON button in the query panel (and the "expand" link on the query preview) opens the filter indented, with `ObjectId("…")` and `ISODate("…")`, to read, copy or change. Apply puts it back into the panel as conditions; what the builder cannot show as conditions (`$elemMatch`, `$expr`, nested logic…) is kept as a "Custom JSON filter" card — only that part: in `{"status": "open", "tags": {"$elemMatch": …}}` the `status` still becomes a normal condition — and conditions added afterwards are ANDed with it
+- **Resizable query panel**: drag its left edge to widen it, double-click the edge to go back to the default; the width is remembered
+- **Sort in the query panel.** The Query panel (Filter) has a Sort section: add one or more fields, pick ascending or descending for each, move them up or down to decide which one sorts first, remove them. It is the same sort the column headers set, so the two always agree, and it applies straight away. Saved and recent queries remember it
+- **Filter from the tree view.** A field in a document now shows it can be dragged (grab cursor, highlight, a tooltip), and dragging it opens the filter panel and lights up where to drop it — before, the panel had to be open already or there was nowhere to drop. A funnel icon on hover adds `field = value` in one click, nested fields included
+- **What an ObjectId says about itself, on hover**: creation date (local and UTC), timestamp, machine, PID and counter, in the tree, the collapsed document header and the table. On ids from current drivers machine and PID are a random per-process value, and the tooltip says so
+- **Search collections across every database of a connection.** The sidebar search box ("Search databases and collections…") used to find a collection only in databases you had already expanded; typing a term now fetches the collection lists of all the others in the background, and opens the databases that hold a match, showing just the matching collections
+
+### Changed
+- **The query panel is open by default** when you open a collection
+- **Reset clears the sort too**, not just the filter conditions, now that the sort lives in the query panel
+- **Collections are indented under their database** in the sidebar tree, with their icon lined up under the database name, so the two levels no longer start at the same column
+- **Bigger Test Connection log**, in both the new and the edit connection window: taller, resizable by dragging its corner, and scrolled into view as soon as a test starts
+
 ### Fixed
 - **Connections imported from Studio 3T with `sslInvalidHostNameAllowed=true` now connect.** The MongoDB Node driver refused the whole connection string ("option sslinvalidhostnameallowed is not supported") before even trying the server; the option is now translated to its Node equivalent, `tlsAllowInvalidHostnames`. Works for already-saved connections too, no re-import needed
 - **Test Connection no longer gets stuck on "Testing…".** A connection string the driver could not parse made the test hang forever without a word; the error now shows up in the log and the button comes back
-
-### Changed
-- **Bigger Test Connection log**, in both the new and the edit connection window: taller, resizable by dragging its corner, and scrolled into view as soon as a test starts
+- **Dates stay dates when you edit a document.** They were shown as plain strings (`"2022-04-26T16:18:05.988Z"`) and saved back that way, so every save turned a date field into a string. They now show as `ISODate("…")`, like in Studio 3T and the shell, and are saved as real dates — `ISODate("2022-04-26T16:18:05.988+0000")` pasted from Studio 3T works too. Same for copy/paste of documents and JSON export (`{"$date": …}`); CSV still writes the plain ISO string. Documents already saved with an earlier version keep the string: this fix does not convert them back
+- **Filtering on a date field returns results.** A date condition from the query builder reached the server as an empty object and matched nothing
 
 ## [1.7.2] - 2026-10-07
 
