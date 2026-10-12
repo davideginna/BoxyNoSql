@@ -40,6 +40,8 @@ interface SidebarProps {
   onExpandDb: (connId: string, db: string) => void;
   onSelectCollection: (connId: string, db: string, col: string) => void;
   onExpandAll: (connId: string) => void;
+  /** Fetches every database's collection list, so the search can match collections of unexpanded databases. */
+  onLoadAllCollections: (connId: string) => void;
   onCollapseAll: (connId: string) => void;
   /** Re-reads databases + the collections of every expanded database. */
   onRefreshTree: (connId?: string) => void;
@@ -87,7 +89,7 @@ export default function Sidebar(props: SidebarProps) {
     databases, expandedDbs, collections, selectedCollection,
     theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout, onOpenShortcuts,
     onSelectConnection, onDisconnect, onExpandDb, onSelectCollection,
-    onExpandAll, onCollapseAll, onRefreshTree, onRefreshDb, refreshing,
+    onExpandAll, onLoadAllCollections, onCollapseAll, onRefreshTree, onRefreshDb, refreshing,
     onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onDuplicateCollection, onCopyCollectionName,
     onClearCollection, onDropDatabase, onClearDatabase,
@@ -139,9 +141,13 @@ export default function Sidebar(props: SidebarProps) {
         <div className="db-search-wrap">
           <input
             className="db-search-input"
-            placeholder="Search databases…"
+            placeholder="Search databases and collections…"
             value={dbSearch[connId] || ''}
-            onChange={e => setDbSearch(prev => ({ ...prev, [connId]: e.target.value }))}
+            onChange={e => {
+              const value = e.target.value;
+              setDbSearch(prev => ({ ...prev, [connId]: value }));
+              if (value.trim()) onLoadAllCollections(connId);
+            }}
           />
           {dbSearch[connId] && (
             <button className="icon-btn db-search-clear" onClick={() => setDbSearch(prev => ({ ...prev, [connId]: '' }))}><Icon name="close" size={12} /></button>

@@ -639,6 +639,34 @@ function App() {
     setExpandedDbs(prev => ({ ...prev, [connId]: new Set(dbs) }));
   };
 
+  /**
+   * Collection search: the sidebar filter can only match collections whose
+   * list has been fetched, i.e. of databases expanded at least once. Typing a
+   * term fetches the missing lists — without expanding anything, the filter
+   * opens the databases that match. One run per connection at a time; a
+   * database the user may not list is skipped rather than failing the rest.
+   */
+  const loadingAllCols = useRef(new Set<string>());
+  const handleLoadAllCollections = async (connId: string) => {
+    const connCols = collections[connId] || {};
+    const toLoad = (databases[connId] || []).filter(db => !connCols[db]);
+    if (toLoad.length === 0 || loadingAllCols.current.has(connId)) return;
+    loadingAllCols.current.add(connId);
+    try {
+      const loaded = await Promise.all(toLoad.map(async db => {
+        try { return [db, await inv('get-collections', connId, db)] as [string, string[]]; }
+        catch { return null; }
+      }));
+      setCollections(prev => {
+        const next = { ...(prev[connId] || {}) };
+        for (const entry of loaded) if (entry && !next[entry[0]]) next[entry[0]] = entry[1];
+        return { ...prev, [connId]: next };
+      });
+    } finally {
+      loadingAllCols.current.delete(connId);
+    }
+  };
+
   const handleCollapseAll = (connId: string) => setExpandedDbs(prev => ({ ...prev, [connId]: new Set() }));
 
   const handleCreateDatabase = async (connId: string) => {
@@ -1056,6 +1084,7 @@ function App() {
         onExpandDb={handleExpandDb}
         onSelectCollection={handleSelectCollection}
         onExpandAll={handleExpandAll}
+        onLoadAllCollections={handleLoadAllCollections}
         onCollapseAll={handleCollapseAll}
         onRefreshTree={handleRefreshTree}
         onRefreshDb={handleRefreshDb}
