@@ -4,6 +4,7 @@ import Store from 'electron-store';
 import { MongoClient, Db, ObjectId } from 'mongodb';
 import fs from 'fs';
 import { serializeDoc } from './serialize';
+import { fromExtJSON } from './extJson';
 import {
   collectKeys, createChunkWriter, defaultFileName, dialogFilters, type ExportFormat,
 } from './exportFormat';
@@ -631,17 +632,6 @@ ipcMain.handle('clear-database', async (_, connectionId: string, dbName: string)
   }
   return { collections: cols.length };
 });
-
-function fromExtJSON(val: any): any {
-  if (val === null || val === undefined) return val;
-  if (typeof val !== 'object') return val;
-  if (Array.isArray(val)) return val.map(fromExtJSON);
-  if ('$oid' in val) { try { return new ObjectId(val.$oid); } catch { return val.$oid; } }
-  if ('$date' in val) return new Date(val.$date);
-  const out: any = {};
-  for (const [k, v] of Object.entries(val)) out[k] = fromExtJSON(v);
-  return out;
-}
 
 // ── Documents ────────────────────────────────────────────────────────────────
 ipcMain.handle('get-documents', async (_, connectionId: string, dbName: string, collection: string, query: any = {}, limit = 20, skip = 0, sort: any = null, projection: any = null) => {

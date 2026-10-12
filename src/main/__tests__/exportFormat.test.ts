@@ -4,6 +4,10 @@ import {
 } from '../exportFormat';
 
 describe('csvEscape', () => {
+  it('writes a {$date} as its ISO string', () => {
+    expect(csvEscape({ $date: '2024-01-15T10:00:00.000Z' })).toBe('2024-01-15T10:00:00.000Z');
+  });
+
   it('leaves a plain value alone', () => {
     expect(csvEscape('abc')).toBe('abc');
     expect(csvEscape(42)).toBe('42');

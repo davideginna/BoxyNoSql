@@ -23,10 +23,14 @@ describe('serializeDoc', () => {
     expect(serializeDoc([{ x: 1 }, { x: 2 }])).toEqual([{ x: 1 }, { x: 2 }]);
   });
 
-  it('converts Date to ISO string', () => {
+  it('converts Date to extended JSON {$date}, so an edit saves it back as a date', () => {
     const d = new Date('2024-01-15T10:00:00.000Z');
-    expect(serializeDoc(d)).toBe('2024-01-15T10:00:00.000Z');
-    expect(serializeDoc({ created: d })).toEqual({ created: '2024-01-15T10:00:00.000Z' });
+    expect(serializeDoc(d)).toEqual({ $date: '2024-01-15T10:00:00.000Z' });
+    expect(serializeDoc({ created: d })).toEqual({ created: { $date: '2024-01-15T10:00:00.000Z' } });
+  });
+
+  it('does not throw on an invalid Date', () => {
+    expect(serializeDoc(new Date('nope'))).toEqual({ $date: null });
   });
 
   it('converts Buffer to hex string', () => {

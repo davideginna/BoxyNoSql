@@ -3,7 +3,7 @@
  * be unit-tested; `main.ts` owns the save dialog and the file stream.
  *
  * Documents arriving here have already been through `serializeDoc()`, so the
- * values are JSON-safe (`{$oid}`, ISO strings, hex) and what lands in the file
+ * values are JSON-safe (`{$oid}`, `{$date}`, hex) and what lands in the file
  * is exactly what the UI showed.
  */
 
@@ -13,6 +13,8 @@ export const EXTENSIONS: Record<ExportFormat, string> = { json: 'json', ndjson: 
 
 export function csvEscape(v: any): string {
   if (v === null || v === undefined) return '';
+  // A date reads as the ISO string in a spreadsheet, not as `{"$date":…}`.
+  if (typeof v === 'object' && '$date' in v) v = v.$date ?? '';
   const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

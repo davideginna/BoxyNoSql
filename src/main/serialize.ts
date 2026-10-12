@@ -5,7 +5,9 @@ export function serializeDoc(val: any, seen = new Set<any>(), depth = 0): any {
   if (typeof val === 'function') return '[Function]';
   if (val._bsontype === 'ObjectId' || val._bsontype === 'ObjectID') return { $oid: val.toString() };
   if (val._bsontype) return val.toString();
-  if (val instanceof Date) return val.toISOString();
+  // Extended JSON, like `{$oid}`: a bare ISO string would be saved back as a
+  // string, and the field would silently stop being a date.
+  if (val instanceof Date) return { $date: isNaN(val.getTime()) ? null : val.toISOString() };
   if (Buffer.isBuffer(val)) return val.toString('hex');
   if (seen.has(val)) return '[Circular]';
   seen.add(val);
