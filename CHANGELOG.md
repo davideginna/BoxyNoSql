@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.8.0] - 2026-10-12
 
 ### Added
 - **Edit the filter as JSON.** A JSON button in the query panel (and the "expand" link on the query preview) opens the filter indented, with `ObjectId("…")` and `ISODate("…")`, to read, copy or change. Apply puts it back into the panel as conditions; what the builder cannot show as conditions (`$elemMatch`, `$expr`, nested logic…) is kept as a "Custom JSON filter" card — only that part: in `{"status": "open", "tags": {"$elemMatch": …}}` the `status` still becomes a normal condition — and conditions added afterwards are ANDed with it
