@@ -732,7 +732,11 @@ button,
 }
 .tree-node-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-.tree-node-children { padding-left: 12px; }
+.tree-node-children { padding-left: 0; }
+/* A collection sits one level in from its database: its icon lines up under
+   the database name (header padding 14 + chevron 18 + gap 5 + icon 14 + gap 5).
+   Indented on the item, not the container, so the hover band stays full width. */
+.tree-node-children .collection-item { padding-left: 56px; }
 
 .collection-item {
   display: flex; align-items: center; gap: 5px;
@@ -1234,7 +1238,17 @@ button,
 .tree-branch:hover { background: var(--bg-hover); }
 .tree-leaf {
   display: flex; align-items: baseline; gap: var(--space-2); padding: 1px 8px;
+  cursor: grab; border-radius: var(--radius-sm);
 }
+.tree-leaf:hover { background: var(--bg-hover); }
+.tree-leaf:active { cursor: grabbing; }
+.tree-filter-btn {
+  margin-left: var(--space-2); align-self: center; opacity: 0; flex-shrink: 0;
+  display: flex; align-items: center; background: none; border: none; cursor: pointer;
+  color: var(--text-secondary); padding: 1px 4px; border-radius: var(--radius-sm);
+}
+.tree-leaf:hover .tree-filter-btn, .tree-filter-btn:focus-visible { opacity: 1; }
+.tree-filter-btn:hover { color: var(--accent); background: var(--bg-primary); }
 .tree-key   { color: var(--tree-key); }
 .tree-sep   { color: var(--text-secondary); }
 .tree-summary { color: var(--text-secondary); font-style: italic; }
@@ -1298,8 +1312,18 @@ button,
   cursor: pointer; transition: all 0.1s; flex-shrink: 0;
 }
 .qb-drop-zone:hover { border-color: var(--accent); color: var(--accent); }
+.qb-drop-zone.drag-active { border-color: var(--accent); border-style: solid; color: var(--accent); }
 .qb-drop-zone.drag-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .qb-fields-section { border-top: 1px solid var(--border); padding: 6px; flex-shrink: 0; }
+.qb-raw-card { border-color: var(--accent); }
+.qb-raw-title { flex: 1; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
+.qb-raw-preview { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-secondary); word-break: break-all; max-height: 60px; overflow: hidden; }
+.qb-sort-section { border-top: 1px solid var(--border); padding: 6px; flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.qb-sort-section .qb-fields-title { margin-bottom: 0; }
+.qb-sort-row { display: flex; align-items: center; gap: var(--space-2); }
+.qb-sort-rank { font-size: var(--fs-2xs); color: var(--text-secondary); min-width: 10px; text-align: right; flex-shrink: 0; }
+.qb-sort-row .qb-del-btn:disabled { opacity: 0.3; cursor: default; }
+.qb-sort-add { align-self: flex-start; display: flex; align-items: center; gap: var(--space-1); }
 .qb-fields-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 5px; }
 .qb-fields-list { display: flex; flex-wrap: wrap; gap: var(--space-2); max-height: 120px; overflow-y: auto; }
 .qb-field-chip {
@@ -1924,7 +1948,7 @@ button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
    an accent fill plus --accent-text ink: that is how the tab label became white
    on a near-white background in the light theme (1.32:1) and near-black on
    near-black in hc/solarized. */
-button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove) {
+button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.tree-filter-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove) {
   background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }

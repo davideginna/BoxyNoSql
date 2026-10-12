@@ -112,6 +112,7 @@ export function detectType(value: any): FieldType {
   if (value && typeof value === 'object' && '$oid' in value) return 'objectid';
   if (value && typeof value === 'object' && value._bsontype === 'ObjectId') return 'objectid';
   if (value instanceof Date) return 'date';
+  if (value && typeof value === 'object' && '$date' in value) return 'date';
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return 'date';
   if (typeof value === 'string') return 'string';
   if (typeof value === 'object') return 'object';
@@ -121,7 +122,12 @@ export function detectType(value: any): FieldType {
 function parseValue(value: string, type: FieldType): any {
   if (type === 'number') return Number(value);
   if (type === 'boolean') return value !== 'false';
-  if (type === 'date') return new Date(value);
+  // Extended JSON like `{$oid}`, so the filter reads as `ISODate(…)` in the
+  // JSON editor and round-trips; the main process revives it (`fromExtJSON`).
+  if (type === 'date') {
+    const d = new Date(value);
+    return { $date: isNaN(d.getTime()) ? value : d.toISOString() };
+  }
   if (type === 'objectid') return { $oid: value };
   return value;
 }
@@ -167,4 +173,160 @@ export function buildFilter(conditions: Condition[], matchAll = true): any {
   if (parts.length === 0) return {};
   if (parts.length === 1) return parts[0];
   return matchAll ? { $and: parts } : { $or: parts };
+}
+
+// ── JSON → conditions ────────────────────────────────────────────────────────
+
+export type ParsedCondition = Omit<Condition, 'id'>;
+
+/** The literal a regex stands for, if it is just an escaped literal; null otherwise. */
+function regexLiteral(pattern: string): string | null {
+  const plain = pattern.replace(/\\(.)/g, '$1');
+  return escapeRegex(plain) === pattern ? plain : null;
+}
+
+/** A filter value as the builder holds it: its type and the text in the value box. */
+function valueOf(v: any): { type: FieldType; text: string } | null {
+  if (typeof v === 'number') return { type: 'number', text: String(v) };
+  if (typeof v === 'string') return { type: 'string', text: v };
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const keys = Object.keys(v);
+    if (keys.length === 1 && keys[0] === '$oid' && typeof v.$oid === 'string') return { type: 'objectid', text: v.$oid };
+    if (keys.length === 1 && keys[0] === '$date' && typeof v.$date === 'string') return { type: 'date', text: v.$date };
+  }
+  return null;
+}
+
+const allowed = (type: FieldType, op: Operator) => OPERATORS_BY_TYPE[type].some(o => o.value === op);
+
+function cond(field: string, op: Operator, type: FieldType, value = ''): ParsedCondition | null {
+  return allowed(type, op) ? { field, op, type, value } : null;
+}
+
+/** One `{field: spec}` pair back into a builder condition, or null if the builder cannot express it. */
+function partToCondition(field: string, spec: any): ParsedCondition | null {
+  if (field.startsWith('$')) return null;
+  if (spec === null) return cond(field, 'is_null', 'string');
+  if (spec === true) return cond(field, 'is_true', 'boolean');
+  if (spec === false) return cond(field, 'is_false', 'boolean');
+  const plain = valueOf(spec);
+  if (plain) return cond(field, 'eq', plain.type, plain.text);
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return null;
+
+  const keys = Object.keys(spec);
+  if (keys.length === 2 && '$regex' in spec && '$options' in spec) {
+    if (spec.$options !== 'i' || typeof spec.$regex !== 'string') return null;
+    const re: string = spec.$regex;
+    if (re.startsWith('^')) { const lit = regexLiteral(re.slice(1)); if (lit !== null) return cond(field, 'starts_with', 'string', lit); }
+    if (re.endsWith('$') && !re.endsWith('\\$')) { const lit = regexLiteral(re.slice(0, -1)); if (lit !== null) return cond(field, 'ends_with', 'string', lit); }
+    const lit = regexLiteral(re);
+    return lit !== null ? cond(field, 'contains', 'string', lit) : null;
+  }
+  if (keys.length !== 1) return null;
+  const [op] = keys;
+  const v = spec[op];
+  switch (op) {
+    case '$eq': case '$ne': case '$gt': case '$gte': case '$lt': case '$lte': {
+      if (op === '$ne' && v === null) return cond(field, 'isnt_null', 'string');
+      const val = valueOf(v);
+      return val ? cond(field, op.slice(1) as Operator, val.type, val.text) : null;
+    }
+    case '$regex': return typeof v === 'string' ? cond(field, 'regex', 'string', v) : null;
+    case '$not': {
+      if (!v || typeof v !== 'object' || Object.keys(v).length !== 2 || v.$options !== 'i' || typeof v.$regex !== 'string') return null;
+      const lit = regexLiteral(v.$regex);
+      return lit !== null ? cond(field, 'not_contains', 'string', lit) : null;
+    }
+    case '$exists': return typeof v === 'boolean' ? cond(field, v ? 'exists' : 'nexists', 'string') : null;
+    case '$in': case '$nin': {
+      if (!Array.isArray(v) || v.length === 0) return null;
+      const vals = v.map(valueOf);
+      if (vals.some(x => !x || x.type !== vals[0]!.type || x.text.includes(','))) return null;
+      return cond(field, op.slice(1) as Operator, vals[0]!.type, vals.map(x => x!.text).join(', '));
+    }
+    default: return null;
+  }
+}
+
+/** A plain object's `{field: spec}` pairs as conditions — all or nothing. */
+function objectToConditions(obj: any): ParsedCondition[] | null {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const out: ParsedCondition[] = [];
+  for (const [field, spec] of Object.entries(obj)) {
+    const c = partToCondition(field, spec);
+    if (!c) return null;
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Inverse of `buildFilter`: a Mongo filter back into builder conditions, so a
+ * filter edited as JSON can land back in the panel. Covers what `buildFilter`
+ * itself produces plus the obvious hand-written forms (`{a: 1}`, several
+ * top-level keys as an implicit AND). Anything the builder cannot express —
+ * `$elemMatch`, `$expr`, nested logic, a regex with other options — returns
+ * null and the caller keeps the JSON as-is instead of losing part of it.
+ */
+export function parseFilter(filter: any): { matchAll: boolean; conditions: ParsedCondition[] } | null {
+  if (!filter || typeof filter !== 'object' || Array.isArray(filter)) return null;
+  const keys = Object.keys(filter);
+  if (keys.length === 1 && (keys[0] === '$and' || keys[0] === '$or')) {
+    const parts = filter[keys[0]];
+    if (!Array.isArray(parts)) return null;
+    const conditions: ParsedCondition[] = [];
+    for (const part of parts) {
+      // Inside $or each part must be one condition, or the grouping would change.
+      if (keys[0] === '$or' && (!part || typeof part !== 'object' || Object.keys(part).length !== 1)) return null;
+      const cs = objectToConditions(part);
+      if (!cs) return null;
+      conditions.push(...cs);
+    }
+    return { matchAll: keys[0] === '$and', conditions };
+  }
+  const conditions = objectToConditions(filter);
+  return conditions ? { matchAll: true, conditions } : null;
+}
+
+/**
+ * Like `parseFilter`, but never gives up on the whole filter: under an AND
+ * (several top-level keys, or `$and`) every part the builder can show becomes
+ * a condition and only the rest is returned as `rest`, to be kept as custom
+ * JSON — `combineFilters(rest, buildFilter(conditions))` is the same filter.
+ * An `$or` that does not parse whole stays whole: splitting it would change it.
+ */
+export function splitFilter(filter: any): { matchAll: boolean; conditions: ParsedCondition[]; rest: any | null } {
+  const whole = parseFilter(filter);
+  if (whole) return { ...whole, rest: null };
+  const asRest = { matchAll: true, conditions: [] as ParsedCondition[], rest: filter };
+  if (!filter || typeof filter !== 'object' || Array.isArray(filter)) return asRest;
+
+  const keys = Object.keys(filter);
+  if (keys.length === 1 && keys[0] === '$and' && Array.isArray(filter.$and)) {
+    const conditions: ParsedCondition[] = [];
+    const restParts: any[] = [];
+    for (const part of filter.$and) {
+      const cs = objectToConditions(part);
+      if (cs) conditions.push(...cs); else restParts.push(part);
+    }
+    const rest = restParts.length === 1 ? restParts[0] : { $and: restParts };
+    return { matchAll: true, conditions, rest };
+  }
+  if (keys.length === 1) return asRest;
+
+  const conditions: ParsedCondition[] = [];
+  const rest: Record<string, any> = {};
+  for (const [field, spec] of Object.entries(filter)) {
+    const c = partToCondition(field, spec);
+    if (c) conditions.push(c); else rest[field] = spec;
+  }
+  return { matchAll: true, conditions, rest };
+}
+
+/** The builder's filter combined with a hand-written one the builder could not take apart. */
+export function combineFilters(raw: any, built: any): any {
+  const hasRaw = raw && Object.keys(raw).length > 0;
+  const hasBuilt = built && Object.keys(built).length > 0;
+  if (hasRaw && hasBuilt) return { $and: [raw, built] };
+  return hasRaw ? raw : (built ?? {});
 }

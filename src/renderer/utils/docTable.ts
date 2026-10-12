@@ -49,6 +49,42 @@ export function sortTooltip(field: string, current: SortDir | null): string {
   return `${state}\nClick to ${next}. Shift-click to add it as another sort key.`;
 }
 
+/*
+ * The sort rows in the query panel. Same `SortKey[]` the column headers edit,
+ * so the two stay in step; each helper returns a new list and never leaves a
+ * field in it twice — Mongo would just keep the last one, silently.
+ */
+
+/** Appends the first offered field not already sorted on, ascending; unchanged if there is none. */
+export function addSortKey(keys: SortKey[], fields: string[]): SortKey[] {
+  const field = fields.find(f => !keys.some(k => k.field === f));
+  return field ? [...keys, { field, dir: 1 }] : keys;
+}
+
+/** Points row `index` at another field; a row already on that field is dropped. */
+export function setSortKeyField(keys: SortKey[], index: number, field: string): SortKey[] {
+  return keys
+    .map((k, i) => (i === index ? { ...k, field } : k))
+    .filter((k, i) => i === index || k.field !== field);
+}
+
+export function setSortKeyDir(keys: SortKey[], index: number, dir: SortDir): SortKey[] {
+  return keys.map((k, i) => (i === index ? { ...k, dir } : k));
+}
+
+/** Moves row `index` by `delta` (−1 up = more important); out of range is a no-op. */
+export function moveSortKey(keys: SortKey[], index: number, delta: number): SortKey[] {
+  const to = index + delta;
+  if (index < 0 || index >= keys.length || to < 0 || to >= keys.length) return keys;
+  const next = [...keys];
+  [next[index], next[to]] = [next[to], next[index]];
+  return next;
+}
+
+export function removeSortKey(keys: SortKey[], index: number): SortKey[] {
+  return keys.filter((_, i) => i !== index);
+}
+
 /** Mongo sort document, or null when nothing is sorted (so the caller can skip `.sort()`). */
 export function buildSort(keys: SortKey[]): Record<string, SortDir> | null {
   if (keys.length === 0) return null;
@@ -109,4 +145,15 @@ export function saveHiddenFields(connectionId: string, db: string, col: string, 
   if (hidden.length === 0) delete all[key];
   else all[key] = hidden;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+}
+
+/**
+ * One table cell. Dates arrive as `{$date}` (so they survive an edit as dates)
+ * but read as the plain ISO string in a cell, as they did before.
+ */
+export function cellText(v: any): string {
+  if (v === undefined) return '';
+  if (v === null) return 'null';
+  if (typeof v === 'object' && '$date' in v) return String(v.$date);
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }

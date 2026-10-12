@@ -60,9 +60,12 @@ let docTotal = 1;
 // Document 0 is always DOC, so the single-document tests read the same.
 let docCount = 1;
 
+// Document 0, swappable so a test can load a document of another shape.
+let firstDoc: any = DOC;
+
 const oidAt = (i: number) => (i === 0 ? OID : i.toString(16).padStart(24, '0'));
 const docAt = (i: number) =>
-  i === 0 ? DOC : { ...DOC, _id: { $oid: oidAt(i) }, name: `row-${i}` };
+  i === 0 ? firstDoc : { ...DOC, _id: { $oid: oidAt(i) }, name: `row-${i}` };
 
 // args after the channel: (connectionId, db, collection, filter, limit, skip, sort, projection)
 const invoke = vi.fn(async (channel: string, ...args: any[]) => {
@@ -87,6 +90,7 @@ beforeEach(() => {
   localStorage.clear();
   docTotal = 1;
   docCount = 1;
+  firstDoc = DOC;
   (window as any).electron = { on: () => () => {}, invoke };
 });
 
@@ -141,7 +145,7 @@ describe('DocumentsView — JSON editor line numbers', () => {
 
   it('applies the same switch to the add-document editor', async () => {
     view();
-    fireEvent.click(screen.getByRole('button', { name: /Add/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
     await screen.findByRole('heading', { name: /Add document/ });
 
     const ta = screen.getByTestId('doc-json-editor');
@@ -366,14 +370,13 @@ describe('DocumentsView — query history', () => {
     await loaded();
 
     // Reset runs an empty filter — that is what the Reset button is for.
-    fireEvent.click(screen.getByRole('button', { name: /Reset/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Reset$/ }));
     await openHistory();
     expect(screen.getByText(/Nothing run yet/)).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
 
-    // Add a condition through the query builder, then run it.
-    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
-    fireEvent.doubleClick(screen.getByText(/Drag field here/));
+    // Add a condition through the query builder (open by default), then run it.
+    fireEvent.doubleClick(screen.getByText(/Drag a field here/));
     fireEvent.click(screen.getAllByRole('button', { name: /Run/ })[0]);
 
     await openHistory();
@@ -460,7 +463,7 @@ describe('DocumentsView — read-only connection', () => {
     readOnlyView();
     await loaded();
 
-    expect(screen.getByRole('button', { name: /Add/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Add$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Paste/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Export/ })).toBeEnabled();
   });
@@ -468,7 +471,7 @@ describe('DocumentsView — read-only connection', () => {
   it('says why the button is dead', async () => {
     readOnlyView();
     await loaded();
-    expect(screen.getByRole('button', { name: /Add/ })).toHaveAttribute('title', 'This connection is read-only');
+    expect(screen.getByRole('button', { name: /^Add$/ })).toHaveAttribute('title', 'This connection is read-only');
   });
 
   it('ignores Ctrl+D too — the shortcut is the same action', async () => {
@@ -482,7 +485,7 @@ describe('DocumentsView — read-only connection', () => {
   it('leaves the writes alone on a normal connection', async () => {
     view();
     await loaded();
-    expect(screen.getByRole('button', { name: /Add/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^Add$/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Paste/ })).toBeEnabled();
   });
 });
@@ -775,5 +778,239 @@ describe('DocumentsView — long result sets', () => {
       expect(dataRows(container)).toHaveLength(20);
       expect(container.querySelector('.document-table')).not.toHaveClass('windowed');
     });
+  });
+});
+
+describe('DocumentsView — dates', () => {
+  const ISO = '2022-04-26T16:18:05.988Z';
+  const DATED = { _id: { $oid: OID }, name: 'alpha', insertDate: { $date: ISO } };
+
+  it('shows a date as the plain ISO string in a table cell', async () => {
+    firstDoc = DATED;
+    view();
+    fireEvent.click(screen.getByRole('button', { name: /Table/ }));
+    expect(await screen.findByText(ISO)).toBeInTheDocument();
+    expect(screen.queryByText(/\$date/)).toBeNull();
+  });
+
+  it('edits a date as ISODate and saves it back as {$date}, not as a string', async () => {
+    firstDoc = DATED;
+    const { container } = view();
+    const { ta } = await openEdit(container);
+    expect(ta.value).toContain(`"insertDate": ISODate("${ISO}")`);
+
+    // The user changes the date the way Studio 3T writes it.
+    fireEvent.change(ta, { target: { value: ta.value.replace(`ISODate("${ISO}")`, 'ISODate("2023-01-02T03:04:05.000+0000")') } });
+    fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
+
+    await waitFor(() => expect(invoke.mock.calls.some(c => c[0] === 'update-document')).toBe(true));
+    const call = invoke.mock.calls.find(c => c[0] === 'update-document')!;
+    expect(call[4]).toBe(OID);
+    expect(call[5]).toEqual({
+      _id: { $oid: OID }, name: 'alpha', insertDate: { $date: '2023-01-02T03:04:05.000+0000' },
+    });
+  });
+
+  it('an untouched date is saved back unchanged as {$date}', async () => {
+    firstDoc = DATED;
+    const { container } = view();
+    const { ta } = await openEdit(container);
+    fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
+
+    await waitFor(() => expect(invoke.mock.calls.some(c => c[0] === 'update-document')).toBe(true));
+    const call = invoke.mock.calls.find(c => c[0] === 'update-document')!;
+    expect(call[5].insertDate).toEqual({ $date: ISO });
+  });
+});
+
+describe('DocumentsView — sort in the query panel', () => {
+  const lastGet = () => invoke.mock.calls.filter(c => c[0] === 'get-documents').at(-1)!;
+  const openPanel = async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+  };
+
+  it('adds sort fields, flips direction and sends them to the server in order', async () => {
+    await openPanel();
+    fireEvent.click(screen.getByRole('button', { name: /Add sort field/ }));
+    await waitFor(() => expect(lastGet()[7]).toEqual({ _id: 1 }));
+
+    fireEvent.change(screen.getByLabelText('Sort field 1'), { target: { value: 'name' } });
+    await waitFor(() => expect(lastGet()[7]).toEqual({ name: 1 }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Add sort field/ }));
+    await waitFor(() => expect(lastGet()[7]).toEqual({ name: 1, _id: 1 }));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^ASC/ })[0]);
+    await waitFor(() => expect(lastGet()[7]).toEqual({ name: -1, _id: 1 }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move _id up' }));
+    await waitFor(() => expect(Object.keys(lastGet()[7])).toEqual(['_id', 'name']));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove sort on _id' }));
+    await waitFor(() => expect(lastGet()[7]).toEqual({ name: -1 }));
+  });
+
+  it('Reset clears the sort along with the conditions', async () => {
+    await openPanel();
+    fireEvent.click(screen.getByRole('button', { name: /Add sort field/ }));
+    await waitFor(() => expect(lastGet()[7]).toEqual({ _id: 1 }));
+    fireEvent.click(screen.getByRole('button', { name: /↺ Reset/ }));
+    await waitFor(() => expect(lastGet()[7]).toBeNull());
+    expect(screen.queryByLabelText('Sort field 1')).toBeNull();
+  });
+});
+
+describe('DocumentsView — filtering from the tree', () => {
+  it('the funnel on a tree field opens the filter panel with that condition', async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    fireEvent.click(screen.getByRole('button', { name: /^Filter$/ })); // close the panel, open by default
+    expect(screen.queryByText(/Drag a field here/)).toBeNull();
+    // Tree mode is the default; open the document, then click the funnel.
+    fireEvent.doubleClick(document.querySelector('.doc-tree-header')!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter on name' }));
+    expect(screen.getByText(/Drag a field here/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('alpha')).toBeInTheDocument();
+  });
+
+  it('dragging a tree field opens the panel and lights up the drop zone', async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    fireEvent.doubleClick(document.querySelector('.doc-tree-header')!);
+    const leaf = (await screen.findByRole('button', { name: 'Filter on name' })).closest('.tree-leaf')!;
+    fireEvent.dragStart(leaf, { dataTransfer: { setData: () => {}, effectAllowed: '' } });
+    const zone = screen.getByText(/Drag a field here/);
+    expect(zone).toHaveClass('drag-active');
+    fireEvent.dragEnd(leaf);
+    expect(zone).not.toHaveClass('drag-active');
+  });
+});
+
+describe('DocumentsView — query panel layout', () => {
+  it('is open by default', async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    expect(screen.getByText(/Drag a field here/)).toBeInTheDocument();
+  });
+
+  it('resizes from its left edge, clamps, and remembers the width', async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    const handle = screen.getByRole('separator', { name: 'Resize query panel' });
+    const panel = () => document.querySelector('.qb-panel') as HTMLElement;
+    expect(panel().style.width).toBe('270px');
+
+    fireEvent.mouseDown(handle, { clientX: 1000 });
+    fireEvent.mouseMove(window, { clientX: 900 }); // 100px to the left → wider
+    fireEvent.mouseUp(window);
+    expect(panel().style.width).toBe('370px');
+    expect(localStorage.getItem('queryPanelWidth')).toBe('370');
+
+    fireEvent.mouseDown(handle, { clientX: 1000 });
+    fireEvent.mouseMove(window, { clientX: 2000 });
+    fireEvent.mouseUp(window);
+    expect(panel().style.width).toBe('220px'); // minimum
+
+    fireEvent.doubleClick(handle);
+    expect(panel().style.width).toBe('270px');
+  });
+
+  it('restores a saved width and ignores a nonsense one', async () => {
+    localStorage.setItem('queryPanelWidth', '480');
+    const first = view();
+    await screen.findAllByText(/alpha/);
+    expect((document.querySelector('.qb-panel') as HTMLElement).style.width).toBe('480px');
+    first.unmount();
+
+    localStorage.setItem('queryPanelWidth', '99999');
+    view();
+    await screen.findAllByText(/alpha/);
+    expect((document.querySelector('.qb-panel') as HTMLElement).style.width).toBe('270px');
+  });
+});
+
+describe('DocumentsView — filter as JSON', () => {
+  const lastFilter = () => invoke.mock.calls.filter(c => c[0] === 'get-documents').at(-1)![4];
+  const openJson = async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
+    return screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea') as HTMLTextAreaElement;
+  };
+
+  it('opens with the current filter, indented', async () => {
+    const ta = await openJson();
+    expect(ta.value).toBe('{}');
+  });
+
+  it('applies edited JSON back into builder conditions and runs it', async () => {
+    const ta = await openJson();
+    fireEvent.change(ta, { target: { value: '{\n  "name": "beta",\n  "n": { "$gt": 3 }\n}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(lastFilter()).toEqual({ $and: [{ name: { $eq: 'beta' } }, { n: { $gt: 3 } }] }));
+    expect(screen.queryByRole('heading', { name: 'Filter (JSON)' })).toBeNull();
+    expect(screen.getByDisplayValue('beta')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('3')).toBeInTheDocument();
+    expect(screen.queryByText('Custom JSON filter')).toBeNull();
+  });
+
+  it('keeps what the builder cannot express as a custom JSON filter, ANDed with new conditions', async () => {
+    const ta = await openJson();
+    const custom = { tags: { $elemMatch: { k: 'x' } } };
+    fireEvent.change(ta, { target: { value: JSON.stringify(custom) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastFilter()).toEqual(custom));
+    expect(screen.getByText('Custom JSON filter')).toBeInTheDocument();
+
+    // A condition added afterwards goes alongside it, not over it.
+    fireEvent.doubleClick(screen.getByText(/Drag a field here/));
+    fireEvent.click(screen.getByRole('button', { name: /▶ Run/ }));
+    await waitFor(() => expect(lastFilter().$and?.[0]).toEqual(custom));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove custom filter' }));
+    await waitFor(() => expect(lastFilter().$and).toBeUndefined());
+    expect(screen.queryByText('Custom JSON filter')).toBeNull();
+  });
+
+  it('round-trips ObjectId and ISODate', async () => {
+    const ta = await openJson();
+    fireEvent.change(ta, { target: { value: `{"ref": ObjectId("${OID}"), "d": {"$gte": ISODate("2024-01-01T00:00:00Z")}}` } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastFilter()).toEqual({
+      $and: [{ ref: { $eq: { $oid: OID } } }, { d: { $gte: { $date: '2024-01-01T00:00:00.000Z' } } }],
+    }));
+    // Reopening shows the shell form again.
+    fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
+    const again = screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea')!;
+    expect(again.value).toContain(`ObjectId("${OID}")`);
+    expect(again.value).toContain('ISODate("2024-01-01T00:00:00.000Z")');
+  });
+
+  it('refuses invalid JSON and a non-object, keeping the modal open', async () => {
+    const ta = await openJson();
+    fireEvent.change(ta, { target: { value: '{"a": ' } });
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    fireEvent.change(ta, { target: { value: '[1, 2]' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByText(/A filter is a JSON object/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Filter (JSON)' })).toBeInTheDocument();
+  });
+});
+
+describe('DocumentsView — filter as JSON, partly expressible', () => {
+  it('splits an AND: expressible parts become conditions, the rest stays custom', async () => {
+    view();
+    await screen.findAllByText(/alpha/);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
+    const ta = screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea')!;
+    fireEvent.change(ta, { target: { value: '{"name": "beta", "tags": {"$elemMatch": {"k": "y"}}}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const last = () => invoke.mock.calls.filter(c => c[0] === 'get-documents').at(-1)![4];
+    await waitFor(() => expect(last()).toEqual({ $and: [{ tags: { $elemMatch: { k: 'y' } } }, { name: { $eq: 'beta' } }] }));
+    expect(screen.getByDisplayValue('beta')).toBeInTheDocument();
+    expect(screen.getByText('Custom JSON filter')).toBeInTheDocument();
   });
 });

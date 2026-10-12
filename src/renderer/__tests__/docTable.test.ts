@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey,
   cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
   loadHiddenFields, saveHiddenFields, SORT_DIR_LABEL, SORT_DIR_HINT, sortTooltip, SortKey,
 } from '../utils/docTable';
@@ -138,5 +139,54 @@ describe('sort labels', () => {
 
   it('mentions the shift-click shortcut wherever it is shown', () => {
     expect(sortTooltip('age', 1)).toContain('Shift-click');
+  });
+});
+
+describe('cellText', () => {
+  it('shows a {$date} as the bare ISO string', () => {
+    expect(cellText({ $date: '2024-01-15T10:00:00.000Z' })).toBe('2024-01-15T10:00:00.000Z');
+  });
+  it('JSON-encodes other objects, blanks missing fields', () => {
+    expect(cellText({ $oid: 'abc' })).toBe('{"$oid":"abc"}');
+    expect(cellText(undefined)).toBe('');
+    expect(cellText(null)).toBe('null');
+    expect(cellText(3)).toBe('3');
+  });
+});
+
+describe('sort rows (query panel)', () => {
+  const A = { field: 'a', dir: 1 as const };
+  const B = { field: 'b', dir: -1 as const };
+  const C = { field: 'c', dir: 1 as const };
+
+  it('adds the first field not already sorted on, ascending', () => {
+    expect(addSortKey([], ['_id', 'a'])).toEqual([{ field: '_id', dir: 1 }]);
+    expect(addSortKey([A], ['a', 'b'])).toEqual([A, { field: 'b', dir: 1 }]);
+  });
+
+  it('adds nothing when every field is already used', () => {
+    const keys = [A, B];
+    expect(addSortKey(keys, ['a', 'b'])).toBe(keys);
+  });
+
+  it('changes a row field and drops the row that already had it', () => {
+    expect(setSortKeyField([A, B, C], 2, 'a')).toEqual([B, { field: 'a', dir: 1 }]);
+    expect(setSortKeyField([A, B], 0, 'z')).toEqual([{ field: 'z', dir: 1 }, B]);
+  });
+
+  it('flips one row direction only', () => {
+    expect(setSortKeyDir([A, B], 0, -1)).toEqual([{ field: 'a', dir: -1 }, B]);
+  });
+
+  it('moves a row up or down, ignoring moves past either end', () => {
+    expect(moveSortKey([A, B, C], 2, -1)).toEqual([A, C, B]);
+    expect(moveSortKey([A, B, C], 0, 1)).toEqual([B, A, C]);
+    const keys = [A, B];
+    expect(moveSortKey(keys, 0, -1)).toBe(keys);
+    expect(moveSortKey(keys, 1, 1)).toBe(keys);
+  });
+
+  it('removes a row', () => {
+    expect(removeSortKey([A, B, C], 1)).toEqual([A, C]);
   });
 });

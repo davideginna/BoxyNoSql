@@ -6,6 +6,7 @@ import ExplainModal from './ExplainModal';
 import Icon from './Icon';
 import { showAlert } from '../dialog';
 import { onRunKey } from '../utils/keys';
+import { cellText } from '../utils/docTable';
 
 const STAGES = [
   '$match', '$project', '$group', '$sort', '$limit', '$skip',
@@ -283,7 +284,7 @@ export default function AggregationBuilder({ connectionId, database, collection,
                     <tr key={idx}>
                       {Object.keys(result[0]).map(key => (
                         <td key={key} style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace' }}>
-                          {typeof doc[key] === 'object' ? JSON.stringify(doc[key]) : String(doc[key] ?? 'null')}
+                          {cellText(doc[key] ?? null)}
                         </td>
                       ))}
                     </tr>

@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { detectType } from '../utils/buildFilter';
+import { detectType, type FieldType } from '../utils/buildFilter';
+import Icon from './Icon';
+import { oidTitle } from '../utils/objectId';
 
 const PREVIEW_FIELDS = 4;
 const PREVIEW_STR_MAX = 28;
@@ -7,7 +9,7 @@ const PREVIEW_STR_MAX = 28;
 // One-line rendition of a value for the collapsed document header. Returns the
 // same colour classes the expanded tree uses, so the preview reads as a
 // condensed version of what you get when you open the row.
-function previewValue(v: any): { text: string; cls: string } {
+function previewValue(v: any): { text: string; cls: string; title?: string } {
   if (v === null || v === undefined) return { text: 'null', cls: 'tree-val-null' };
   if (typeof v === 'boolean') return { text: String(v), cls: 'tree-val-bool' };
   if (typeof v === 'number') return { text: String(v), cls: 'tree-val-num' };
@@ -15,7 +17,8 @@ function previewValue(v: any): { text: string; cls: string } {
     const t = v.length > PREVIEW_STR_MAX ? v.slice(0, PREVIEW_STR_MAX) + '…' : v;
     return { text: `"${t}"`, cls: 'tree-val-str' };
   }
-  if (typeof v === 'object' && '$oid' in v) return { text: `ObjectId(…${String(v.$oid).slice(-6)})`, cls: 'tree-val-oid' };
+  if (typeof v === 'object' && '$oid' in v) return { text: `ObjectId(…${String(v.$oid).slice(-6)})`, cls: 'tree-val-oid', title: oidTitle(v) };
+  if (typeof v === 'object' && '$date' in v) return { text: `ISODate(${v.$date})`, cls: 'tree-val-oid' };
   if (Array.isArray(v)) return { text: `Array[${v.length}]`, cls: 'tree-summary' };
   return { text: `{${Object.keys(v).length}}`, cls: 'tree-summary' };
 }
@@ -26,15 +29,39 @@ function ValueDisplay({ value }: { value: any }) {
   if (typeof value === 'number') return <span className="tree-val-num">{value}</span>;
   if (typeof value === 'string') return <span className="tree-val-str">"{value}"</span>;
   if (value && typeof value === 'object' && '$oid' in value)
-    return <span className="tree-val-oid">ObjectId("{value.$oid}")</span>;
+    return <span className="tree-val-oid" title={oidTitle(value)}>ObjectId("{value.$oid}")</span>;
+  if (value && typeof value === 'object' && '$date' in value)
+    return <span className="tree-val-oid">ISODate("{value.$date}")</span>;
   return null;
 }
 
-function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
-  { name: string; path: string; value: any; depth: number; expandTick: number; expandTarget: boolean }) {
+/** A leaf as a filter condition: its type and the value as the filter box would hold it. */
+function leafFilter(value: any): { type: FieldType; value: string } {
+  const type = detectType(value);
+  const str = value === null ? ''
+    : (typeof value === 'object' && '$oid' in value) ? value.$oid
+    : (typeof value === 'object' && '$date' in value) ? String(value.$date)
+    : String(value);
+  return { type, value: str };
+}
+
+/**
+ * Hooks into the filter panel. Dragging is how a field reaches the filter, but
+ * nothing on a plain tree row says so and the drop target only exists while
+ * the panel is open — so a drag reports itself (the panel opens and lights up
+ * its drop zone) and each leaf also gets a one-click "filter on this value".
+ */
+export interface FilterHooks {
+  onAddFilter?: (field: string, type: FieldType, value: string) => void;
+  onFieldDrag?: (dragging: boolean) => void;
+}
+
+function TreeNode({ name, path, value, depth, expandTick, expandTarget, hooks }:
+  { name: string; path: string; value: any; depth: number; expandTick: number; expandTarget: boolean; hooks: FilterHooks }) {
   const [open, setOpen] = useState(false);
   const isOid = value !== null && typeof value === 'object' && '$oid' in value;
-  const isComplex = !isOid && value !== null && typeof value === 'object';
+  const isDate = value !== null && typeof value === 'object' && '$date' in value;
+  const isComplex = !isOid && !isDate && value !== null && typeof value === 'object';
   const isArray = Array.isArray(value);
 
   useEffect(() => { if (expandTick > 0) setOpen(expandTarget); }, [expandTick]);
@@ -45,17 +72,27 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
         className="tree-leaf"
         style={{ paddingLeft: depth * 14 + 20 }}
         draggable
+        title={`Drag ${path} into the filter to search on it`}
         onDragStart={e => {
           e.stopPropagation();
-          const type = detectType(value);
-          const strVal = value === null ? '' : (value && typeof value === 'object' && '$oid' in value) ? value.$oid : String(value);
-          e.dataTransfer.setData('qb-field', JSON.stringify({ field: path, type, value: strVal }));
+          const f = leafFilter(value);
+          e.dataTransfer.setData('qb-field', JSON.stringify({ field: path, type: f.type, value: f.value }));
           e.dataTransfer.effectAllowed = 'copy';
+          hooks.onFieldDrag?.(true);
         }}
+        onDragEnd={() => hooks.onFieldDrag?.(false)}
       >
         <span className="tree-key">{name}</span>
         <span className="tree-sep">: </span>
         <ValueDisplay value={value} />
+        {hooks.onAddFilter && (
+          <button
+            className="tree-filter-btn"
+            title={`Filter: ${path} = this value`}
+            aria-label={`Filter on ${path}`}
+            onClick={e => { e.stopPropagation(); const f = leafFilter(value); hooks.onAddFilter!(path, f.type, f.value); }}
+          ><Icon name="filter" size={11} /></button>
+        )}
       </div>
     );
   }
@@ -78,14 +115,14 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget }:
           key={k} name={k}
           path={path ? `${path}.${k}` : k}
           value={v} depth={depth + 1}
-          expandTick={expandTick} expandTarget={expandTarget}
+          expandTick={expandTick} expandTarget={expandTarget} hooks={hooks}
         />
       ))}
     </div>
   );
 }
 
-interface DocTreeProps {
+interface DocTreeProps extends FilterHooks {
   doc: any;
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
@@ -98,8 +135,9 @@ interface DocTreeProps {
 
 export default function DocumentTree({
   doc, selected, onSelect, onContextMenu,
-  expandTick, expandTarget, docExpTick = 0, docExpTarget = true
+  expandTick, expandTarget, docExpTick = 0, docExpTarget = true, onAddFilter, onFieldDrag,
 }: DocTreeProps) {
+  const hooks = useMemo(() => ({ onAddFilter, onFieldDrag }), [onAddFilter, onFieldDrag]);
   const [open, setOpen] = useState(false);
   const [internalTick, setInternalTick] = useState(0);
   const [internalTarget, setInternalTarget] = useState(false);
@@ -140,14 +178,14 @@ export default function DocumentTree({
         onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
       >
         <span className="tree-chevron" onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>{open ? '▾' : '▸'}</span>
-        <span className="doc-tree-id">{preview}</span>
+        <span className="doc-tree-id" title={oidTitle(rawId)}>{preview}</span>
         {!open && previewFields.length > 0 && (
           <span className="doc-tree-preview">
             {previewFields.map(f => (
               <span key={f.key} className="doc-preview-field">
                 <span className="tree-key">{f.key}</span>
                 <span className="tree-sep">: </span>
-                <span className={f.cls}>{f.text}</span>
+                <span className={f.cls} title={f.title}>{f.text}</span>
               </span>
             ))}
           </span>
@@ -156,7 +194,7 @@ export default function DocumentTree({
       {open && (
         <div className="doc-tree-body">
           {Object.entries(doc).map(([k, v]) => (
-            <TreeNode key={k} name={k} path={k} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} />
+            <TreeNode key={k} name={k} path={k} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} hooks={hooks} />
           ))}
         </div>
       )}

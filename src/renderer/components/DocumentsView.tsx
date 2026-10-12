@@ -5,12 +5,15 @@ import Icon from './Icon';
 import { showConfirm, showAlert } from '../dialog';
 import { isTypingTarget } from '../utils/dom';
 import { onEscape, onRunKey } from '../utils/keys';
-import { buildFilter, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
+import { buildFilter, splitFilter, combineFilters, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
 import {
   cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
   loadHiddenFields, saveHiddenFields, sortTooltip, SORT_DIR_LABEL, SORT_DIR_HINT,
   type SortKey, type SortDir,
+  cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey,
 } from '../utils/docTable';
+import { prettyDoc, formatJson, validateJson, parseEditable } from '../utils/editableJson';
+import { oidTitle } from '../utils/objectId';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
 import { useVirtualRows, VirtualSpacer } from './VirtualRows';
 import BulkEditModal from './BulkEditModal';
@@ -31,33 +34,6 @@ interface DocumentsViewProps {
   /** Connection flag: every write is refused by the main process anyway, this
    *  only keeps the buttons from offering what will be rejected. */
   readOnly?: boolean;
-}
-
-// Shell-style pretty print: {$oid:"x"} → ObjectId("x"), {$date:"x"} → ISODate("x")
-function prettyDoc(doc: any): string {
-  return JSON.stringify(doc, null, 2)
-    .replace(/\{\s*"\$oid":\s*"([0-9a-fA-F]{24})"\s*\}/g, 'ObjectId("$1")')
-    .replace(/\{\s*"\$date":\s*"([^"\\]+)"\s*\}/g, 'ISODate("$1")');
-}
-
-function normalizePretty(text: string): string {
-  return text
-    .replace(/ObjectId\(\s*"([0-9a-fA-F]{24})"\s*\)/g, '{"$$oid":"$1"}')
-    .replace(/ObjectId\(\s*'([0-9a-fA-F]{24})'\s*\)/g, '{"$$oid":"$1"}')
-    .replace(/ISODate\(\s*"([^"]+)"\s*\)/g, '{"$$date":"$1"}')
-    .replace(/ISODate\(\s*'([^']+)'\s*\)/g, '{"$$date":"$1"}');
-}
-
-function formatJson(raw: string): string {
-  try { return prettyDoc(JSON.parse(normalizePretty(raw))); } catch { return raw; }
-}
-
-function validateJson(raw: string): string | null {
-  try { JSON.parse(normalizePretty(raw)); return null; } catch (e: any) { return e.message; }
-}
-
-function parseEditable(raw: string): any {
-  return JSON.parse(normalizePretty(raw));
 }
 
 /** Case-insensitive match stepping shared by the edit and view find bars. */
@@ -127,6 +103,21 @@ export const loadLineNumbers = () => localStorage.getItem(LINE_NUMBERS_KEY) !== 
 export const saveLineNumbers = (on: boolean) => localStorage.setItem(LINE_NUMBERS_KEY, String(on));
 
 const WRAP_KEY = 'docEditorWrap';
+// Query panel width, dragged from its left edge and remembered like the
+// sidebar's. Out-of-range or unreadable values fall back to the default.
+const QB_WIDTH_KEY = 'queryPanelWidth';
+export const QB_DEFAULT_WIDTH = 270;
+export const QB_MIN_WIDTH = 220;
+export const QB_MAX_WIDTH = 900;
+const clampQbWidth = (w: number) => Math.min(QB_MAX_WIDTH, Math.max(QB_MIN_WIDTH, Math.round(w)));
+export const loadQbWidth = () => {
+  try {
+    const n = Number(localStorage.getItem(QB_WIDTH_KEY));
+    return n >= QB_MIN_WIDTH && n <= QB_MAX_WIDTH ? n : QB_DEFAULT_WIDTH;
+  } catch { return QB_DEFAULT_WIDTH; }
+};
+const saveQbWidth = (w: number) => { try { localStorage.setItem(QB_WIDTH_KEY, String(w)); } catch {} };
+
 export const loadWrap = () => localStorage.getItem(WRAP_KEY) === 'true';
 export const saveWrap = (on: boolean) => localStorage.setItem(WRAP_KEY, String(on));
 
@@ -158,7 +149,28 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   // Closed by default: an empty builder took ~20% of the width to show a
   // placeholder. The toolbar Filter button opens it and carries the count.
-  const [showQB, setShowQB] = useState(false);
+  // Open by default: the filter is the first thing most visits to a collection need.
+  const [showQB, setShowQB] = useState(true);
+  const [qbWidth, setQbWidth] = useState(loadQbWidth);
+  const startQbResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX, startW = qbWidth;
+    let latest = startW;
+    // The panel is on the right, so dragging its left edge leftwards widens it.
+    const onMove = (ev: MouseEvent) => { latest = clampQbWidth(startW + startX - ev.clientX); setQbWidth(latest); };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      saveQbWidth(latest);
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  // A field from the tree is being dragged: the panel opens so there is
+  // somewhere to drop it, and the drop zone lights up until the drag ends.
+  const [fieldDragging, setFieldDragging] = useState(false);
   const [matchAll, setMatchAll] = useState(true);
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [limit, setLimit] = useState(20);
@@ -184,6 +196,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; idx: number } | null>(null);
   const [emptyCtxMenu, setEmptyCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [showQueryModal, setShowQueryModal] = useState(false);
+  // The filter as JSON, editable: what Apply sends back into the builder.
+  const [filterJson, setFilterJson] = useState('');
+  const [filterJsonError, setFilterJsonError] = useState<string | null>(null);
+  // A filter written as JSON that the builder cannot take apart (`$elemMatch`,
+  // `$expr`, nested logic…). Kept whole and ANDed with the conditions.
+  const [rawFilter, setRawFilter] = useState<any | null>(null);
   // Add document modal
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [addJson, setAddJson] = useState('');
@@ -256,7 +274,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   };
 
   useEffect(() => {
-    setConditions([]); setSelectedIndices(new Set()); setDocExpands({});
+    setConditions([]); setRawFilter(null); setSelectedIndices(new Set()); setDocExpands({});
     setPage(0); setTotal(0);
     const hidden = loadHiddenFields(connectionId, database, collection);
     setSortKeys([]); setHiddenFields(hidden); setShowFieldsMenu(false);
@@ -265,14 +283,32 @@ export default function DocumentsView({ connectionId, database, collection, acti
 
   const history = useQueryHistory('filter', connectionId, database, collection);
 
+  // The filter actually sent: the builder's conditions, ANDed with the custom
+  // JSON filter when there is one. Arguments override state for the handlers
+  // that load in the same tick as they set it.
+  const currentFilter = (conds: Condition[] = conditions, all: boolean = matchAll, raw: any = rawFilter) =>
+    combineFilters(raw, buildFilter(conds, all));
+
+  // What the history remembers: conditions, plus the sort when there is one
+  // (left out otherwise, so a sort-less entry reads exactly as it always did).
+  const filterEntry = () => {
+    const sort = buildSort(sortKeys);
+    return {
+      body: JSON.stringify({
+        matchAll, conditions: conditions.map(({ id: _id, ...rest }) => rest),
+        ...(sortKeys.length > 0 ? { sort: sortKeys } : {}),
+        ...(rawFilter ? { raw: rawFilter } : {}),
+      }),
+      label: previewLabel(JSON.stringify(currentFilter()) + (sort ? ` sort ${JSON.stringify(sort)}` : '')),
+    };
+  };
+
   const applyFilter = () => {
-    const filter = buildFilter(conditions, matchAll);
-    // An empty filter is not worth remembering — it is what Reset does.
-    if (conditions.length > 0) {
-      history.record(
-        JSON.stringify({ matchAll, conditions: conditions.map(({ id: _id, ...rest }) => rest) }),
-        previewLabel(JSON.stringify(filter)),
-      );
+    const filter = currentFilter();
+    // An empty query is not worth remembering — it is what Reset does.
+    if (conditions.length > 0 || sortKeys.length > 0 || rawFilter) {
+      const entry = filterEntry();
+      history.record(entry.body, entry.label);
     }
     setPage(0);
     loadDocuments(filter, limit, 0);
@@ -280,24 +316,54 @@ export default function DocumentsView({ connectionId, database, collection, acti
 
   // A recalled filter carries no condition ids — they are per-session UI keys.
   const recallFilter = (entry: QueryEntry) => {
-    let parsed: { matchAll: boolean; conditions: Omit<Condition, 'id'>[] };
+    let parsed: { matchAll: boolean; conditions: Omit<Condition, 'id'>[]; sort?: SortKey[]; raw?: any };
     try { parsed = JSON.parse(entry.body); } catch { return; }
     const restored = parsed.conditions.map(c => ({ ...c, id: ++condId }));
+    const keys = Array.isArray(parsed.sort) ? parsed.sort : [];
     setConditions(restored);
     setMatchAll(parsed.matchAll);
+    const raw = parsed.raw ?? null;
+    setSortKeys(keys);
+    setRawFilter(raw);
     setShowQB(true);
     setPage(0);
-    loadDocuments(buildFilter(restored, parsed.matchAll), limit, 0);
+    loadDocuments(currentFilter(restored, parsed.matchAll, raw), limit, 0, keys);
   };
-  const resetFilter = () => { setConditions([]); setPage(0); loadDocuments({}, limit, 0); };
-  const goToPage = (pg: number) => { setPage(pg); loadDocuments(buildFilter(conditions, matchAll), limit, pg); };
+  // Reset clears the whole query panel, sort included.
+  const resetFilter = () => { setConditions([]); setRawFilter(null); setSortKeys([]); setPage(0); loadDocuments({}, limit, 0, []); };
+
+  // JSON editor for the filter. Apply takes the text apart into builder
+  // conditions when it can; otherwise the whole thing stays as a custom JSON
+  // filter rather than being trimmed to what the builder understands.
+  const openFilterJson = () => {
+    setFilterJson(prettyDoc(currentFilter()));
+    setFilterJsonError(null);
+    setShowQueryModal(true);
+  };
+  const applyFilterJson = () => {
+    let parsed: any;
+    try { parsed = parseEditable(filterJson.trim() || '{}'); } catch (e: any) { setFilterJsonError('Invalid JSON: ' + e.message); return; }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { setFilterJsonError('A filter is a JSON object: { … }'); return; }
+    const split = splitFilter(parsed);
+    const conds = split.conditions.map(c => ({ ...c, id: ++condId }));
+    const all = split.conditions.length > 0 ? split.matchAll : matchAll;
+    const raw = split.rest;
+    setConditions(conds); setMatchAll(all); setRawFilter(raw);
+    setShowQueryModal(false); setShowQB(true);
+    setPage(0);
+    loadDocuments(currentFilter(conds, all, raw), limit, 0);
+    if (raw) showToast(conds.length > 0
+      ? 'Part of the filter kept as custom JSON — the builder cannot show it as conditions'
+      : 'Kept as a custom JSON filter — the builder cannot show it as conditions');
+  };
+  const goToPage = (pg: number) => { setPage(pg); loadDocuments(currentFilter(), limit, pg); };
 
   // Sorting and hiding both re-run the query from page 0: the current page of a
   // differently-sorted result is a different set of documents, and a stale page
   // number would point past the end of nothing in particular.
   const applySort = (keys: SortKey[]) => {
     setSortKeys(keys); setPage(0); setSelectedIndices(new Set());
-    loadDocuments(buildFilter(conditions, matchAll), limit, 0, keys);
+    loadDocuments(currentFilter(), limit, 0, keys);
   };
   const headerSort = (field: string, additive: boolean) => applySort(cycleSort(sortKeys, field, additive));
   const sortField = (field: string, dir: SortDir) => {
@@ -309,7 +375,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     setHiddenFields(hidden);
     saveHiddenFields(connectionId, database, collection, hidden);
     setPage(0);
-    loadDocuments(buildFilter(conditions, matchAll), limit, 0, sortKeys, hidden);
+    loadDocuments(currentFilter(), limit, 0, sortKeys, hidden);
   };
 
   // The fields popover is a plain absolutely-positioned div, not a modal, so it
@@ -409,7 +475,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
       const docs = Array.isArray(parsed) ? parsed : [parsed];
       await inv('insert-documents', connectionId, database, collection, docs);
       setShowAddDoc(false);
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setAddError(err.message); }
   };
 
@@ -453,7 +519,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
         inv('delete-document', connectionId, database, collection, idToString(doc._id))
       ));
       setSelectedIndices(new Set());
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setError(err.message); }
   }, [selectedIndices, documents, connectionId, database, collection, conditions, limit]);
 
@@ -476,7 +542,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
       const res = await inv('bulk-update-documents', connectionId, database, collection, ids, update);
       setShowBulkEdit(false);
       showToast({ message: `${res.modifiedCount} document${res.modifiedCount === 1 ? '' : 's'} updated`, kind: 'success' });
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setError(err.message); }
   };
 
@@ -490,7 +556,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
       // Remove _id from pasted docs to avoid duplicate key errors
       const cleaned = docs.map(({ _id: _, ...rest }: any) => rest);
       await inv('insert-documents', connectionId, database, collection, cleaned);
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setError('Paste failed: ' + err.message); }
   }, [connectionId, database, collection, conditions, limit]);
 
@@ -570,6 +636,14 @@ export default function DocumentsView({ connectionId, database, collection, acti
     const defaultOp = ops[0].value;
     setConditions(prev => [...prev, { id: ++condId, field, op: defaultOp, value, type }]);
   };
+  const addFilterFromTree = (field: string, type: FieldType, value: string) => {
+    addCondition(field, type, value);
+    setShowQB(true);
+  };
+  const onTreeFieldDrag = (dragging: boolean) => {
+    setFieldDragging(dragging);
+    if (dragging) setShowQB(true);
+  };
   const updateCondition = (id: number, changes: Partial<Condition>) => {
     setConditions(prev => prev.map(c => {
       if (c.id !== id) return c;
@@ -588,7 +662,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   };
 
   const handleDropField = (e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(false);
+    e.preventDefault(); setDragOver(false); setFieldDragging(false);
     const raw = e.dataTransfer.getData('qb-field');
     if (raw) {
       try {
@@ -610,7 +684,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     try {
       await inv('update-document', connectionId, database, collection, idToString(editingDoc._id), parsed);
       setEditingDoc(null);
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setEditError(err.message); }
   };
 
@@ -618,7 +692,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     if (!await showConfirm({ message: `Delete document ${idToString(doc._id)}?`, danger: true, confirmText: 'Delete' })) return;
     try {
       await inv('delete-document', connectionId, database, collection, idToString(doc._id));
-      loadDocuments(buildFilter(conditions, matchAll), limit, page);
+      loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setError(err.message); }
   };
 
@@ -647,7 +721,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     try {
       const res = await inv('export-documents', {
         connectionId, dbName: database, collection, format,
-        filter: isView ? buildFilter(conditions, matchAll) : {},
+        filter: isView ? currentFilter() : {},
         sort: isView ? buildSort(sortKeys) : null,
         projection: isView ? buildProjection(hiddenFields) : null,
         filtered: isView && conditions.length > 0,
@@ -759,10 +833,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
         <QueryHistoryMenu
           history={history}
           onPick={recallFilter}
-          current={() => ({
-            body: JSON.stringify({ matchAll, conditions: conditions.map(({ id: _id, ...rest }) => rest) }),
-            label: previewLabel(JSON.stringify(buildFilter(conditions, matchAll))),
-          })}
+          current={filterEntry}
         />
         <div className="fields-menu-wrap" ref={fieldsMenuRef}>
           <button
@@ -969,8 +1040,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
                           />
                         </td>
                         {keys.map(k => (
-                          <td key={k}>
-                            {doc[k] === undefined ? '' : typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k])}
+                          <td key={k} title={oidTitle(doc[k])}>
+                            {cellText(doc[k])}
                           </td>
                         ))}
                       </tr>
@@ -1003,6 +1074,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
                         expandTarget={expandTarget}
                         docExpTick={docExpands[idx]?.tick ?? 0}
                         docExpTarget={docExpands[idx]?.target ?? true}
+                        onAddFilter={addFilterFromTree}
+                        onFieldDrag={onTreeFieldDrag}
                       />
                     </div>
                   );
@@ -1016,10 +1089,21 @@ export default function DocumentsView({ connectionId, database, collection, acti
         {/* Query Builder — right panel */}
         {showQB && (() => {
           const fieldList = allFields();
-          const activeFilter = buildFilter(conditions, matchAll);
-          const hasFilter = conditions.length > 0;
+          const activeFilter = currentFilter();
+          const activeSort = buildSort(sortKeys);
+          const hasFilter = conditions.length > 0 || sortKeys.length > 0 || !!rawFilter;
           return (
-            <div className="qb-panel">
+            <>
+            <div
+              className="sidebar-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize query panel"
+              title="Drag to resize · double-click to reset"
+              onMouseDown={startQbResize}
+              onDoubleClick={() => { setQbWidth(QB_DEFAULT_WIDTH); saveQbWidth(QB_DEFAULT_WIDTH); }}
+            />
+            <div className="qb-panel" style={{ width: qbWidth }}>
               <div className="qb-panel-header">
                 <span className="qb-panel-title">Query</span>
                 <select
@@ -1033,6 +1117,17 @@ export default function DocumentsView({ connectionId, database, collection, acti
               </div>
 
               <div className="qb-conditions-list">
+                {rawFilter && (
+                  <div className="qb-cond-card qb-raw-card">
+                    <div className="qb-cond-row1">
+                      <span className="qb-raw-title">Custom JSON filter</span>
+                      <button className="qb-del-btn" title="Edit as JSON" aria-label="Edit custom filter" onClick={openFilterJson}><Icon name="edit" size={13} /></button>
+                      <button className="qb-del-btn" title="Remove the custom filter" aria-label="Remove custom filter"
+                        onClick={() => { setRawFilter(null); setPage(0); loadDocuments(currentFilter(conditions, matchAll, null), limit, 0); }}><Icon name="trash" size={13} /></button>
+                    </div>
+                    <code className="qb-raw-preview">{JSON.stringify(rawFilter)}</code>
+                  </div>
+                )}
                 {conditions.map(c => {
                   const ops = OPERATORS_BY_TYPE[c.type] || OPERATORS_BY_TYPE.string;
                   const opDef = ops.find(o => o.value === c.op);
@@ -1081,7 +1176,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                 })}
 
                 <div
-                  className={`qb-drop-zone${dragOver ? ' drag-over' : ''}`}
+                  className={`qb-drop-zone${dragOver ? ' drag-over' : ''}${fieldDragging ? ' drag-active' : ''}`}
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={handleDropField}
@@ -1089,8 +1184,43 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     if (fieldList.length > 0) addCondition(fieldList[0].field, fieldList[0].type);
                   }}
                 >
-                  + Drag field here or double-click
+                  + Drag a field here — from a document or the list below — or double-click
                 </div>
+              </div>
+
+              <div className="qb-sort-section">
+                <div className="qb-fields-title">Sort</div>
+                {sortKeys.map((k, i) => (
+                  <div key={k.field} className="qb-sort-row">
+                    <span className="qb-sort-rank" title="Precedence: 1 sorts first, the next ones break ties">{i + 1}</span>
+                    <select
+                      className="qb-field-select"
+                      aria-label={`Sort field ${i + 1}`}
+                      value={k.field}
+                      onChange={e => applySort(setSortKeyField(sortKeys, i, e.target.value))}
+                    >
+                      {(fieldOptions.includes(k.field) ? fieldOptions : [k.field, ...fieldOptions]).map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="fields-sort-btn active"
+                      title={`${SORT_DIR_LABEL[k.dir]} (${SORT_DIR_HINT[k.dir]}) — click for ${SORT_DIR_LABEL[k.dir === 1 ? -1 : 1]}`}
+                      onClick={() => applySort(setSortKeyDir(sortKeys, i, k.dir === 1 ? -1 : 1))}
+                    ><Icon name={k.dir === 1 ? 'arrowUp' : 'arrowDown'} size={11} /> {k.dir === 1 ? 'ASC' : 'DESC'}</button>
+                    <button className="qb-del-btn" title="Move up (sort by this first)" aria-label={`Move ${k.field} up`}
+                      disabled={i === 0} onClick={() => applySort(moveSortKey(sortKeys, i, -1))}><Icon name="arrowUp" size={12} /></button>
+                    <button className="qb-del-btn" title="Move down" aria-label={`Move ${k.field} down`}
+                      disabled={i === sortKeys.length - 1} onClick={() => applySort(moveSortKey(sortKeys, i, 1))}><Icon name="arrowDown" size={12} /></button>
+                    <button className="qb-del-btn" title="Remove this sort key" aria-label={`Remove sort on ${k.field}`}
+                      onClick={() => applySort(removeSortKey(sortKeys, i))}><Icon name="trash" size={13} /></button>
+                  </div>
+                ))}
+                <button
+                  className="secondary btn-xs qb-sort-add"
+                  disabled={fieldOptions.every(f => sortKeys.some(k => k.field === f))}
+                  onClick={() => applySort(addSortKey(sortKeys, fieldOptions))}
+                ><Icon name="plus" size={11} /> Add sort field</button>
               </div>
 
               {fieldList.length > 0 && (
@@ -1104,7 +1234,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
                         draggable
                         onDragStart={e => {
                           const val = documents[0]?.[field];
-                          const strVal = val == null ? '' : (typeof val === 'object' && '$oid' in val) ? val.$oid : String(val);
+                          const strVal = val == null ? '' : (typeof val === 'object' && '$oid' in val) ? val.$oid
+                            : (typeof val === 'object' && '$date' in val) ? String(val.$date) : String(val);
                           e.dataTransfer.setData('qb-field', JSON.stringify({ field, type, value: strVal }));
                         }}
                         onClick={() => addCondition(field, type)}
@@ -1125,20 +1256,23 @@ export default function DocumentsView({ connectionId, database, collection, acti
                       <span>Query preview</span>
                       <span
                         className="qb-expand-btn"
-                        onClick={e => { e.preventDefault(); setShowQueryModal(true); }}
+                        onClick={e => { e.preventDefault(); openFilterJson(); }}
                       ><Icon name="expand" size={11} /> expand</span>
                     </summary>
                     <pre className="qb-preview">{JSON.stringify(activeFilter, null, 2)}</pre>
+                    {activeSort && <pre className="qb-preview">{`sort ${JSON.stringify(activeSort)}`}</pre>}
                   </details>
                 )}
                 <div className="qb-footer-btns">
                   <button className="secondary btn-xs" onClick={resetFilter}>↺ Reset</button>
+                  <button className="secondary btn-xs" onClick={openFilterJson} title="See, copy or edit the filter as JSON" aria-label="Filter as JSON"><Icon name="edit" size={11} /> JSON</button>
                   <button className="btn-xs grow" onClick={applyFilter} disabled={loading}>
                     {loading ? '…' : '▶ Run'}
                   </button>
                 </div>
               </div>
             </div>
+            </>
           );
         })()}
       </div>
@@ -1148,7 +1282,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
           {totalEstimated ? '≈' : ''}{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}
         </span>
         <span className="status-filter">
-          {conditions.length > 0 ? JSON.stringify(buildFilter(conditions, matchAll)) : ''}
+          {conditions.length > 0 || rawFilter ? JSON.stringify(currentFilter()) : ''}
         </span>
         <div className="status-pager">
           <button className="page-btn" onClick={() => goToPage(0)} disabled={page === 0 || loading}>«</button>
@@ -1188,7 +1322,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
           namespace={`${database}.${collection}`}
           load={() => inv(
             'explain-find', connectionId, database, collection,
-            buildFilter(conditions, matchAll), buildSort(sortKeys), buildProjection(hiddenFields),
+            currentFilter(), buildSort(sortKeys), buildProjection(hiddenFields),
           )}
           onClose={() => setShowExplain(false)}
         />
@@ -1212,26 +1346,43 @@ export default function DocumentsView({ connectionId, database, collection, acti
         />
       )}
 
-      {/* Query preview modal */}
-      {showQueryModal && (
-        <div className="modal-overlay" onClick={() => setShowQueryModal(false)}>
-          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Query</h3>
-              <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
-            </div>
-            <div className="modal-body">
-              <pre className="code-block">
-                {JSON.stringify(buildFilter(conditions, matchAll), null, 2)}
-              </pre>
-            </div>
-            <div className="modal-footer">
-              <button className="secondary" onClick={() => { navigator.clipboard.writeText(JSON.stringify(buildFilter(conditions, matchAll), null, 2)); }}><Icon name="copy" size={13} /> Copy</button>
-              <button onClick={() => setShowQueryModal(false)}>Close</button>
+      {/* Filter as JSON: see, copy, edit — Apply feeds it back into the builder */}
+      {showQueryModal && (() => {
+        const jsonErr = filterJson.trim() ? validateJson(filterJson) : null;
+        return (
+          <div className="modal-overlay" onClick={() => setShowQueryModal(false)}>
+            <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Filter (JSON)</h3>
+                <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
+              </div>
+              <div className="modal-body">
+                <MonacoJsonEditor
+                  className={`short${jsonErr ? ' invalid' : ''}`}
+                  value={filterJson}
+                  lineNumbers={lineNumbers}
+                  theme={monacoTheme}
+                  onChange={v => { setFilterJson(v); setFilterJsonError(null); }}
+                  onSave={applyFilterJson}
+                />
+                {sortKeys.length > 0 && (
+                  <div className="modal-hint">Sort (set in the panel): <code>{JSON.stringify(buildSort(sortKeys))}</code></div>
+                )}
+                <div className="modal-hint">
+                  ObjectId("…") and ISODate("…") work · Ctrl+Enter apply · Esc close. What the builder cannot show as conditions is kept as a custom JSON filter.
+                </div>
+                {(filterJsonError || jsonErr) && <div className="modal-error">{filterJsonError ?? jsonErr}</div>}
+              </div>
+              <div className="modal-footer">
+                <button className="secondary" onClick={() => { navigator.clipboard.writeText(filterJson); showToast('Filter copied'); }}><Icon name="copy" size={13} /> Copy</button>
+                <button className="secondary" onClick={() => setFilterJson(formatJson(filterJson))}>Format</button>
+                <button className="secondary" onClick={() => setShowQueryModal(false)}>Cancel</button>
+                <button onClick={applyFilterJson} disabled={!!jsonErr}>Apply</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Add document modal */}
       {showAddDoc && (() => {
