@@ -33,8 +33,9 @@ function ensureJsonDiagnostics() {
 export interface MonacoJsonEditorHandle {
   focus: () => void;
   /** Select a range by plain character offset into the current value (e.g. a
-   *  find-in-document match) and scroll it into view. */
-  selectOffsetRange: (start: number, end: number) => void;
+   *  find-in-document match) and scroll it into view. `focus: false` while the
+   *  user is still typing in the find box, or each keystroke would land in the editor. */
+  selectOffsetRange: (start: number, end: number, focus?: boolean) => void;
   /** Fold / unfold every object and array — the modals' Expand all / Collapse all. */
   foldAll: () => void;
   unfoldAll: () => void;
@@ -79,14 +80,14 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
-    selectOffsetRange: (start, end) => {
+    selectOffsetRange: (start, end, focus = true) => {
       const ed = editorRef.current;
       const model = ed?.getModel();
       if (!ed || !model) return;
       const range = monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(end));
       ed.setSelection(range);
       ed.revealRangeInCenter(range);
-      ed.focus();
+      if (focus) ed.focus();
     },
     // Both actions are registered by the folding contrib imported above.
     foldAll: () => { void editorRef.current?.getAction('editor.foldAll')?.run(); },

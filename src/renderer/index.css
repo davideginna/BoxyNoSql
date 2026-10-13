@@ -1389,7 +1389,7 @@ button,
 .json-status { font-size: var(--fs-xs); display: inline-flex; align-items: center; gap: var(--space-1); }
 .json-status.invalid { color: var(--error); }
 .json-status.valid { color: var(--success); }
-.modal-error { color: var(--error); margin-bottom: var(--space-4); font-size: var(--fs-sm); }
+.modal-error { color: var(--error); margin-bottom: var(--space-4); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .modal-hint { font-size: var(--fs-xs); color: var(--text-secondary); margin-top: var(--space-2); }
 /* Section blurb above the first control. The global `* { margin: 0 }` reset
    means it needs its own gap, or it sits flush against the first label. */

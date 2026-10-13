@@ -49,6 +49,14 @@ function stepMatch(text: string, query: string, idx: number, dir: 1 | -1): { idx
   return { idx: next, start: positions[next] };
 }
 
+/** "3 / 12" — which match is selected, out of how many. Typing selects the first,
+ *  so idx is always a shown match; clamped because editing can drop matches under it. */
+function findCountLabel(query: string, idx: number, count: number): string {
+  if (!query) return '';
+  if (count === 0) return 'No matches';
+  return `${Math.min(idx, count - 1) + 1} / ${count}`;
+}
+
 function escapeRe(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 interface DiffEntry {
@@ -806,6 +814,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
     setViewFindIdx(next.idx);
     viewEditorRef.current?.selectOffsetRange(next.start, next.start + viewFind.length);
   };
+  // Typing in a find box jumps to the first match, keeping the focus in the box.
+  // idx stays 0, so the next Enter moves on to the second one.
+  const revealFirstMatch = (ref: typeof viewEditorRef, text: string, query: string) => {
+    const first = stepMatch(text, query, -1, 1);
+    if (first) ref.current?.selectOffsetRange(first.start, first.start + query.length, false);
+  };
   const toggleViewFind = () => { setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); };
 
   const hasSelection = selectedIndices.size > 0;
@@ -1418,13 +1432,13 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     Line numbers
                   </label>
                   {addValid
-                    ? <span className="json-status invalid"><Icon name="close" size={11} /> {addValid}</span>
+                    ? <span className="json-status invalid" title={addValid}><Icon name="close" size={11} /> Invalid</span>
                     : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
                   <button className="icon-btn" onClick={() => setShowAddDoc(false)}><Icon name="close" size={14} /></button>
                 </div>
               </div>
               <div className="modal-body">
-                {addError && <div className="modal-error">{addError}</div>}
+                {(addError || addValid) && <div className="modal-error">{addError ?? `Invalid JSON: ${addValid}`}</div>}
                 <MonacoJsonEditor
                   className={`tall${addValid ? ' invalid' : ''}`}
                   value={addJson}
@@ -1483,7 +1497,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     Wrap
                   </label>
                   {jsonValid
-                    ? <span className="json-status invalid"><Icon name="close" size={11} /> {jsonValid}</span>
+                    ? <span className="json-status invalid" title={jsonValid}><Icon name="close" size={11} /> Invalid</span>
                     : <span className="json-status valid"><Icon name="check" size={11} /> Valid</span>}
                   <button className="icon-btn" title={editMaximized ? 'Restore size' : 'Maximize'}
                     onClick={() => setEditMaximized(m => !m)}><Icon name="expand" size={13} /></button>
@@ -1494,20 +1508,20 @@ export default function DocumentsView({ connectionId, database, collection, acti
                 <div className="find-bar">
                   <input ref={editFindRef} className="find-input" placeholder="Find…"
                     value={editFind}
-                    onChange={e => { setEditFind(e.target.value); setEditFindIdx(0); }}
+                    onChange={e => { setEditFind(e.target.value); setEditFindIdx(0); revealFirstMatch(editEditorRef, editJson, e.target.value); }}
                     onKeyDown={e => {
                       if (e.key === 'Enter') findInEdit(e.shiftKey ? -1 : 1);
                       if (e.key === 'Escape') { setShowEditFind(false); setEditFind(''); }
                     }}
                   />
-                  <span className="find-count">{editFind ? `${editMatchCount} match${editMatchCount !== 1 ? 'es' : ''}` : ''}</span>
+                  <span className="find-count">{findCountLabel(editFind, editFindIdx, editMatchCount)}</span>
                   <button className="find-nav" onClick={() => findInEdit(-1)}>↑</button>
                   <button className="find-nav" onClick={() => findInEdit(1)}>↓</button>
                   <button className="find-close" onClick={() => { setShowEditFind(false); setEditFind(''); }}><Icon name="close" size={14} /></button>
                 </div>
               )}
               <div className="modal-body">
-                {editError && <div className="modal-error">{editError}</div>}
+                {(editError || jsonValid) && <div className="modal-error">{editError ?? `Invalid JSON: ${jsonValid}`}</div>}
                 <MonacoJsonEditor
                   className={`${diff && diff.length > 0 ? 'short' : 'tall'}${jsonValid ? ' invalid' : ''}`}
                   value={editJson}
@@ -1576,13 +1590,13 @@ export default function DocumentsView({ connectionId, database, collection, acti
                   className="find-input"
                   placeholder="Find…"
                   value={viewFind}
-                  onChange={e => { setViewFind(e.target.value); setViewFindIdx(0); }}
+                  onChange={e => { setViewFind(e.target.value); setViewFindIdx(0); revealFirstMatch(viewEditorRef, viewText, e.target.value); }}
                   onKeyDown={e => {
                     if (e.key === 'Enter') findInView(e.shiftKey ? -1 : 1);
                     if (e.key === 'Escape') { setShowViewFind(false); setViewFind(''); }
                   }}
                 />
-                <span className="find-count">{viewFind ? `${viewMatchCount} match${viewMatchCount !== 1 ? 'es' : ''}` : ''}</span>
+                <span className="find-count">{findCountLabel(viewFind, viewFindIdx, viewMatchCount)}</span>
                 <button className="find-nav" onClick={() => findInView(-1)}>↑</button>
                 <button className="find-nav" onClick={() => findInView(1)}>↓</button>
                 <button className="find-close" onClick={() => { setShowViewFind(false); setViewFind(''); }}><Icon name="close" size={14} /></button>
