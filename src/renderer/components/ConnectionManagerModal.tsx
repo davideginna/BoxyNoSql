@@ -256,7 +256,8 @@ export default function ConnectionManagerModal(props: Props) {
     // collapsed folder would look like no result at all.
     const isOpen = query ? true : expandedFolders.has(folder.id);
     const childFolders = getChildFolders(folder.id);
-    const folderConns = matchingConns.filter(c => c.folderId === folder.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const folderConns = matchingConns.filter(c => c.folderId === folder.id)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
     const siblings = getSiblings(folder);
     const sibIdx = siblings.findIndex(f => f.id === folder.id);
     return (
