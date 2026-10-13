@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.8.2] - 2026-10-13
+
+### Security
+- **Electron updated to 42.11.12** (from 42.3.0), with its security fixes, and the build toolchain's vulnerable dependencies updated (`tar`, `undici`, `axios`, `@xmldom/xmldom`, `js-yaml`, `vite`…). No change in how the app works
+
 ## [1.8.1] - 2026-10-13
 
 ### Added
