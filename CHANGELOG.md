@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.3] - 2026-10-13
+
+### Changed
+- **Connections inside a folder are listed alphabetically** in the connection manager (case doesn't matter, `prod2` comes before `prod10`)
+- **Find in a document's Edit / View window jumps to the first match while you type**, and shows which match is selected out of how many (`3 / 12`) as you move with the arrows or Enter. Before, the first Enter skipped straight to the second match
+
+### Fixed
+- **JSON errors in the document editor no longer overflow the window.** The full message is now shown, wrapped, between the toolbar and the JSON (Edit and Add document); the toolbar keeps a short "Invalid" badge, with the message on hover
+
 ## [1.8.2] - 2026-10-13
 
 ### Security
