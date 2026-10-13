@@ -997,6 +997,22 @@ describe('DocumentsView — filter as JSON', () => {
     expect(screen.getByText(/A filter is a JSON object/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Filter (JSON)' })).toBeInTheDocument();
   });
+
+  it('shows the sort as JSON and applies an edited one', async () => {
+    const lastSort = () => invoke.mock.calls.filter(c => c[0] === 'get-documents').at(-1)![7];
+    await openJson();
+    const sortTa = () => screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelectorAll('textarea')[1] as HTMLTextAreaElement;
+    expect(sortTa().value).toBe('{}');
+    fireEvent.change(sortTa(), { target: { value: '{"n": -1, "name": 1}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastSort()).toEqual({ n: -1, name: 1 }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
+    expect(JSON.parse(sortTa().value)).toEqual({ n: -1, name: 1 });
+    fireEvent.change(sortTa(), { target: { value: '{"n": 0}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByText(/must be 1 or -1/)).toBeInTheDocument();
+  });
 });
 
 describe('DocumentsView — filter as JSON, partly expressible', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey,
-  cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
+  cycleSort, buildSort, parseSort, buildProjection, knownFields, toggleHidden,
   loadHiddenFields, saveHiddenFields, SORT_DIR_LABEL, SORT_DIR_HINT, sortTooltip, SortKey,
 } from '../utils/docTable';
 
@@ -188,5 +188,27 @@ describe('sort rows (query panel)', () => {
 
   it('removes a row', () => {
     expect(removeSortKey([A, B, C], 1)).toEqual([A, C]);
+  });
+});
+
+describe('parseSort', () => {
+  it('inverts buildSort, keeping key order', () => {
+    const keys = [desc('age'), asc('name')];
+    expect(parseSort(buildSort(keys))).toEqual({ keys });
+  });
+
+  it('reads an empty object or null as no sort', () => {
+    expect(parseSort({})).toEqual({ keys: [] });
+    expect(parseSort(null)).toEqual({ keys: [] });
+  });
+
+  it('accepts asc/desc strings', () => {
+    expect(parseSort({ a: 'asc', b: 'DESC' })).toEqual({ keys: [asc('a'), desc('b')] });
+  });
+
+  it('refuses what the sort rows cannot show', () => {
+    expect(parseSort({ a: 0 })).toHaveProperty('error');
+    expect(parseSort({ score: { $meta: 'textScore' } })).toHaveProperty('error');
+    expect(parseSort([1])).toHaveProperty('error');
   });
 });

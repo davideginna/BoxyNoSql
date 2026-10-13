@@ -10,7 +10,7 @@ import {
   cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
   loadHiddenFields, saveHiddenFields, sortTooltip, SORT_DIR_LABEL, SORT_DIR_HINT,
   type SortKey, type SortDir,
-  cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey,
+  cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey, parseSort,
 } from '../utils/docTable';
 import { prettyDoc, formatJson, validateJson, parseEditable } from '../utils/editableJson';
 import { oidTitle } from '../utils/objectId';
@@ -199,6 +199,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
   // The filter as JSON, editable: what Apply sends back into the builder.
   const [filterJson, setFilterJson] = useState('');
   const [filterJsonError, setFilterJsonError] = useState<string | null>(null);
+  // The sort, edited next to the filter in the same modal.
+  const [sortJson, setSortJson] = useState('');
   // A filter written as JSON that the builder cannot take apart (`$elemMatch`,
   // `$expr`, nested logic…). Kept whole and ANDed with the conditions.
   const [rawFilter, setRawFilter] = useState<any | null>(null);
@@ -337,6 +339,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   // filter rather than being trimmed to what the builder understands.
   const openFilterJson = () => {
     setFilterJson(prettyDoc(currentFilter()));
+    setSortJson(JSON.stringify(buildSort(sortKeys) ?? {}, null, 2));
     setFilterJsonError(null);
     setShowQueryModal(true);
   };
@@ -344,14 +347,19 @@ export default function DocumentsView({ connectionId, database, collection, acti
     let parsed: any;
     try { parsed = parseEditable(filterJson.trim() || '{}'); } catch (e: any) { setFilterJsonError('Invalid JSON: ' + e.message); return; }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { setFilterJsonError('A filter is a JSON object: { … }'); return; }
+    let sortParsed: any;
+    try { sortParsed = parseEditable(sortJson.trim() || '{}'); } catch (e: any) { setFilterJsonError('Invalid sort JSON: ' + e.message); return; }
+    const sortRes = parseSort(sortParsed);
+    if ('error' in sortRes) { setFilterJsonError(sortRes.error); return; }
+    const keys = sortRes.keys;
     const split = splitFilter(parsed);
     const conds = split.conditions.map(c => ({ ...c, id: ++condId }));
     const all = split.conditions.length > 0 ? split.matchAll : matchAll;
     const raw = split.rest;
-    setConditions(conds); setMatchAll(all); setRawFilter(raw);
+    setConditions(conds); setMatchAll(all); setRawFilter(raw); setSortKeys(keys);
     setShowQueryModal(false); setShowQB(true);
     setPage(0);
-    loadDocuments(currentFilter(conds, all, raw), limit, 0);
+    loadDocuments(currentFilter(conds, all, raw), limit, 0, keys);
     if (raw) showToast(conds.length > 0
       ? 'Part of the filter kept as custom JSON — the builder cannot show it as conditions'
       : 'Kept as a custom JSON filter — the builder cannot show it as conditions');
@@ -1348,7 +1356,9 @@ export default function DocumentsView({ connectionId, database, collection, acti
 
       {/* Filter as JSON: see, copy, edit — Apply feeds it back into the builder */}
       {showQueryModal && (() => {
-        const jsonErr = filterJson.trim() ? validateJson(filterJson) : null;
+        const filterErr = filterJson.trim() ? validateJson(filterJson) : null;
+        const sortErr = sortJson.trim() ? validateJson(sortJson) : null;
+        const jsonErr = filterErr ?? (sortErr ? 'Sort: ' + sortErr : null);
         return (
           <div className="modal-overlay" onClick={() => setShowQueryModal(false)}>
             <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
@@ -1357,19 +1367,26 @@ export default function DocumentsView({ connectionId, database, collection, acti
                 <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
               </div>
               <div className="modal-body">
+                <div className="modal-section-label">Filter</div>
                 <MonacoJsonEditor
-                  className={`short${jsonErr ? ' invalid' : ''}`}
+                  className={`short${filterErr ? ' invalid' : ''}`}
                   value={filterJson}
                   lineNumbers={lineNumbers}
                   theme={monacoTheme}
                   onChange={v => { setFilterJson(v); setFilterJsonError(null); }}
                   onSave={applyFilterJson}
                 />
-                {sortKeys.length > 0 && (
-                  <div className="modal-hint">Sort (set in the panel): <code>{JSON.stringify(buildSort(sortKeys))}</code></div>
-                )}
+                <div className="modal-section-label">Sort</div>
+                <MonacoJsonEditor
+                  className={`mini${sortErr ? ' invalid' : ''}`}
+                  value={sortJson}
+                  lineNumbers={false}
+                  theme={monacoTheme}
+                  onChange={v => { setSortJson(v); setFilterJsonError(null); }}
+                  onSave={applyFilterJson}
+                />
                 <div className="modal-hint">
-                  ObjectId("…") and ISODate("…") work · Ctrl+Enter apply · Esc close. What the builder cannot show as conditions is kept as a custom JSON filter.
+                  Sort: {'{ field: 1 | -1 }'}, in priority order · ObjectId("…") and ISODate("…") work · Ctrl+Enter apply · Esc close. What the builder cannot show as conditions is kept as a custom JSON filter.
                 </div>
                 {(filterJsonError || jsonErr) && <div className="modal-error">{filterJsonError ?? jsonErr}</div>}
               </div>

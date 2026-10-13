@@ -94,6 +94,28 @@ export function buildSort(keys: SortKey[]): Record<string, SortDir> | null {
 }
 
 /**
+ * Inverse of `buildSort`, for a sort typed as JSON: `{ field: 1 | -1 }` in key
+ * order. Also takes the `"asc"`/`"desc"` strings Mongo accepts for the
+ * direction; anything else (`$meta`, 0, nested objects) is an error, since
+ * the panel's sort rows could not show it. Returns the keys or a message.
+ */
+export function parseSort(v: unknown): { keys: SortKey[] } | { error: string } {
+  if (v === null || v === undefined) return { keys: [] };
+  if (typeof v !== 'object' || Array.isArray(v)) return { error: 'A sort is a JSON object: { field: 1 | -1 }' };
+  const keys: SortKey[] = [];
+  for (const [field, raw] of Object.entries(v as Record<string, unknown>)) {
+    const d = typeof raw === 'string' ? raw.toLowerCase() : raw;
+    let dir: SortDir;
+    if (d === 1 || d === 'asc' || d === 'ascending') dir = 1;
+    else if (d === -1 || d === 'desc' || d === 'descending') dir = -1;
+    else return { error: `Sort direction for "${field}" must be 1 or -1` };
+    if (!field.trim()) return { error: 'Sort field name is empty' };
+    keys.push({ field, dir });
+  }
+  return { keys };
+}
+
+/**
  * Exclusion projection: new fields keep showing up on their own, and `_id` is
  * never excludable — edit, delete and the selection model all key off it.
  */
