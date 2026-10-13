@@ -643,7 +643,9 @@ button,
   flex: 1; background: var(--bg-input); border: 1px solid var(--accent);
   color: var(--text-primary); padding: 1px 4px; border-radius: var(--radius-xs); font-size: var(--fs-sm);
 }
-.folder-children { padding-left: 8px; }
+/* Children sit under the parent folder's icon, with a guide line: 8px alone read as
+   "same level" once the connection rows (icon + two lines) got taller. */
+.folder-children { margin-left: 16px; padding-left: var(--space-2); border-left: 1px solid var(--border); }
 .folder-header .actions { display: flex; gap: var(--space-1); opacity: 0; }
 .folder-header:hover .actions { opacity: 1; }
 .folder-header .actions button {
@@ -1397,6 +1399,9 @@ button,
 }
 .json-editor-wrap.tall { height: 420px; }
 .json-editor-wrap.short { height: 340px; }
+.json-editor-wrap.mini { height: 90px; }
+.modal-section-label { font-size: var(--fs-xs); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
+.modal-section-label:first-child { margin-top: 0; }
 .json-editor-wrap.invalid { border-color: color-mix(in srgb, var(--error) 55%, var(--border)); }
 .code-block {
   background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary);
