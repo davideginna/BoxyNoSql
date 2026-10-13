@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1] - 2026-10-13
+
+### Added
+- **Edit the sort as JSON too.** The filter's JSON window used to show the sort only as a read-only hint; it now has a second editor for it (`{"createdAt": -1, "name": 1}`), and Apply puts both the filter and the sort back into the query panel
+
+### Fixed
+- **Folder contents are indented in the connection manager.** Connections inside a folder started almost at the same column as the folder itself; they now sit under the folder icon, with a guide line
+
 ## [1.8.0] - 2026-10-12
 
 ### Added
