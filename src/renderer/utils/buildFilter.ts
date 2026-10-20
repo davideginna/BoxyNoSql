@@ -6,7 +6,7 @@ export type Operator =
   | 'is_null' | 'isnt_null' | 'exists' | 'nexists'
   | 'in' | 'nin'
   | 'is_true' | 'is_false'
-  | 'array_contains';
+  | 'array_contains' | 'array_has';
 
 export interface OperatorDef {
   value: Operator;
@@ -67,6 +67,7 @@ export const OPERATORS_BY_TYPE: Record<FieldType, OperatorDef[]> = {
   ],
   array: [
     { value: 'array_contains', label: 'contains' },
+    { value: 'array_has',      label: 'has element' },
     { value: 'exists',         label: 'exists',        noValue: true },
     { value: 'nexists',        label: "doesn't exist", noValue: true },
   ],
@@ -136,6 +137,17 @@ function parseList(value: string, type: FieldType): any[] {
   return value.split(',').map(v => parseValue(v.trim(), type));
 }
 
+/**
+ * Candidates for an exact array-element match. The value box is text, but the
+ * array may hold numbers or booleans, so `5` looks for both `5` and `"5"`.
+ */
+function elementCandidates(value: string): any[] {
+  const out: any[] = [value];
+  if (value.trim() !== '' && !isNaN(Number(value))) out.push(Number(value));
+  if (value === 'true' || value === 'false') out.push(value === 'true');
+  return out;
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -149,7 +161,13 @@ function conditionToMongo(c: Condition): any {
     case 'gte':          return { [field]: { $gte: parseValue(value, type) } };
     case 'lt':           return { [field]: { $lt: parseValue(value, type) } };
     case 'lte':          return { [field]: { $lte: parseValue(value, type) } };
-    case 'array_contains': return { [field]: parseValue(value, type) };
+    // A query on an array field matches when any element matches, so the same
+    // regex `contains` uses on a string finds the arrays holding such a string.
+    case 'array_contains': return { [field]: { $regex: escapeRegex(value), $options: 'i' } };
+    case 'array_has': {
+      const vals = elementCandidates(value);
+      return { [field]: vals.length === 1 ? vals[0] : { $in: vals } };
+    }
     case 'contains':     return { [field]: { $regex: escapeRegex(value), $options: 'i' } };
     case 'not_contains': return { [field]: { $not: { $regex: escapeRegex(value), $options: 'i' } } };
     case 'starts_with':  return { [field]: { $regex: '^' + escapeRegex(value), $options: 'i' } };

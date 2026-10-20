@@ -56,8 +56,14 @@ export interface FilterHooks {
   onFieldDrag?: (dragging: boolean) => void;
 }
 
-function TreeNode({ name, path, value, depth, expandTick, expandTarget, hooks }:
-  { name: string; path: string; value: any; depth: number; expandTick: number; expandTarget: boolean; hooks: FilterHooks }) {
+/**
+ * `filterPath` is `path` without array indices: `tags.0` filters on `tags`,
+ * `items.2.name` on `items.name` — Mongo matches either against every element,
+ * which is what "find documents with this value" means. `inArray` marks a
+ * direct array element, filtered with the array operators.
+ */
+function TreeNode({ name, path, filterPath, inArray, value, depth, expandTick, expandTarget, hooks }:
+  { name: string; path: string; filterPath: string; inArray: boolean; value: any; depth: number; expandTick: number; expandTarget: boolean; hooks: FilterHooks }) {
   const [open, setOpen] = useState(false);
   const isOid = value !== null && typeof value === 'object' && '$oid' in value;
   const isDate = value !== null && typeof value === 'object' && '$date' in value;
@@ -67,16 +73,19 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget, hooks }:
   useEffect(() => { if (expandTick > 0) setOpen(expandTarget); }, [expandTick]);
 
   if (!isComplex) {
+    const filterOn = () => {
+      const f = leafFilter(value);
+      return inArray ? { field: filterPath, type: 'array' as FieldType, value: f.value } : { field: filterPath, ...f };
+    };
     return (
       <div
         className="tree-leaf"
         style={{ paddingLeft: depth * 14 + 20 }}
         draggable
-        title={`Drag ${path} into the filter to search on it`}
+        title={`Drag ${filterPath} into the filter to search on it`}
         onDragStart={e => {
           e.stopPropagation();
-          const f = leafFilter(value);
-          e.dataTransfer.setData('qb-field', JSON.stringify({ field: path, type: f.type, value: f.value }));
+          e.dataTransfer.setData('qb-field', JSON.stringify(filterOn()));
           e.dataTransfer.effectAllowed = 'copy';
           hooks.onFieldDrag?.(true);
         }}
@@ -88,9 +97,9 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget, hooks }:
         {hooks.onAddFilter && (
           <button
             className="tree-filter-btn"
-            title={`Filter: ${path} = this value`}
-            aria-label={`Filter on ${path}`}
-            onClick={e => { e.stopPropagation(); const f = leafFilter(value); hooks.onAddFilter!(path, f.type, f.value); }}
+            title={inArray ? `Filter: ${filterPath} contains this value` : `Filter: ${filterPath} = this value`}
+            aria-label={`Filter on ${filterPath}`}
+            onClick={e => { e.stopPropagation(); const f = filterOn(); hooks.onAddFilter!(f.field, f.type, f.value); }}
           ><Icon name="filter" size={11} /></button>
         )}
       </div>
@@ -114,6 +123,8 @@ function TreeNode({ name, path, value, depth, expandTick, expandTarget, hooks }:
         <TreeNode
           key={k} name={k}
           path={path ? `${path}.${k}` : k}
+          filterPath={isArray ? filterPath : (filterPath ? `${filterPath}.${k}` : k)}
+          inArray={isArray}
           value={v} depth={depth + 1}
           expandTick={expandTick} expandTarget={expandTarget} hooks={hooks}
         />
@@ -194,7 +205,7 @@ export default function DocumentTree({
       {open && (
         <div className="doc-tree-body">
           {Object.entries(doc).map(([k, v]) => (
-            <TreeNode key={k} name={k} path={k} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} hooks={hooks} />
+            <TreeNode key={k} name={k} path={k} filterPath={k} inArray={false} value={v} depth={0} expandTick={internalTick} expandTarget={internalTarget} hooks={hooks} />
           ))}
         </div>
       )}

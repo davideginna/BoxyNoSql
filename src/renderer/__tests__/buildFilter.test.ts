@@ -59,6 +59,16 @@ describe('buildFilter', () => {
     expect(buildFilter([cond('status', 'nin', 'x,y')])).toEqual({ status: { $nin: ['x', 'y'] } });
   });
 
+  it('array_contains → case-insensitive substring on any element', () => {
+    expect(buildFilter([cond('tags', 'array_contains', 'a.b', 'array')])).toEqual({ tags: { $regex: 'a\\.b', $options: 'i' } });
+  });
+
+  it('array_has → exact element, numeric text also matches the number', () => {
+    expect(buildFilter([cond('tags', 'array_has', 'red', 'array')])).toEqual({ tags: 'red' });
+    expect(buildFilter([cond('nums', 'array_has', '5', 'array')])).toEqual({ nums: { $in: ['5', 5] } });
+    expect(buildFilter([cond('flags', 'array_has', 'true', 'array')])).toEqual({ flags: { $in: ['true', true] } });
+  });
+
   it('is_true / is_false → boolean literal', () => {
     expect(buildFilter([cond('active', 'is_true', '', 'boolean')])).toEqual({ active: true });
     expect(buildFilter([cond('active', 'is_false', '', 'boolean')])).toEqual({ active: false });
