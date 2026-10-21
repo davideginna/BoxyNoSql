@@ -5,7 +5,7 @@ import Icon from './Icon';
 import { showConfirm, showAlert } from '../dialog';
 import { isTypingTarget } from '../utils/dom';
 import { onEscape, onRunKey } from '../utils/keys';
-import { buildFilter, splitFilter, combineFilters, detectType, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
+import { buildFilter, splitFilter, combineFilters, detectType, defaultOperator, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
 import {
   cycleSort, buildSort, buildProjection, knownFields, toggleHidden,
   loadHiddenFields, saveHiddenFields, sortTooltip, SORT_DIR_LABEL, SORT_DIR_HINT,
@@ -648,9 +648,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
   };
 
   const addCondition = (field: string, type: FieldType = 'string', value = '') => {
-    const ops = OPERATORS_BY_TYPE[type];
-    const defaultOp = ops[0].value;
-    setConditions(prev => [...prev, { id: ++condId, field, op: defaultOp, value, type }]);
+    setConditions(prev => [...prev, { id: ++condId, field, op: defaultOperator(type), value, type }]);
   };
   const addFilterFromTree = (field: string, type: FieldType, value: string) => {
     addCondition(field, type, value);
@@ -665,8 +663,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
       if (c.id !== id) return c;
       const updated = { ...c, ...changes };
       if (changes.type && changes.type !== c.type) {
-        const ops = OPERATORS_BY_TYPE[changes.type];
-        updated.op = ops[0].value;
+        updated.op = defaultOperator(changes.type);
         updated.value = '';
       }
       if (changes.op && changes.op !== c.op) updated.value = '';

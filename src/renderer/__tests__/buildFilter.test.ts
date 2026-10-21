@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFilter, detectType, parseFilter, splitFilter, combineFilters, type Condition, type FieldType, type Operator } from '../utils/buildFilter';
+import { buildFilter, detectType, parseFilter, splitFilter, combineFilters, defaultOperator, OPERATORS_BY_TYPE, type Condition, type FieldType, type Operator } from '../utils/buildFilter';
 
 const cond = (field: string, op: Condition['op'], value: string, type: FieldType = 'string', id = 1): Condition =>
   ({ id, field, op, value, type });
@@ -220,5 +220,16 @@ describe('splitFilter', () => {
     const r = splitFilter({ status: 'open', ...EM });
     const built = buildFilter(r.conditions.map((c, i) => ({ ...c, id: i })), r.matchAll);
     expect(combineFilters(r.rest, built)).toEqual({ $and: [EM, { status: { $eq: 'open' } }] });
+  });
+});
+
+describe('defaultOperator', () => {
+  it('starts a text condition at contains', () => {
+    expect(defaultOperator('string')).toBe('contains');
+  });
+
+  it('starts every other type at its first operator', () => {
+    expect(defaultOperator('number')).toBe(OPERATORS_BY_TYPE.number[0].value);
+    expect(defaultOperator('date')).toBe(OPERATORS_BY_TYPE.date[0].value);
   });
 });

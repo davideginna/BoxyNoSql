@@ -215,6 +215,12 @@ function valueOf(v: any): { type: FieldType; text: string } | null {
   return null;
 }
 
+/** Operator a new condition starts with: `contains` for text — searching a
+ *  string field means a substring far more often than an exact value — else the first listed. */
+export function defaultOperator(type: FieldType): Operator {
+  return type === 'string' ? 'contains' : OPERATORS_BY_TYPE[type][0].value;
+}
+
 const allowed = (type: FieldType, op: Operator) => OPERATORS_BY_TYPE[type].some(o => o.value === op);
 
 function cond(field: string, op: Operator, type: FieldType, value = ''): ParsedCondition | null {
