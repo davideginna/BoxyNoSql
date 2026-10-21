@@ -11,6 +11,7 @@ function setup(over: Partial<React.ComponentProps<typeof SettingsModal>> = {}) {
     settings: SETTINGS, onChange: vi.fn(),
     fontScale: 1, onFontScale: vi.fn(),
     soundsEnabled: true, onSoundsEnabled: vi.fn(),
+    restoreSession: true, onRestoreSession: vi.fn(),
     onClose: vi.fn(), ...over,
   };
   render(<SettingsModal {...props} />);
@@ -33,5 +34,13 @@ describe('SettingsModal — text size and sounds', () => {
     expect(box).toBeChecked();
     fireEvent.click(box);
     expect(props.onSoundsEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it('toggles reopening the last session', () => {
+    const props = setup({ restoreSession: false });
+    const box = screen.getByRole('checkbox', { name: /Reopen last session/i });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(props.onRestoreSession).toHaveBeenCalledWith(true);
   });
 });

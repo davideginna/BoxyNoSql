@@ -14,7 +14,7 @@ import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconCo
 import { playSound, loadSoundsEnabled, saveSoundsEnabled } from './utils/sounds';
 import { applyFontScale, loadFontScale, saveFontScale } from './utils/fontScale';
 import { PinnedCollection, loadPinned, savePinned, togglePinned } from './utils/pinnedCollections';
-import { loadSession, saveSession } from './utils/session';
+import { loadSession, saveSession, sessionConnectionIds, loadRestoreSession, saveRestoreSession } from './utils/session';
 import {
   UpdateStatus, getCheckOnStartup, getSkippedVersion, setSkippedVersion, shouldShow,
 } from './utils/updates';
@@ -138,6 +138,7 @@ function App() {
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [fontScale, setFontScale] = useState(() => loadFontScale());
   const [soundsEnabled, setSoundsEnabled] = useState(() => loadSoundsEnabled());
+  const [restoreSession, setRestoreSession] = useState(() => loadRestoreSession());
   useEffect(() => applyFontScale(fontScale), [fontScale]);
   const [pinnedCollections, setPinnedCollections] = useState<PinnedCollection[]>(() => loadPinned());
   const [collectionClipboard, setCollectionClipboard] = useState<{ connectionId: string; db: string; col: string } | null>(null);
@@ -194,12 +195,10 @@ function App() {
       setConnections(conns);
       setFolders(fols);
       try {
-        const session = loadSession();
-        if (!session || session.tabs.length === 0) return;
+        const session = loadRestoreSession() ? loadSession() : null;
+        if (!session) return;
         const validIds = new Set(conns.map(c => c.id));
-        const neededIds = [...new Set(
-          session.tabs.map(t => t.connectionId).filter((id): id is string => !!id && validIds.has(id))
-        )];
+        const neededIds = sessionConnectionIds(session).filter(id => validIds.has(id));
         const connectedNow = new Set<string>();
         for (const id of neededIds) {
           try {
@@ -230,8 +229,8 @@ function App() {
   // the saved session with the transient empty tabs/activeTab of the first render.
   useEffect(() => {
     if (!sessionRestoredRef.current) return;
-    saveSession(tabs, activeTab);
-  }, [tabs, activeTab]);
+    saveSession(tabs, activeTab, [...connectedIds]);
+  }, [tabs, activeTab, connectedIds]);
 
   // ── Updates ──────────────────────────────────────────────────────────────────
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -1172,6 +1171,8 @@ function App() {
           onFontScale={v => { setFontScale(v); saveFontScale(v); }}
           soundsEnabled={soundsEnabled}
           onSoundsEnabled={v => { setSoundsEnabled(v); saveSoundsEnabled(v); }}
+          restoreSession={restoreSession}
+          onRestoreSession={v => { setRestoreSession(v); saveRestoreSession(v); }}
           onClose={() => setShowSettings(false)}
         />
       )}
