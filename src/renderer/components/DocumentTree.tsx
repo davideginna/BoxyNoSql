@@ -82,7 +82,9 @@ function TreeNode({ name, path, filterPath, inArray, value, depth, expandTick, e
         className="tree-leaf"
         style={{ paddingLeft: depth * 14 + 20 }}
         draggable
-        title={`Drag ${filterPath} into the filter to search on it`}
+        title={hooks.onAddFilter
+          ? `Drag ${filterPath} into the filter, or double-click it, to search on it`
+          : `Drag ${filterPath} into the filter to search on it`}
         onDragStart={e => {
           e.stopPropagation();
           e.dataTransfer.setData('qb-field', JSON.stringify(filterOn()));
@@ -90,6 +92,11 @@ function TreeNode({ name, path, filterPath, inArray, value, depth, expandTick, e
           hooks.onFieldDrag?.(true);
         }}
         onDragEnd={() => hooks.onFieldDrag?.(false)}
+        onDoubleClick={hooks.onAddFilter && (e => {
+          e.stopPropagation();
+          window.getSelection()?.removeAllRanges();
+          const f = filterOn(); hooks.onAddFilter!(f.field, f.type, f.value);
+        })}
       >
         <span className="tree-key">{name}</span>
         <span className="tree-sep">: </span>

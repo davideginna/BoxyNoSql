@@ -57,6 +57,15 @@ describe('DocumentTree — filter hooks', () => {
     expect(onAddFilter).toHaveBeenLastCalledWith('name', 'string', 'alpha');
   });
 
+  it('double-clicking a leaf adds the same condition as the funnel', () => {
+    const onAddFilter = vi.fn();
+    render(<DocumentTree doc={DOC2} expandTick={1} expandTarget onAddFilter={onAddFilter} />);
+    fireEvent.click(screen.getByText('profile')); // open the subdocument
+    fireEvent.doubleClick(screen.getByText('"Rome"').closest('.tree-leaf')!);
+    expect(onAddFilter).toHaveBeenCalledWith('profile.city', 'string', 'Rome');
+    expect(onAddFilter).toHaveBeenCalledTimes(1);
+  });
+
   it('shows no funnel when nobody listens', () => {
     render(<DocumentTree doc={DOC2} expandTick={1} expandTarget />);
     expect(screen.queryByRole('button', { name: /Filter on/ })).toBeNull();
