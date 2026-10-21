@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.9.1] - 2026-10-21
+
+### Added
+- **Double-click a field in a document to filter on it.** In the tree view, double-clicking a field adds a condition on that field and value to the query panel, like the funnel button — dragging still works
+
 ## [1.9.0] - 2026-10-21
 
 ### Added
