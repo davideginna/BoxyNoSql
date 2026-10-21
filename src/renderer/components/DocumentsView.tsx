@@ -13,6 +13,7 @@ import {
   cellText, addSortKey, setSortKeyField, setSortKeyDir, moveSortKey, removeSortKey, parseSort,
 } from '../utils/docTable';
 import { prettyDoc, formatJson, validateJson, parseEditable } from '../utils/editableJson';
+import { lineOfPath, lineAt } from '../utils/jsonLines';
 import { oidTitle } from '../utils/objectId';
 import QueryHistoryMenu, { useQueryHistory } from './QueryHistoryMenu';
 import { useVirtualRows, VirtualSpacer } from './VirtualRows';
@@ -1533,8 +1534,18 @@ export default function DocumentsView({ connectionId, database, collection, acti
                 {diff && diff.length > 0 && (
                   <div className="edit-diff-panel">
                     <div className="edit-diff-title">Changes ({diff.length})</div>
-                    {diff.map((d, i) => (
+                    {diff.map((d, i) => {
+                      // The changed line itself: in the editor for added/changed, in the
+                      // original for removed (it is no longer in the editor, so no jump).
+                      const src = d.type === 'removed' ? originalEditJson : editJson;
+                      const lineNo = lineOfPath(src, d.path);
+                      const line = lineNo ? lineAt(src, lineNo) : null;
+                      return (
                       <div key={i} className={`diff-entry diff-${d.type}`}>
+                        {lineNo && (d.type === 'removed'
+                          ? <span className="diff-lineno" title="Line in the original document">L{lineNo}</span>
+                          : <button className="diff-lineno" title="Go to this line"
+                              onClick={() => line && editEditorRef.current?.selectOffsetRange(line.start, line.end)}>L{lineNo}</button>)}
                         <span className="diff-path">{d.path}</span>
                         <span className="diff-vals">
                           {d.type === 'removed' && <span className="diff-old">{truncate(d.oldVal)}</span>}
@@ -1547,8 +1558,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
                             </>
                           )}
                         </span>
+                        {line && <span className="diff-line-text">{line.text}</span>}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <div className="modal-hint">
