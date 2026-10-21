@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0] - 2026-10-21
+
+### Added
+- **Choose whether the last session comes back on startup.** Settings → Appearance has a "Reopen last session on startup" option (on by default). When on, the app reconnects every connection that was connected when you closed it — now including connections with no open tab, which used to be forgotten — and reopens its tabs; when off, it starts disconnected
+- **The document editor's list of changes shows the changed line.** Each entry in "Changes" shows its line number and the line as it reads in the editor (`"city": "Milan",`); clicking the number jumps to that line
+
+### Changed
+- **Text filters start at "contains".** A new condition on a text field in the query panel now uses "contains" instead of "equals"; "equals" is still in the list
+- **Filtering an array by "contains" matches part of any element** (case doesn't matter), and a new "has element" operator matches a whole element exactly. Dragging or filtering an array element from the tree now filters on the array field (`tags`, `items.name`) instead of a fixed position (`tags.0`)
+
+### Fixed
+- **Checkboxes in Settings are aligned with their text** instead of being stretched across the row
+
+### Security
+- **Electron updated to 45** (from 42), with the newer Chromium and its security fixes
+
 ## [1.8.3] - 2026-10-13
 
 ### Changed

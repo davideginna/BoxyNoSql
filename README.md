@@ -13,9 +13,9 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Visual filter builder (open by default, resizable) with a JSON editor for the filter: edit it as JSON and it goes back into the builder, or stays as a custom filter when the builder can't express it
 - ✅ Server-side sort on one or more fields — from the query panel (order and direction per field) or the column headers (shift-click for a second key) — and per-collection field visibility
 - ✅ Query history per collection (filters, queries, pipelines) with named saved queries, kept across restarts
-- ✅ Pinned collections, restored last session, connection health with auto-reconnect
+- ✅ Pinned collections, last session restored on startup (connections and tabs, can be turned off), connection health with auto-reconnect
 - ✅ Shortcut cheat sheet (F1), guided welcome screen, connection clone, CSV/TSV import
-- ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)` (dates stay dates when saved, Studio 3T's `ISODate("…+0000")` accepted), foldable sections with expand/collapse all, and find
+- ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)` (dates stay dates when saved, Studio 3T's `ISODate("…+0000")` accepted), foldable sections with expand/collapse all, find, and a list of changes before saving that shows each changed line
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split
 - ✅ Aggregation pipeline builder with a Monaco editor per stage, completions, stage templates and a document counter per stage
 - ✅ Explain plan on the current filter, query or pipeline: index used or collection scan, documents and keys examined, stage timings, a verdict when far more is read than returned, and the raw output one click away
