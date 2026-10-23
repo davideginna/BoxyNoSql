@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.9.2] - 2026-10-23
+
+### Fixed
+- **A very long filter value no longer takes over the screen.** A condition with a value thousands of characters long made the status bar grow until it covered the query panel and nothing could be clicked. The status bar and the query preview now cut long values with "…", and clicking either one opens the filter and sort in full (the modal is now called "Filter & sort (JSON)" and wraps long lines)
+
 ## [1.9.1] - 2026-10-21
 
 ### Added
