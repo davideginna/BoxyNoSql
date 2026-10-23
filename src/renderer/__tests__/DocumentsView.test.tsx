@@ -936,7 +936,7 @@ describe('DocumentsView — filter as JSON', () => {
     view();
     await screen.findAllByText(/alpha/);
     fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
-    return screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea') as HTMLTextAreaElement;
+    return screen.getByRole('heading', { name: 'Filter & sort (JSON)' }).closest('.modal')!.querySelector('textarea') as HTMLTextAreaElement;
   };
 
   it('opens with the current filter, indented', async () => {
@@ -950,7 +950,7 @@ describe('DocumentsView — filter as JSON', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => expect(lastFilter()).toEqual({ $and: [{ name: { $eq: 'beta' } }, { n: { $gt: 3 } }] }));
-    expect(screen.queryByRole('heading', { name: 'Filter (JSON)' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Filter & sort (JSON)' })).toBeNull();
     expect(screen.getByDisplayValue('beta')).toBeInTheDocument();
     expect(screen.getByDisplayValue('3')).toBeInTheDocument();
     expect(screen.queryByText('Custom JSON filter')).toBeNull();
@@ -983,7 +983,7 @@ describe('DocumentsView — filter as JSON', () => {
     }));
     // Reopening shows the shell form again.
     fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
-    const again = screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea')!;
+    const again = screen.getByRole('heading', { name: 'Filter & sort (JSON)' }).closest('.modal')!.querySelector('textarea')!;
     expect(again.value).toContain(`ObjectId("${OID}")`);
     expect(again.value).toContain('ISODate("2024-01-01T00:00:00.000Z")');
   });
@@ -995,13 +995,13 @@ describe('DocumentsView — filter as JSON', () => {
     fireEvent.change(ta, { target: { value: '[1, 2]' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.getByText(/A filter is a JSON object/)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Filter (JSON)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Filter & sort (JSON)' })).toBeInTheDocument();
   });
 
   it('shows the sort as JSON and applies an edited one', async () => {
     const lastSort = () => invoke.mock.calls.filter(c => c[0] === 'get-documents').at(-1)![7];
     await openJson();
-    const sortTa = () => screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelectorAll('textarea')[1] as HTMLTextAreaElement;
+    const sortTa = () => screen.getByRole('heading', { name: 'Filter & sort (JSON)' }).closest('.modal')!.querySelectorAll('textarea')[1] as HTMLTextAreaElement;
     expect(sortTa().value).toBe('{}');
     fireEvent.change(sortTa(), { target: { value: '{"n": -1, "name": 1}' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -1020,7 +1020,7 @@ describe('DocumentsView — filter as JSON, partly expressible', () => {
     view();
     await screen.findAllByText(/alpha/);
     fireEvent.click(screen.getByRole('button', { name: 'Filter as JSON' }));
-    const ta = screen.getByRole('heading', { name: 'Filter (JSON)' }).closest('.modal')!.querySelector('textarea')!;
+    const ta = screen.getByRole('heading', { name: 'Filter & sort (JSON)' }).closest('.modal')!.querySelector('textarea')!;
     fireEvent.change(ta, { target: { value: '{"name": "beta", "tags": {"$elemMatch": {"k": "y"}}}' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 

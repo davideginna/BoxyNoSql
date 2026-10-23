@@ -21,6 +21,7 @@ import BulkEditModal from './BulkEditModal';
 import ExplainModal from './ExplainModal';
 import { showToast } from '../toast';
 import { previewLabel, type QueryEntry } from '../utils/queryHistory';
+import { previewJson, queryLine } from '../utils/previewJson';
 import MonacoJsonEditor, { type MonacoJsonEditorHandle } from './MonacoJsonEditor';
 import type { MonacoThemeName } from './MonacoQueryEditor';
 
@@ -1145,7 +1146,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                       <button className="qb-del-btn" title="Remove the custom filter" aria-label="Remove custom filter"
                         onClick={() => { setRawFilter(null); setPage(0); loadDocuments(currentFilter(conditions, matchAll, null), limit, 0); }}><Icon name="trash" size={13} /></button>
                     </div>
-                    <code className="qb-raw-preview">{JSON.stringify(rawFilter)}</code>
+                    <code className="qb-raw-preview">{previewJson(rawFilter)}</code>
                   </div>
                 )}
                 {conditions.map(c => {
@@ -1279,8 +1280,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
                         onClick={e => { e.preventDefault(); openFilterJson(); }}
                       ><Icon name="expand" size={11} /> expand</span>
                     </summary>
-                    <pre className="qb-preview">{JSON.stringify(activeFilter, null, 2)}</pre>
-                    {activeSort && <pre className="qb-preview">{`sort ${JSON.stringify(activeSort)}`}</pre>}
+                    <pre className="qb-preview" onClick={openFilterJson} title="Click to see the whole filter and sort">{previewJson(activeFilter, 2)}</pre>
+                    {activeSort && <pre className="qb-preview" onClick={openFilterJson} title="Click to see the whole filter and sort">{`sort ${previewJson(activeSort)}`}</pre>}
                   </details>
                 )}
                 <div className="qb-footer-btns">
@@ -1301,9 +1302,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
         <span title={totalEstimated ? 'Approximate count from collection metadata — exact counts require a full scan' : undefined}>
           {totalEstimated ? '≈' : ''}{total} total{hasSelection ? ` · ${selectedIndices.size} selected` : ''}
         </span>
-        <span className="status-filter">
-          {conditions.length > 0 || rawFilter ? JSON.stringify(currentFilter()) : ''}
-        </span>
+        {(() => {
+          const text = queryLine(conditions.length > 0 || rawFilter ? currentFilter() : null, buildSort(sortKeys));
+          return text
+            ? <button className="status-filter" onClick={openFilterJson} title="Click to see the whole filter and sort">{text}</button>
+            : <span className="status-filter" />;
+        })()}
         <div className="status-pager">
           <button className="page-btn" onClick={() => goToPage(0)} disabled={page === 0 || loading}>«</button>
           <button className="page-btn" onClick={() => goToPage(page - 1)} disabled={page === 0 || loading}>‹</button>
@@ -1375,7 +1379,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
           <div className="modal-overlay" onClick={() => setShowQueryModal(false)}>
             <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>Filter (JSON)</h3>
+                <h3>Filter &amp; sort (JSON)</h3>
                 <button className="icon-btn" onClick={() => setShowQueryModal(false)}><Icon name="close" size={14} /></button>
               </div>
               <div className="modal-body">
@@ -1384,6 +1388,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                   className={`short${filterErr ? ' invalid' : ''}`}
                   value={filterJson}
                   lineNumbers={lineNumbers}
+                  wrap
                   theme={monacoTheme}
                   onChange={v => { setFilterJson(v); setFilterJsonError(null); }}
                   onSave={applyFilterJson}
@@ -1393,6 +1398,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                   className={`mini${sortErr ? ' invalid' : ''}`}
                   value={sortJson}
                   lineNumbers={false}
+                  wrap
                   theme={monacoTheme}
                   onChange={v => { setSortJson(v); setFilterJsonError(null); }}
                   onSave={applyFilterJson}

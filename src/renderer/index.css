@@ -1343,7 +1343,9 @@ button,
   font-size: var(--fs-2xs); font-family: monospace; background: var(--bg-primary);
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px;
   max-height: 120px; overflow: auto; color: var(--text-primary); margin-top: 3px; white-space: pre;
+  cursor: pointer;
 }
+.qb-preview:hover { border-color: var(--accent); }
 
 /* ── Bulk Action Bar ─────────────────────────────────────────────────────────── */
 /* ── Documents view ───────────────────────────────────────────────────────────
@@ -1373,7 +1375,17 @@ button,
 .qb-footer-btns .btn-xs.grow { flex: 1; }
 
 /* Status bar segments */
-.status-filter { flex: 1; text-align: center; font-family: var(--font-mono); font-size: var(--fs-xs); }
+/* One line, always: a filter with a long value used to wrap here, and the bar
+   (flex-shrink: 0) grew until it pushed the whole view off screen. Long values
+   are clipped (utils/previewJson.ts) and a click opens the whole filter + sort. */
+.status-filter {
+  flex: 1; min-width: 0; text-align: center; font-family: var(--font-mono); font-size: var(--fs-xs);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: none; border: none; padding: 0; color: inherit;
+}
+button.status-filter { cursor: pointer; }
+button.status-filter:hover { text-decoration: underline; }
+.status-bar > :not(.status-filter) { flex-shrink: 0; white-space: nowrap; }
 .status-pager { display: flex; align-items: center; gap: var(--space-2); }
 .status-range { font-size: var(--fs-xs); white-space: nowrap; }
 
@@ -1958,7 +1970,7 @@ button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
    an accent fill plus --accent-text ink: that is how the tab label became white
    on a near-white background in the light theme (1.32:1) and near-black on
    near-black in hc/solarized. */
-button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.tree-filter-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove):not(.diff-lineno) {
+button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.tree-filter-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove):not(.diff-lineno):not(.status-filter) {
   background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }
