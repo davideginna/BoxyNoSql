@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.0] - 2026-10-26
+
+### Added
+- **Export connections.** The connection manager has an "Export" button (every connection), "Export folder…" on a folder's right-click menu (the folder and its subfolders) and "Export to file…" on a connection's. The file is in Studio 3T's `.uri` format, the same one Import reads, so it can be imported back here or into Studio 3T with names, folders, colors and TLS settings. The file contains the connections' passwords
+- **Copy a connection's URI.** "Copy URI" on a connection's right-click menu in the connection manager
+
 ## [1.9.2] - 2026-10-23
 
 ### Fixed
