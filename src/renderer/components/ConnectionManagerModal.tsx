@@ -6,12 +6,17 @@ import ImportConnectionsModal from './ImportConnectionsModal';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
 import { pickFile } from '../utils/fileImport';
 import { parseStudio3TExport, ImportedConnection } from '../utils/uriImport';
+import { exportConnections, exportFileName, connectionsInFolder, uriHasPassword } from '../utils/uriExport';
 import { showAlert } from '../dialog';
+import { showToast } from '../toast';
 import { onEscape, SWALLOW_ESCAPE } from '../utils/keys';
 
 interface Connection {
   id: string; name: string; uri: string; database?: string;
   folderId?: string; color?: string; order?: number;
+  readOnly?: boolean;
+  tls?: boolean; tlsCertificateKeyFile?: string; tlsCAFile?: string;
+  tlsAllowInvalidCertificates?: boolean; tlsServername?: string;
 }
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 
@@ -84,6 +89,38 @@ export default function ConnectionManagerModal(props: Props) {
       setImportPreview({ items, fileName: file.name });
     } catch (e: any) {
       await showAlert({ title: 'Import failed', message: "Couldn't read the file.", detail: e.message, danger: true });
+    }
+  };
+
+  // Export goes through the same `.uri` format Import reads, so a file written
+  // here imports back (here or in Studio 3T) with its folders and colors.
+  const handleExport = async (conns: Connection[], label: string) => {
+    if (conns.length === 0) {
+      showToast({ message: 'No connections to export.' });
+      return;
+    }
+    try {
+      const res = await (window as any).electron.invoke('save-text-file', {
+        defaultName: exportFileName(label),
+        content: exportConnections(conns, folders),
+        filters: [{ name: 'Connection URIs', extensions: ['uri'] }, { name: 'All files', extensions: ['*'] }],
+      });
+      if (res?.canceled) return;
+      const what = conns.length === 1 ? `“${conns[0].name}”` : `${conns.length} connections`;
+      const secret = conns.some(c => uriHasPassword(c.uri)) ? ' — the file contains passwords' : '';
+      showToast({ message: `Exported ${what} to ${res.filePath}${secret}`, kind: 'success' });
+    } catch (e: any) {
+      await showAlert({ title: 'Export failed', message: "Couldn't write the file.", detail: e.message, danger: true });
+    }
+  };
+
+  const handleCopyUri = async (conn: Connection) => {
+    try {
+      await navigator.clipboard.writeText(conn.uri);
+      const secret = uriHasPassword(conn.uri) ? ' (password included)' : '';
+      showToast({ message: `Copied the URI of “${conn.name}”${secret}`, kind: 'success' });
+    } catch {
+      showToast({ message: "Couldn't write to the clipboard.", kind: 'error' });
     }
   };
 
@@ -300,6 +337,11 @@ export default function ConnectionManagerModal(props: Props) {
     { label: 'New subfolder', icon: 'folder', onClick: () => { onAddFolder(folderCtxMenu.folder.id); setFolderCtxMenu(null); } },
     { separator: true },
     { label: 'Edit (name & color)', icon: 'edit', onClick: () => { setEditFolder(folderCtxMenu.folder); setFolderCtxMenu(null); } },
+    { label: 'Export folder…', icon: 'export', onClick: () => {
+      const { folder } = folderCtxMenu;
+      setFolderCtxMenu(null);
+      handleExport(connectionsInFolder(folder.id, connections, folders), folder.name);
+    } },
     { separator: true },
     { label: 'Delete folder', icon: 'trash', onClick: () => { onDeleteFolder(folderCtxMenu.folder.id); setFolderCtxMenu(null); } },
   ] : [];
@@ -310,6 +352,9 @@ export default function ConnectionManagerModal(props: Props) {
     { separator: true },
     { label: 'Edit', icon: 'edit', shortcut: 'Alt+E', onClick: () => { onEditConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
     { label: 'Clone', icon: 'duplicate', onClick: () => { onDuplicateConnection(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { separator: true },
+    { label: 'Copy URI', icon: 'copy', onClick: () => { handleCopyUri(connCtxMenu.conn); setConnCtxMenu(null); } },
+    { label: 'Export to file…', icon: 'export', onClick: () => { handleExport([connCtxMenu.conn], connCtxMenu.conn.name); setConnCtxMenu(null); } },
     { separator: true },
     { label: 'Delete', icon: 'trash', onClick: () => { onDeleteConnection(connCtxMenu.conn.id); setConnCtxMenu(null); } },
   ] : [];
@@ -326,6 +371,10 @@ export default function ConnectionManagerModal(props: Props) {
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="secondary" title="Import connections from a Studio 3T .uri export" onClick={handlePickUriFile}>
               <Icon name="import" size={14} /> Import
+            </button>
+            <button className="secondary" title="Export every connection to a .uri file (Studio 3T format)"
+              disabled={connections.length === 0} onClick={() => handleExport(connections, 'connections')}>
+              <Icon name="export" size={14} /> Export
             </button>
             <button className="secondary" title="New folder" onClick={() => onAddFolder()}><Icon name="folder" size={14} /> Folder</button>
             <button title="New connection" onClick={onAddConnection}><Icon name="plug" size={14} /> Connection</button>

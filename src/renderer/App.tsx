@@ -588,6 +588,9 @@ function App() {
           tls: item.tls,
           tlsCertificateKeyFile: item.tlsCertificateKeyFile,
           tlsServername: item.tlsServername,
+          tlsCAFile: item.tlsCAFile,
+          tlsAllowInvalidCertificates: item.tlsAllowInvalidCertificates,
+          readOnly: item.readOnly,
         };
         nextConnections = await inv('save-connection', conn);
       } catch { failed++; }

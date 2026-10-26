@@ -958,6 +958,23 @@ ipcMain.handle('export-rows', async (_, args: { rows: any[]; baseName: string; f
   return { canceled: false, filePath, count: rows.length };
 });
 
+/**
+ * Write text the renderer built to a file the user picks — the connection
+ * manager's `.uri` export. Nothing here touches MongoDB.
+ */
+ipcMain.handle('save-text-file', async (_, args: {
+  defaultName: string; content: string; filters?: { name: string; extensions: string[] }[];
+}) => {
+  const res = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Export',
+    defaultPath: args.defaultName,
+    filters: args.filters ?? [{ name: 'All files', extensions: ['*'] }],
+  });
+  if (res.canceled || !res.filePath) return { canceled: true };
+  await fs.promises.writeFile(res.filePath, args.content, 'utf8');
+  return { canceled: false, filePath: res.filePath };
+});
+
 // ── Import ───────────────────────────────────────────────────────────────────
 ipcMain.handle('import-collection', async (_, connectionId: string, dbName: string, colName: string, docs: any[]) => {
   assertWritable(connectionId);

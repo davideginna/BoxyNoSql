@@ -21,6 +21,10 @@ export interface ImportedConnection {
   tls?: boolean;
   tlsCertificateKeyFile?: string;
   tlsServername?: string;
+  /** Only in files this app exported (`3t.boxy.*` — see uriExport.ts). */
+  tlsCAFile?: string;
+  tlsAllowInvalidCertificates?: boolean;
+  readOnly?: boolean;
 }
 
 function rgbToHex(value: string): string | undefined {
@@ -88,6 +92,9 @@ export function parseStudio3TExport(text: string): ImportedConnection[] {
     const tlsOn = /^true$/i.test(params.get('tls') || '') || /^true$/i.test(params.get('ssl') || '');
     const clientCert = params.get('3t.clientCertPath')?.trim() || undefined;
     const sni = params.get('3t.sniName')?.trim() || undefined;
+    const caFile = params.get('3t.boxy.tlsCAFile')?.trim() || undefined;
+    const allowInvalid = /^true$/i.test(params.get('3t.boxy.tlsAllowInvalidCertificates') || '') || undefined;
+    const readOnly = /^true$/i.test(params.get('3t.boxy.readOnly') || '') || undefined;
 
     out.push({
       name,
@@ -95,9 +102,12 @@ export function parseStudio3TExport(text: string): ImportedConnection[] {
       folderPath,
       color: colorParam ? rgbToHex(colorParam) : undefined,
       database,
-      tls: tlsOn || !!clientCert || undefined,
+      tls: tlsOn || !!clientCert || !!caFile || undefined,
       tlsCertificateKeyFile: clientCert,
       tlsServername: sni,
+      tlsCAFile: caFile,
+      tlsAllowInvalidCertificates: allowInvalid,
+      readOnly,
     });
     lastComment = undefined;
   }
