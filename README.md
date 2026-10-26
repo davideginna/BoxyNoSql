@@ -48,6 +48,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - [ ] Edit an existing user's roles (today: drop and recreate)
 - [ ] Database row: expand only on chevron click or double-click, not on any click
 - [ ] Right-click a database → open a query shell scoped to the whole database
+- [ ] v2 in Rust (Tauri): same installers, Studio 3T feature parity (clean-room), new visual style
 
 Designs in [ROADMAP.md](ROADMAP.md). Everything else that was planned has shipped — see Features above and [CHANGELOG.md](CHANGELOG.md).
 
