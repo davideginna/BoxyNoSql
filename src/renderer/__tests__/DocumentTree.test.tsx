@@ -89,3 +89,38 @@ describe('DocumentTree — ObjectId info', () => {
     expect(title).toContain('Counter: 0x6f7a8b');
   });
 });
+
+describe('DocumentTree — Key | Value | Type grid', () => {
+  const DOC4 = { _id: { $oid: 'a'.repeat(24) }, n: 3, tags: ['x', 'y'], when: { $date: '2022-04-26T16:18:05.988Z' } };
+
+  it('names every value’s type and summarises containers', () => {
+    render(<DocumentTree doc={DOC4} index={7} expandTick={1} expandTarget />);
+    expect(screen.getByText('(7)')).toBeInTheDocument();
+    expect(screen.getByText('Document')).toBeInTheDocument();
+    expect(screen.getByText('[ 2 elements ]')).toBeInTheDocument();
+    for (const t of ['ObjectId', 'Number', 'Array', 'Date']) expect(screen.getByText(t)).toBeInTheDocument();
+  });
+
+  it('a double-click edits a leaf when editing is on, with the segment path', () => {
+    const onStartEdit = vi.fn();
+    const onAddFilter = vi.fn();
+    render(<DocumentTree doc={DOC4} expandTick={1} expandTarget onStartEdit={onStartEdit} onAddFilter={onAddFilter} />);
+    fireEvent.click(screen.getByText('tags'));
+    fireEvent.doubleClick(screen.getByText('"y"').closest('.tree-leaf')!);
+    expect(onStartEdit).toHaveBeenCalledWith(['tags', 1]);
+    expect(onAddFilter).not.toHaveBeenCalled();
+  });
+
+  it('never starts an edit on _id', () => {
+    const onStartEdit = vi.fn();
+    render(<DocumentTree doc={DOC4} expandTick={1} expandTarget onStartEdit={onStartEdit} />);
+    fireEvent.doubleClick(screen.getByText(`ObjectId("${'a'.repeat(24)}")`).closest('.tree-leaf')!);
+    expect(onStartEdit).not.toHaveBeenCalled();
+  });
+
+  it('shows the inline editor on the row being edited', () => {
+    render(<DocumentTree doc={DOC4} expandTick={1} expandTarget editingPath={['n']} onStartEdit={() => {}} onCommitEdit={async () => {}} />);
+    expect(screen.getByRole('textbox', { name: 'Value' })).toHaveValue('3');
+    expect(screen.getByRole('combobox', { name: 'Type' })).toHaveValue('number');
+  });
+});

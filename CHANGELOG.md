@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **JSON view.** Next to Table and Tree, the documents of the page as one read-only JSON array. The view you pick is remembered
+- **Edit a value in place.** Double-click a cell in the table, or a value in the tree, to edit just that field: type the value, pick its type (String, Number, Boolean, Date, ObjectId, Null, Object, Array), Enter saves, Esc cancels. Only that field is written (`$set`), so hidden fields and other people's changes to other fields are left alone. Objects and arrays open in a dialog
+- **Right-click a field** for Edit value, Set to null, Rename field, Remove field, Add field, Copy value, Copy field path and Filter on this value, followed by the usual document actions
+- **Tree view as a Key / Value / Type grid**, with the document's position in the result and a type for every value
+- **Colours per type in the JSON.** In the JSON view, the document viewer and editor, keys, strings, numbers, booleans, null, ObjectIds and dates each have their own colour, in every theme (all readable at 4.5:1 or better). Dates in the tree and table get their own colour too, separate from ObjectIds
+- **The About cube spins faster when clicked**, for a few seconds, then slows back down to its usual speed
+- **Keyboard in the table:** click a cell, move with the arrows, Enter or F2 to edit it
+
+### Changed
+- **Bigger collection tabs.** Documents, Query, Aggregation, Schema, Indexes and Stats are larger, with bigger icons that follow the text size setting, and the active one is highlighted
+- In the table, double-clicking a cell edits that value; double-click the `_id` cell (or Ctrl+J) to open the whole document
+- In the tree, double-clicking a value now edits it (on a writable connection). To filter on a field use its funnel button or drag it into the query panel, as before
+- "Add field" opens a small dialog (name, type, value) instead of the document editor
+
+### Removed
+- **Reopening the last session on startup.** The app no longer reconnects the connections that were open at the last close, nor reopens their tabs: every start is clean. The "Reopen last session on startup" setting is gone
+
+### Fixed
+- **Switching theme updated the editors one switch late.** The editors picked their colours before the new theme was applied
+- **MongoDB connections are closed when the app quits.** They used to be dropped with the process; now each one is closed properly first (waiting at most 2 seconds, so an unreachable server cannot keep the app from closing)
+- **A fast double-click could act on the wrong document.** Selecting a row showed the selection bar above the list and pushed it down, so the second click landed on the row above. The selection bar now floats over the bottom of the list, centred on it and on one line
+
 ## [1.10.0] - 2026-10-26
 
 ### Added

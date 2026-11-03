@@ -12,8 +12,6 @@ interface Props {
   onFontScale: (v: number) => void;
   soundsEnabled: boolean;
   onSoundsEnabled: (v: boolean) => void;
-  restoreSession: boolean;
-  onRestoreSession: (v: boolean) => void;
   onClose: () => void;
 }
 
@@ -73,7 +71,7 @@ function ColPreview({ color }: { color?: string }) {
 }
 
 export default function SettingsModal({
-  settings, onChange, fontScale, onFontScale, soundsEnabled, onSoundsEnabled, restoreSession, onRestoreSession, onClose,
+  settings, onChange, fontScale, onFontScale, soundsEnabled, onSoundsEnabled, onClose,
 }: Props) {
   useEffect(() => onEscape(onClose), [onClose]);
 
@@ -101,12 +99,6 @@ export default function SettingsModal({
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={soundsEnabled} onChange={e => onSoundsEnabled(e.target.checked)} />
               Play sounds on connect, disconnect, refresh and connection errors
-            </label>
-          </div>
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={restoreSession} onChange={e => onRestoreSession(e.target.checked)} />
-              Reopen last session on startup (reconnect its connections and restore its tabs)
             </label>
           </div>
           <p className="modal-intro">

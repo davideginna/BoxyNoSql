@@ -65,7 +65,7 @@
   --val-str:       #ce9178;
   --val-num:       #b5cea8;
   --val-bool:      #569cd6;
-  --val-null:      #888888;
+  --val-null:      #8f8f8f;
   --tree-key:      #7ab0c8;
   --error:         #f48771;
   --success:       #4ec9b0;
@@ -73,7 +73,8 @@
   --status-bg:     #2a5a78;
   --status-text:   #ffffff;
   --accent-text:  #ffffff;
-  --val-oid:      #e74c3c;
+  --val-oid:      #f0705f;
+  --val-date:     #c586c0;
   --mark-bg:      #f5a623;
   --mark-text:    #000000;
   /* Label of an *idle* tab. Deliberately between --text-secondary and
@@ -104,9 +105,9 @@ body.theme-light {
   --icon-col:      #0070c0;
   --icon-conn:     #8b3a1a;
   --val-str:       #a31515;
-  --val-num:       #098658;
+  --val-num:       #067049;
   --val-bool:      #0000ff;
-  --val-null:      #999999;
+  --val-null:      #6e6e6e;
   --tree-key:      #001080;
   --error:         #d73a49;
   --success:       #28a745;
@@ -114,7 +115,8 @@ body.theme-light {
   --status-bg:     #0066b8;
   --status-text:   #ffffff;
   --accent-text:  #ffffff;
-  --val-oid:      #b31d28;
+  --val-oid:      #795e26;
+  --val-date:     #af00db;
   --mark-bg:      #ffd54f;
   --mark-text:    #000000;
   --tab-text-idle:#4d4d4d;
@@ -138,8 +140,8 @@ body.theme-hc {
   --icon-conn:     #ffd700;
   --val-str:       #ffd700;
   --val-num:       #89d185;
-  --val-bool:      #3794ff;
-  --val-null:      #888888;
+  --val-bool:      #6fc3df;
+  --val-null:      #a0a0a0;
   --tree-key:      #3794ff;
   --error:         #f48771;
   --success:       #89d185;
@@ -147,7 +149,8 @@ body.theme-hc {
   --status-bg:     #3794ff;
   --status-text:   #000000;
   --accent-text:  #000000;
-  --val-oid:      #ffd700;
+  --val-oid:      #f48771;
+  --val-date:     #d670d6;
   --mark-bg:      #ffd700;
   --mark-text:    #000000;
   --tab-text-idle:#e0e0e0;
@@ -170,18 +173,19 @@ body.theme-solarized {
   --icon-db:       #859900;
   --icon-col:      #268bd2;
   --icon-conn:     #cb4b16;
-  --val-str:       #2aa198;
-  --val-num:       #d33682;
-  --val-bool:      #268bd2;
+  --val-str:       #35b5ab;
+  --val-num:       #ef80b6;
+  --val-bool:      #5aaae6;
   --val-null:      #93a1a1;
-  --tree-key:      #b58900;
+  --tree-key:      #cfa21a;
   --error:         #dc322f;
   --success:       #859900;
   --warning:       #cb4b16;
   --status-bg:     #b58900;
   --status-text:   #002b36;
   --accent-text:  #002b36;
-  --val-oid:      #cb4b16;
+  --val-oid:      #ec7a45;
+  --val-date:     #9da1ea;
   --mark-bg:      #b58900;
   --mark-text:    #002b36;
   --tab-text-idle:#c3c9c0;
@@ -845,17 +849,27 @@ button,
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 6px 14px;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 9px 18px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  border-bottom: 3px solid transparent;
   margin-bottom: -2px;
   letter-spacing: 0.02em;
-  line-height: 18px;
+  line-height: 20px;
   box-sizing: border-box;
-  border-radius: 4px 4px 0 0;
+  border-radius: 6px 6px 0 0;
   transition: color 0.1s, background 0.1s;
   white-space: nowrap;
+}
+/* icon scales with the Text size setting, like the label next to it */
+.view-switcher button svg {
+  width: calc(15px * var(--font-scale));
+  height: calc(15px * var(--font-scale));
+  flex-shrink: 0;
+  stroke-width: 2.2;
 }
 .view-switcher button:hover {
   color: var(--text-primary);
@@ -864,6 +878,7 @@ button,
 .view-switcher button.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* ── Tab content ─────────────────────────────────────────────────────────────── */
@@ -1259,6 +1274,77 @@ button,
 .tree-val-bool { color: var(--val-bool); }
 .tree-val-null { color: var(--val-null); font-style: italic; }
 .tree-val-oid  { color: var(--val-oid); }
+.tree-val-date { color: var(--val-date); }
+
+/* Tree as a grid: Key | Value | Type on every row — the document header, a
+   branch and a leaf alike — so the three columns line up down the whole list. */
+.tree-view-container { --tg-cols: minmax(160px, 32%) minmax(0, 1fr) 96px; }
+.tree-grid-row {
+  display: grid; grid-template-columns: var(--tg-cols);
+  align-items: center; column-gap: var(--space-4);
+  padding-left: 10px; padding-right: 10px;
+}
+.tree-grid-row > .tg-key,
+.tree-grid-row > .tg-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-grid-row > .tg-key { display: flex; align-items: center; gap: var(--space-2); line-height: 1.5; }
+.tree-grid-row > .tg-val { display: flex; align-items: center; gap: var(--space-2); line-height: 1.5; }
+.tree-grid-row > .tg-type {
+  color: var(--text-secondary); font-size: var(--fs-xs); font-family: var(--font-ui);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-grid-head {
+  position: sticky; top: -8px; z-index: 2;
+  margin: -8px -8px 6px; padding-top: 6px; padding-bottom: 6px;
+  /* the cards below have a 1px border: shift the columns to sit on theirs */
+  padding-left: 19px; padding-right: 19px;
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.tree-grid-head > .tg-type { font-size: inherit; }
+.doc-tree-header.tree-grid-row { display: grid; }
+.doc-tree-header .doc-tree-preview { border-left: none; padding-left: 0; }
+.doc-tree-index { color: var(--text-secondary); flex-shrink: 0; }
+.tree-leaf.tree-grid-row, .tree-branch.tree-grid-row { padding-top: 2px; padding-bottom: 2px; }
+.tree-leaf.editing { cursor: default; background: var(--bg-hover); }
+.tree-leaf .tg-val .tree-filter-btn { margin-left: auto; }
+
+/* Table cells: the keyboard cursor and the cell being edited. */
+.document-table td.doc-cell-active { box-shadow: inset 0 0 0 2px var(--accent); }
+.document-table td.doc-cell-editing { padding: 2px 4px; overflow: visible; max-width: none; }
+
+/* In-place value editor, shared by the table and the tree. */
+.inline-editor { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 220px; }
+.inline-editor-input {
+  flex: 1; min-width: 80px; font-family: var(--font-mono); font-size: var(--fs-sm);
+  padding: 2px 6px; border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  background: var(--bg-primary); color: var(--text-primary);
+}
+.inline-editor-input.invalid { border-color: var(--error); }
+.inline-editor-type {
+  font-size: var(--fs-xs); padding: 2px 4px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary);
+}
+.inline-editor-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-secondary); padding: 3px; cursor: pointer;
+}
+.inline-editor-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.inline-editor-btn:disabled { opacity: 0.4; cursor: default; }
+.value-modal-json {
+  width: 100%; box-sizing: border-box; margin-top: var(--space-3);
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  background: var(--bg-primary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; resize: vertical;
+}
+
+/* JSON view: the whole page in one read-only editor that fills the area. */
+.json-view-container { flex: 1; min-height: 0; display: flex; padding: 8px; }
+/* Room under the last row for the floating selection bar, always — padding
+   that came and went with the selection would move the rows again. */
+.document-table, .tree-view-container { padding-bottom: 56px; }
+.json-editor-wrap.fill { height: auto; flex: 1; min-height: 0; }
 
 /* ── Query Builder ───────────────────────────────────────────────────────────── */
 /* ── Query Builder panel (right side) ───────────────────────────────────────── */
@@ -1849,6 +1935,17 @@ button.status-filter:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: var(--fs-sm);
 }
 .bulk-action-bar--active { background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary)); }
+/* The selection bar floats over the bottom of the list instead of taking a
+   row above it: appearing on the first click of a double-click, it used to push
+   the list down, so the second click landed on the row above — and edited it. */
+.docs-main-wrap { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bulk-action-bar--floating {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 20;
+  border: 1px solid var(--accent); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  box-shadow: 0 6px 20px color-mix(in srgb, #000 35%, transparent);
+  width: max-content; max-width: calc(100% - 32px); flex-wrap: wrap; justify-content: center;
+}
 .bulk-action-bar span { color: var(--text-secondary); margin-right: 4px; }
 
 /* ── Status Bar ──────────────────────────────────────────────────────────────── */
@@ -1970,7 +2067,7 @@ button.danger:hover { background: color-mix(in srgb, var(--error) 80%, #000); }
    an accent fill plus --accent-text ink: that is how the tab label became white
    on a near-white background in the light theme (1.32:1) and near-black on
    near-black in hc/solarized. */
-button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.tree-filter-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove):not(.diff-lineno):not(.status-filter) {
+button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(.conn-subtab):not(.view-toggle button):not(.view-switcher button):not(.toolbar button):not(.sidebar-footer button):not(.db-tree-toolbar button):not(.qb-condition button):not(.qb-del-btn):not(.tree-filter-btn):not(.ur-tab):not(.row-edit-btn):not(.doc-edit-btn):not(.col-actions button):not(.tree-node-actions button):not(.folder-header .actions button):not(.connection-item .actions button):not(.welcome-recent-item):not(.welcome-recent-remove):not(.diff-lineno):not(.status-filter):not(.inline-editor-btn) {
   background: var(--accent); border: none; color: var(--accent-text);
   padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-md);
 }

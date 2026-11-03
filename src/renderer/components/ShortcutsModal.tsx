@@ -33,6 +33,8 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['Delete'], label: 'Delete the selected documents' },
       { keys: ['Ctrl', 'J'], label: 'Edit the selected document' },
       { keys: ['F3'], label: 'View the selected document (read-only)' },
+      { keys: ['↑', '↓', '←', '→'], label: 'Table: move between cells' },
+      { keys: ['Enter'], label: 'Table: edit the value of the current cell (also F2)' },
       { keys: ['Ctrl', 'F'], label: 'Find within the open document editor/viewer' },
       { keys: ['Ctrl', 'Enter'], label: 'Save (inside the add/edit document editor)' },
       { keys: ['Esc'], label: 'Close the open document editor/viewer' },

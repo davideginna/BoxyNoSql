@@ -14,7 +14,6 @@ import { IconSettings, loadIconSettings, saveIconSettings } from './utils/iconCo
 import { playSound, loadSoundsEnabled, saveSoundsEnabled } from './utils/sounds';
 import { applyFontScale, loadFontScale, saveFontScale } from './utils/fontScale';
 import { PinnedCollection, loadPinned, savePinned, togglePinned } from './utils/pinnedCollections';
-import { loadSession, saveSession, sessionConnectionIds, loadRestoreSession, saveRestoreSession } from './utils/session';
 import {
   UpdateStatus, getCheckOnStartup, getSkippedVersion, setSkippedVersion, shouldShow,
 } from './utils/updates';
@@ -138,7 +137,6 @@ function App() {
   const [iconSettings, setIconSettings] = useState<IconSettings>(() => loadIconSettings());
   const [fontScale, setFontScale] = useState(() => loadFontScale());
   const [soundsEnabled, setSoundsEnabled] = useState(() => loadSoundsEnabled());
-  const [restoreSession, setRestoreSession] = useState(() => loadRestoreSession());
   useEffect(() => applyFontScale(fontScale), [fontScale]);
   const [pinnedCollections, setPinnedCollections] = useState<PinnedCollection[]>(() => loadPinned());
   const [collectionClipboard, setCollectionClipboard] = useState<{ connectionId: string; db: string; col: string } | null>(null);
@@ -150,10 +148,11 @@ function App() {
     () => (localStorage.getItem('theme') as any) || 'dark'
   );
 
-  useEffect(() => {
-    document.body.className = `theme-${theme}`;
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  // Set during render, not in an effect: the views pick their editor theme
+  // from this class while they render, and children render before a parent's
+  // effects run — an effect left every editor one theme behind after a switch.
+  if (document.body.className !== `theme-${theme}`) document.body.className = `theme-${theme}`;
+  useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
 
   // Central IPC call point: on a connection-loss-shaped error for a call whose
   // first arg is a connectionId, silently reconnects once and retries the call
@@ -188,49 +187,15 @@ function App() {
     }
   }, []);
 
-  const sessionRestoredRef = useRef(false);
-
+  // Every start is a clean one: nothing reconnects and no tab comes back. The
+  // two keys below belonged to the old "reopen last session" feature.
   useEffect(() => {
-    Promise.all([inv('get-connections'), inv('get-folders')]).then(async ([conns, fols]: [Connection[], Folder[]]) => {
+    try { localStorage.removeItem('lastSession'); localStorage.removeItem('restoreSession'); } catch {}
+    Promise.all([inv('get-connections'), inv('get-folders')]).then(([conns, fols]: [Connection[], Folder[]]) => {
       setConnections(conns);
       setFolders(fols);
-      try {
-        const session = loadRestoreSession() ? loadSession() : null;
-        if (!session) return;
-        const validIds = new Set(conns.map(c => c.id));
-        const neededIds = sessionConnectionIds(session).filter(id => validIds.has(id));
-        const connectedNow = new Set<string>();
-        for (const id of neededIds) {
-          try {
-            const result = await inv('connect-db', id);
-            setSelectedConnection(id);
-            setConnectedIds(s => new Set([...s, id]));
-            setDatabases(prev => ({ ...prev, [id]: result.databases }));
-            setConnections(await inv('touch-connection', id));
-            connectedNow.add(id);
-          } catch { /* server unreachable at startup — skip its tabs silently */ }
-        }
-        const restoredTabs = session.tabs.filter(t => t.connectionId && connectedNow.has(t.connectionId));
-        if (restoredTabs.length > 0) {
-          setTabs(restoredTabs);
-          setActiveTab(
-            session.activeTab && restoredTabs.some(t => t.id === session.activeTab)
-              ? session.activeTab
-              : restoredTabs[restoredTabs.length - 1].id
-          );
-        }
-      } finally {
-        sessionRestoredRef.current = true;
-      }
     });
   }, []);
-
-  // Skipped until the startup restore above has run once, so it never overwrites
-  // the saved session with the transient empty tabs/activeTab of the first render.
-  useEffect(() => {
-    if (!sessionRestoredRef.current) return;
-    saveSession(tabs, activeTab, [...connectedIds]);
-  }, [tabs, activeTab, connectedIds]);
 
   // ── Updates ──────────────────────────────────────────────────────────────────
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -1174,8 +1139,6 @@ function App() {
           onFontScale={v => { setFontScale(v); saveFontScale(v); }}
           soundsEnabled={soundsEnabled}
           onSoundsEnabled={v => { setSoundsEnabled(v); saveSoundsEnabled(v); }}
-          restoreSession={restoreSession}
-          onRestoreSession={v => { setRestoreSession(v); saveRestoreSession(v); }}
           onClose={() => setShowSettings(false)}
         />
       )}

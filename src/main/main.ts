@@ -199,6 +199,22 @@ Menu.setApplicationMenu(null);
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+// Close every MongoClient before the process goes, so the servers see a clean
+// logout instead of sockets dropped mid-session. The quit is held back once,
+// for at most two seconds: an unreachable server must not keep the app open.
+let closingClients = false;
+app.on('before-quit', e => {
+  if (closingClients || clients.size === 0) return;
+  e.preventDefault();
+  closingClients = true;
+  const open = [...clients.values()];
+  clients.clear();
+  Promise.race([
+    Promise.allSettled(open.map(c => c.close())),
+    new Promise(resolve => setTimeout(resolve, 2000)),
+  ]).finally(() => app.quit());
+});
 app.on('activate', () => { if (mainWindow === null) createWindow(); });
 
 ipcMain.handle('show-confirm', async (_, message: string) => {
@@ -692,6 +708,23 @@ ipcMain.handle('bulk-update-documents', async (_, connectionId: string, dbName: 
   const rawIds = docIds.filter(id => !/^[0-9a-f]{24}$/i.test(id));
   const filter: any = { _id: { $in: [...ids, ...rawIds] } };
   const result = await client.db(dbName).collection(collection).updateMany(filter, fromExtJSON(update));
+  return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+});
+
+// In-place edit of one document: a `$set` / `$unset` / `$rename` built by the
+// renderer's utils/fieldEdit.ts. The `_id` arrives as the serialized value
+// itself (`{$oid}`, a number, a string…) rather than a string to guess from, so
+// a numeric `_id` matches too. An update operator, never a replace: the row the
+// user edited may be a projection, and a replace would drop what was hidden.
+ipcMain.handle('update-fields', async (_, connectionId: string, dbName: string, collection: string, id: any, update: any) => {
+  assertWritable(connectionId);
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  if (!update || typeof update !== 'object' || !Object.keys(update).every(k => k.startsWith('$'))) {
+    throw new Error('update-fields takes an update-operator document');
+  }
+  const result = await client.db(dbName).collection(collection).updateOne({ _id: fromExtJSON(id) }, fromExtJSON(update));
+  if (result.matchedCount === 0) throw new Error('The document is no longer there — refresh the view');
   return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
 });
 

@@ -344,7 +344,7 @@ export default function MainContent({
               className={activeTabData.type === type ? 'active' : ''}
               onClick={() => onChangeTabType(activeTab!, type)}
             >
-              <Icon name={icon} size={13} /> {label}
+              <Icon name={icon} size={18} />{label}
             </button>
           ))}
         </div>

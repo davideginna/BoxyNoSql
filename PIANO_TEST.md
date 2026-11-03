@@ -236,7 +236,7 @@ DOM: sotto le 200 righe non cambia nulla, sopra parte il windowing.
 | 7.1 | `➕ Add` → paste `{ "name":"Eve","age":31 }` → Ctrl+Enter | Inserito, lista aggiornata |
 | 7.2 | Add con `[ {a:1},{a:2} ]` | Inserisce entrambi |
 | 7.3 | Add con JSON malformato | Header mostra `✕ Unexpected…`, Save disabilitato |
-| 7.4 | Double-click su riga doc | Edit modal si apre |
+| 7.4 | Table: double-click sulla cella `_id` | Edit modal si apre (le altre celle si modificano in place — sezione 7c) |
 | 7.5 | Modifica campo age → 99 | Badge "● modified" appare, diff panel lista path + old→new |
 | 7.6 | Ctrl+Enter | Salva, modal chiude, lista refresh |
 | 7.7 | Edit → modifica → Esc → conferma "Close without saving?" | Annulla, doc non modificato |
@@ -244,7 +244,7 @@ DOM: sotto le 200 righe non cambia nulla, sopra parte il windowing.
 | 7.9 | Edit doc con `_id: {"$oid":"..."}` e modifica anche `created` in `{"$date":"..."}` | **Verifica bug-fix #3:** dopo save, refresh. `created` resta Date in Mongo (verifica con `mongosh: db.users.findOne({name:"Eve"})` → `created` di tipo Date, non stringa) |
 | 7.10 | F3 su selezione singola | View modal (read-only) |
 | 7.11 | Ctrl+J su selezione | Edit modal |
-| 7.12 | Right-click su doc → "Add field" | Edit con `newField: ""` |
+| 7.12 | Right-click su doc → "Add field…" | Dialog con nome, tipo e valore; preview `$set` prima di salvare |
 | 7.13 | Right-click → Copy | Clipboard contiene JSON doc |
 | 7.14 | Right-click → Export JSON | Scarica file `doc_<id>.json` |
 | 7.15 | Right-click → Delete → conferma | Rimosso |
@@ -313,13 +313,44 @@ Coperto anche da unit test: `extJson.test.ts`, `editableJson.test.ts`, `Document
 
 ---
 
+## 7c. Test: Viste Table / Tree / JSON e modifica in place
+
+Collection con campi di tipi diversi (stringa, numero, bool, data, ObjectId, sottodocumento, array, null):
+
+| # | Azione | Risultato atteso |
+|---|--------|------------------|
+| 7c.1 | Toolbar: Table / Tree / JSON | Tre viste; la scelta resta anche chiudendo e riaprendo la collection (`localStorage['docViewMode']`) |
+| 7c.2 | Tree | Griglia Key / Value / Type con intestazione fissa; ogni documento `(n) <id>`, tipo "Document"; sottodocumenti `{ n fields }`, array `[ n elements ]` |
+| 7c.3 | JSON | Tutta la pagina come array JSON read-only, `ObjectId(...)` / `ISODate(...)`, fold per documento |
+| 7c.4 | Table: double-click su `name` → scrivi → Enter | Salvato con `$set` su quel solo campo; la riga si aggiorna senza ricaricare la pagina |
+| 7c.5 | Double-click su un numero | Editor con tipo "Number"; Enter salva un numero (verificare con `mongosh`, non stringa) |
+| 7c.6 | Cambia tipo a Number e scrivi `abc` | Bordo rosso, ✓ disabilitato, Enter non salva |
+| 7c.7 | Esc, oppure click fuori | Annulla, niente scritto |
+| 7c.8 | Doppio-click veloce su una riga non selezionata | Si modifica **quella** riga (la barra di selezione non deve spostare la lista) |
+| 7c.9 | Click su una cella, frecce, Enter / F2 | Il cursore di cella si sposta; Enter apre l'editor sulla cella |
+| 7c.10 | Right-click su una cella | Menu campo: Edit value, Edit value in dialog…, Set to null, Rename field…, Remove field, Add field…, Copy value / path, Filter on this value, poi le voci del documento |
+| 7c.11 | Remove field → conferma | `$unset`; dentro un array l'elemento sparisce (array riscritto, niente `null`) |
+| 7c.12 | Rename field su un campo dentro un array | Rifiutato con messaggio (usare Edit document) |
+| 7c.13 | Double-click su un sottodocumento / array | Dialog con JSON multilinea, preview `$set` |
+| 7c.14 | Tree: espandi un doc, double-click su una foglia annidata | Editor inline; salva `$set` sul path puntato (`address.city`, `tags.1`) |
+| 7c.15 | `_id` (cella o foglia) | Mai modificabile in place; nel table il double-click apre il documento intero |
+| 7c.16 | Campi nascosti (Fields) + modifica in place | Gli altri campi nascosti restano nel documento (update, non replace) |
+| 7c.17 | Connessione read-only | Double-click non apre editor, voci di modifica disabilitate; nel tree il double-click su un campo torna ad aggiungere il filtro |
+| 7c.18 | Stringa con a capo (`"a\nb"`), double-click | Si apre il dialog con area multilinea (non l'editor inline); salvando gli a capo restano |
+| 7c.19 | Editor inline aperto, focus sul selettore di tipo, premi Canc | Non parte la cancellazione dei documenti selezionati |
+| 7c.20 | Seleziona una riga, scorri in fondo | L'ultima riga resta visibile sopra la barra di selezione flottante |
+| 7c.21 | Seleziona una riga, con e senza pannello Query aperto | La barra di selezione è centrata sulla lista, su una riga sola |
+| 7c.22 | Vista JSON / View / Edit con chiave, stringa, intero, decimale, bool, null, ObjectId, data | Ogni tipo ha il suo colore; cambiando tema (Dark → Light → High contrast → Solarized) i colori cambiano subito e restano leggibili |
+
+---
+
 ## 7b. Test: Bulk field edit
 
 Selezionare più documenti in `testdb.users`:
 
 | # | Azione | Risultato atteso |
 |---|--------|------------------|
-| 7b.1 | Nessuna selezione | Il bottone "Edit field" non c'è (la barra compare solo con selezione) |
+| 7b.1 | Nessuna selezione | Il bottone "Edit field" non c'è (la barra flottante in basso compare solo con selezione e non sposta la lista) |
 | 7b.2 | Selezione + Edit field | Modale con Set/Rename/Unset e il conteggio dei documenti |
 | 7b.3 | Set `city` = `Milano` (String) | Preview mostra `{"$set": {"city": "Milano"}}`; conferma e i documenti si aggiornano |
 | 7b.4 | Set con tipo Number e valore non numerico | Errore nel modale, Apply disabilitato |
@@ -705,6 +736,8 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 | 15.1 | Crea 3 connessioni + 2 folder → chiudi app → riapri | Tutto persiste |
 | 15.2 | Controlla file `~/.config/BoxyNoSql/connections.json` | Contiene `connections` e `folders` arrays |
 | 15.3 | localStorage: `theme`, `sidebarWidth` | Presenti |
+| 15.4 | Connetti 2 connessioni, apri 2 collection → chiudi app → riapri | Nessuna connessione attiva, nessuna tab: avvio pulito |
+| 15.5 | Con connessioni aperte, chiudi l'app e guarda il server (`db.currentOp()` / log mongod) | Le connessioni dell'app si chiudono subito, l'app esce entro ~2s anche con un server irraggiungibile |
 
 ---
 
@@ -717,6 +750,7 @@ Servono **due connessioni verso server diversi con un db dallo stesso nome** (es
 | 15b.3 | `localStorage.setItem('lastSeenChangelogVersion', '<versione precedente reale>')` → riavvia | Popup "What's new" con solo le sezioni più recenti di quella versione |
 | 15b.4 | Riavvia di nuovo dopo 15b.2/15b.3 (senza toccare localStorage) | Nessun popup — `lastSeenChangelogVersion` ora combacia con la versione corrente |
 | 15b.5 | About → bottone "Changelog" | Apre il changelog completo (tutte le versioni), non solo le ultime |
+| 15b.6 | About → click sul cubo | Suono "faaah"; il cubo accelera per ~2s senza scatti, poi rallenta e torna alla velocità normale |
 | 15b.6 | Changelog aperto → Esc / Close | Si chiude, nessun effetto sullo stato "what's new" |
 
 ---

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import { applyMonacoTheme, registeredName, type MonacoThemeName } from './monacoTheme';
 // The `editor.api` entry point is deliberately minimal — folding is a "contrib"
 // module and is not registered without this import, which left `folding:
 // lineNumbers` below a silent no-op (see MonacoJsonEditor.tsx for the same fix).
@@ -189,40 +190,7 @@ interface Props {
   lineNumbers?: boolean;
 }
 
-export type MonacoThemeName = 'vs-dark' | 'vs' | 'hc-black' | 'boxy-solarized';
-
-// Monaco ships no solarized theme, so the editor fell back to vs-dark and stayed
-// blue-grey inside an otherwise teal UI. Defined once, on first use.
-let solarizedDefined = false;
-function ensureSolarizedTheme() {
-  if (solarizedDefined) return;
-  solarizedDefined = true;
-  monaco.editor.defineTheme('boxy-solarized', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'eee8d5', background: '002b36' },
-      { token: 'comment', foreground: '586e75', fontStyle: 'italic' },
-      { token: 'string', foreground: '2aa198' },
-      { token: 'number', foreground: 'd33682' },
-      { token: 'keyword', foreground: '859900' },
-      { token: 'identifier', foreground: 'eee8d5' },
-      { token: 'delimiter', foreground: '93a1a1' },
-    ],
-    colors: {
-      'editor.background': '#002b36',
-      'editor.foreground': '#eee8d5',
-      'editorLineNumber.foreground': '#586e75',
-      'editorLineNumber.activeForeground': '#b58900',
-      'editorCursor.foreground': '#b58900',
-      'editor.selectionBackground': '#0d5766',
-      'editor.lineHighlightBackground': '#073642',
-      'editorSuggestWidget.background': '#073642',
-      'editorSuggestWidget.border': '#0d4a58',
-      'editorSuggestWidget.selectedBackground': '#0d5766',
-    },
-  });
-}
+export type { MonacoThemeName } from './monacoTheme';
 
 export default function MonacoQueryEditor({
   value, onChange, onRun, theme = 'vs-dark', collectionSample,
@@ -237,12 +205,12 @@ export default function MonacoQueryEditor({
 
   useEffect(() => {
     if (language === 'json') registerJsonCompletions(); else registerCompletions();
-    ensureSolarizedTheme();
+    applyMonacoTheme(theme);
     if (!hostRef.current) return;
     const editor = monaco.editor.create(hostRef.current, {
       value,
       language,
-      theme,
+      theme: registeredName(theme),
       automaticLayout: true,
       minimap: { enabled: false },
       fontFamily: 'Consolas, Monaco, monospace',
@@ -310,7 +278,7 @@ export default function MonacoQueryEditor({
   }, [value]);
 
   // Theme update
-  useEffect(() => { ensureSolarizedTheme(); monaco.editor.setTheme(theme); }, [theme]);
+  useEffect(() => { applyMonacoTheme(theme); }, [theme]);
 
   // Sample-field completions (per-collection)
   useEffect(() => {

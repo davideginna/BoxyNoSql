@@ -6,7 +6,7 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 // `showFoldingControls` are silently no-ops: no gutter arrows, ever.
 import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js';
 import 'monaco-editor/esm/vs/language/json/monaco.contribution';
-import type { MonacoThemeName } from './MonacoQueryEditor';
+import { applyMonacoTheme, registeredName, ensureDocLanguage, DOC_LANGUAGE, type MonacoThemeName } from './monacoTheme';
 
 // The document/add-document JSON boxes are a single free-form value, not a
 // `db.` chain or a pipeline stage — no operator completions needed. Validation
@@ -96,11 +96,14 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
 
   useEffect(() => {
     ensureJsonDiagnostics();
+    ensureDocLanguage();
+    applyMonacoTheme(theme);
     if (!hostRef.current) return;
     const editor = monaco.editor.create(hostRef.current, {
       value,
-      language: 'json',
-      theme,
+      // The document dialect, coloured per kind of value (monacoTheme.ts).
+      language: DOC_LANGUAGE,
+      theme: registeredName(theme),
       readOnly,
       domReadOnly: readOnly,
       automaticLayout: true,
@@ -160,7 +163,7 @@ const MonacoJsonEditor = forwardRef<MonacoJsonEditorHandle, Props>(function Mona
     editorRef.current?.updateOptions({ wordWrap: wrap ? 'on' : 'off' });
   }, [wrap]);
 
-  useEffect(() => { monaco.editor.setTheme(theme); }, [theme]);
+  useEffect(() => { applyMonacoTheme(theme); }, [theme]);
 
   // Find highlights. Re-run on value too: the matches move when the text does.
   useEffect(() => {

@@ -96,10 +96,11 @@ beforeEach(() => {
 
 const view = () => render(<DocumentsView connectionId="c1" database="db" collection="col" />);
 
-// Table mode gives a row that can simply be double-clicked to open the editor.
+// In table mode a double-click on the `_id` cell opens the document editor
+// (any other cell edits its own value in place).
 const openEdit = async (_container: HTMLElement) => {
   fireEvent.click(screen.getByRole('button', { name: /Table/ }));
-  fireEvent.doubleClick(await screen.findByText('alpha'));
+  fireEvent.doubleClick(await screen.findByText(`ObjectId("${OID}")`));
   await screen.findByRole('heading', { name: /^Edit —/ });
   return { ta: screen.getByTestId('doc-json-editor') as HTMLTextAreaElement };
 };
@@ -320,7 +321,7 @@ describe('DocumentsView — field visibility', () => {
     await showTable();
     expect(screen.queryByRole('columnheader', { name: /^nested/ })).toBeNull();
 
-    fireEvent.doubleClick(screen.getByText('alpha'));
+    fireEvent.doubleClick(screen.getByText(`ObjectId("${OID}")`));
     await screen.findByRole('heading', { name: /^Edit —/ });
 
     expect(screen.getByTestId('doc-json-editor')).toHaveValue(EXPECTED_JSON);
@@ -449,8 +450,11 @@ describe('DocumentsView — export', () => {
     await loaded();
     fireEvent.click(screen.getByRole('button', { name: /Export/ }));
 
+    // Inside the menu: the toolbar has a "JSON" view button of its own.
+    await screen.findAllByRole('button', { name: 'NDJSON' });
+    const menu = document.querySelector('.ctx-menu') as HTMLElement;
     for (const f of ['JSON', 'NDJSON', 'CSV']) {
-      expect(await screen.findAllByRole('button', { name: f })).toHaveLength(2);
+      expect(within(menu).getAllByRole('button', { name: f })).toHaveLength(2);
     }
   });
 });
@@ -799,7 +803,7 @@ describe('DocumentsView — dates', () => {
     const { ta } = await openEdit(container);
     expect(ta.value).toContain(`"insertDate": ISODate("${ISO}")`);
 
-    // The user changes the date the way Studio 3T writes it.
+    // The user changes the date with a +0000 offset, as some exports write it.
     fireEvent.change(ta, { target: { value: ta.value.replace(`ISODate("${ISO}")`, 'ISODate("2023-01-02T03:04:05.000+0000")') } });
     fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
 
@@ -1028,5 +1032,162 @@ describe('DocumentsView — filter as JSON, partly expressible', () => {
     await waitFor(() => expect(last()).toEqual({ $and: [{ tags: { $elemMatch: { k: 'y' } } }, { name: { $eq: 'beta' } }] }));
     expect(screen.getByDisplayValue('beta')).toBeInTheDocument();
     expect(screen.getByText('Custom JSON filter')).toBeInTheDocument();
+  });
+});
+
+describe('DocumentsView — in-place editing', () => {
+  beforeEach(() => { window.confirm = () => true; });
+  const fieldCalls = () => invoke.mock.calls.filter(c => c[0] === 'update-fields');
+  const editCell = async (text: string) => {
+    await showTable();
+    fireEvent.doubleClick(screen.getByText(text));
+    return screen.getByRole('textbox', { name: 'Value' }) as HTMLInputElement;
+  };
+
+  it('a double-click on a cell edits that value and Enter saves it with $set', async () => {
+    view();
+    const input = await editCell('alpha');
+    expect(input).toHaveValue('alpha');
+    fireEvent.change(input, { target: { value: 'beta' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(fieldCalls()).toHaveLength(1));
+    expect(fieldCalls()[0].slice(1)).toEqual(['c1', 'db', 'col', { $oid: OID }, { $set: { name: 'beta' } }]);
+    // Patched in place, not re-fetched.
+    expect(await screen.findByText('beta')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Value' })).toBeNull();
+  });
+
+  it('saves as the type picked, and refuses text that is not that type', async () => {
+    view();
+    const input = await editCell('alpha');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Type' }), { target: { value: 'number' } });
+    expect(input).toHaveValue('0');
+    fireEvent.change(input, { target: { value: 'abc' } });
+    expect(screen.getByRole('button', { name: 'Save value' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: '42' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(fieldCalls()).toHaveLength(1));
+    expect(fieldCalls()[0][5]).toEqual({ $set: { name: 42 } });
+  });
+
+  it('Escape cancels without writing', async () => {
+    view();
+    const input = await editCell('alpha');
+    fireEvent.change(input, { target: { value: 'beta' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('textbox', { name: 'Value' })).toBeNull();
+    expect(screen.getByText('alpha')).toBeInTheDocument();
+    expect(fieldCalls()).toHaveLength(0);
+  });
+
+  it('keeps the editor open with the server error when the write fails', async () => {
+    const original = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (ch: string, ...a: any[]) => {
+      if (ch === 'update-fields') throw new Error('not allowed');
+      return original(ch, ...a);
+    });
+    view();
+    const input = await editCell('alpha');
+    fireEvent.change(input, { target: { value: 'beta' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(input).toHaveAttribute('title', 'not allowed'));
+    invoke.mockImplementation(original);
+  });
+
+  it('Enter on the cell under the keyboard cursor starts editing it', async () => {
+    view();
+    await showTable();
+    fireEvent.click(screen.getByText('alpha'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByRole('textbox', { name: 'Value' })).toHaveValue('alpha');
+  });
+
+  it('removes a field from the cell menu with $unset', async () => {
+    view();
+    await showTable();
+    fireEvent.contextMenu(screen.getByText('alpha'));
+    fireEvent.click(screen.getByRole('button', { name: /Remove field/ }));
+    await waitFor(() => expect(fieldCalls()).toHaveLength(1));
+    expect(fieldCalls()[0][5]).toEqual({ $unset: { name: '' } });
+  });
+
+  it('adds a field through the dialog, showing the update first', async () => {
+    view();
+    await showTable();
+    fireEvent.contextMenu(screen.getByText('alpha'));
+    fireEvent.click(screen.getByRole('button', { name: /Add field next to it/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Field name' }), { target: { value: 'age' } });
+    const modal = screen.getByRole('heading', { name: 'Add field' }).closest('.modal') as HTMLElement;
+    fireEvent.change(within(modal).getByRole('combobox', { name: 'Type' }), { target: { value: 'number' } });
+    fireEvent.change(within(modal).getByRole('textbox', { name: 'Value' }), { target: { value: '7' } });
+    expect(modal.querySelector('.bulk-edit-preview')!.textContent).toContain('"age": 7');
+    fireEvent.click(within(modal).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(fieldCalls()).toHaveLength(1));
+    expect(fieldCalls()[0][5]).toEqual({ $set: { age: 7 } });
+  });
+
+  it('never edits _id in place — its cell opens the document editor', async () => {
+    view();
+    await showTable();
+    fireEvent.contextMenu(screen.getByText(`ObjectId("${OID}")`));
+    expect(screen.getByRole('button', { name: /^Edit value\s*(Enter)?$/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Remove field/ })).toBeDisabled();
+  });
+
+  it('edits nothing on a read-only connection', async () => {
+    render(<DocumentsView connectionId="c1" database="db" collection="col" readOnly />);
+    await showTable();
+    fireEvent.doubleClick(screen.getByText('alpha'));
+    expect(screen.queryByRole('textbox', { name: 'Value' })).toBeNull();
+    fireEvent.contextMenu(screen.getByText('alpha'));
+    expect(screen.getByRole('button', { name: /^Edit value\s*(Enter)?$/ })).toBeDisabled();
+  });
+
+  it('edits a tree value in place too, with the nested path', async () => {
+    view();
+    await loaded();
+    fireEvent.doubleClick(document.querySelector('.doc-tree-header')!);
+    fireEvent.click(screen.getAllByText('nested').find(el => el.closest('.tree-branch'))!);
+    fireEvent.doubleClick(screen.getByText('1').closest('.tree-leaf')!);
+    const input = screen.getByRole('textbox', { name: 'Value' });
+    fireEvent.change(input, { target: { value: '5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(fieldCalls()).toHaveLength(1));
+    expect(fieldCalls()[0][5]).toEqual({ $set: { 'nested.a': 5 } });
+  });
+});
+
+describe('DocumentsView — JSON view', () => {
+  it('shows the page as one read-only JSON array and remembers the choice', async () => {
+    const first = view();
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: /^JSON$/ }));
+    const ta = screen.getByTestId('doc-json-editor') as HTMLTextAreaElement;
+    expect(ta).toHaveAttribute('readonly');
+    expect(ta.value.startsWith('[\n  {')).toBe(true);
+    expect(ta.value).toContain(`"_id": ObjectId("${OID}")`);
+    expect(localStorage.getItem('docViewMode')).toBe('json');
+    first.unmount();
+
+    view();
+    await waitFor(() => expect(screen.getByTestId('doc-json-editor')).toBeInTheDocument());
+  });
+});
+
+describe('DocumentsView — line breaks survive an edit', () => {
+  it('sends a multi-line string to the dialog, whose textarea keeps the breaks', async () => {
+    firstDoc = { _id: { $oid: OID }, name: 'alpha', note: 'a\nb' };
+    view();
+    await showTable();
+    fireEvent.doubleClick(screen.getByText((_, el) => el?.tagName === 'TD' && el.textContent === 'a\nb'));
+    expect(screen.queryByRole('textbox', { name: 'Value' })?.tagName).toBe('TEXTAREA');
+    const ta = screen.getByRole('textbox', { name: 'Value' }) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'a\nc' } });
+    fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(invoke.mock.calls.some(c => c[0] === 'update-fields')).toBe(true));
+    expect(invoke.mock.calls.find(c => c[0] === 'update-fields')![5]).toEqual({ $set: { note: 'a\nc' } });
   });
 });

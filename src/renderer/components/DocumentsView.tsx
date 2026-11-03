@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import DocumentTree from './DocumentTree';
 import ContextMenu, { ContextMenuEntry } from './ContextMenu';
 import Icon from './Icon';
-import { showConfirm, showAlert } from '../dialog';
+import { showConfirm, showAlert, showInput } from '../dialog';
 import { isTypingTarget } from '../utils/dom';
 import { onEscape, onRunKey } from '../utils/keys';
 import { buildFilter, splitFilter, combineFilters, detectType, defaultOperator, OPERATORS_BY_TYPE, TYPE_COLORS, TYPE_LABELS, type Operator, type Condition, type FieldType } from '../utils/buildFilter';
@@ -24,8 +24,44 @@ import { previewLabel, type QueryEntry } from '../utils/queryHistory';
 import { previewJson, queryLine } from '../utils/previewJson';
 import MonacoJsonEditor, { type MonacoJsonEditorHandle } from './MonacoJsonEditor';
 import type { MonacoThemeName } from './MonacoQueryEditor';
+import { InlineValueEditor, ValueModal } from './ValueEditor';
+import {
+  valueKind, isContainer, containerSummary, editText, editBlock, dotted, getAt,
+  setUpdate, removeUpdate, renameUpdate, addFieldPath, patchSet, patchRemove, patchRename,
+  type Path,
+} from '../utils/fieldEdit';
 
-type ViewMode = 'table' | 'tree';
+type ViewMode = 'table' | 'tree' | 'json';
+
+// Which of the three views a collection opens in, remembered across tabs and runs.
+const VIEW_MODE_KEY = 'docViewMode';
+export const loadViewMode = (): ViewMode => {
+  try {
+    const v = localStorage.getItem(VIEW_MODE_KEY);
+    return v === 'table' || v === 'json' ? v : 'tree';
+  } catch { return 'tree'; }
+};
+const saveViewMode = (m: ViewMode) => { try { localStorage.setItem(VIEW_MODE_KEY, m); } catch {} };
+
+/** How a value reads in a table cell: containers summarised, ids and dates without the wrappers. */
+function cellDisplay(v: any): { text: string; cls: string } {
+  if (v === undefined) return { text: '', cls: '' };
+  switch (valueKind(v)) {
+    case 'null': return { text: 'null', cls: 'tree-val-null' };
+    case 'boolean': return { text: String(v), cls: 'tree-val-bool' };
+    case 'number': return { text: String(v), cls: 'tree-val-num' };
+    case 'objectId': return { text: `ObjectId("${v.$oid}")`, cls: 'tree-val-oid' };
+    case 'date': return { text: cellText(v), cls: 'tree-val-date' };
+    case 'object': case 'array': return { text: containerSummary(v), cls: 'tree-summary' };
+    default: return { text: cellText(v), cls: '' };
+  }
+}
+
+/** The page as one read-only JSON array, in the editor's shell dialect. */
+function pageJson(docs: any[]): string {
+  if (docs.length === 0) return '[]';
+  return '[\n' + docs.map(d => prettyDoc(d).replace(/^/gm, '  ')).join(',\n') + '\n]';
+}
 
 interface DocumentsViewProps {
   connectionId: string;
@@ -156,7 +192,18 @@ export default function DocumentsView({ connectionId, database, collection, acti
     : document.body.classList.contains('theme-solarized') ? 'boxy-solarized'
     : 'vs-dark';
   const [documents, setDocuments] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>('tree');
+  const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode);
+  const setViewMode = (m: ViewMode) => { setViewModeState(m); saveViewMode(m); setEditingCell(null); };
+  // Bumped on every load: the virtual lists drop their measured row heights
+  // when it changes. Keyed on this rather than on `documents`, so that patching
+  // one edited row in place does not throw away every other row's height.
+  const [loadSeq, setLoadSeq] = useState(0);
+  // The one value being edited in place, in whichever view is on screen.
+  const [editingCell, setEditingCell] = useState<{ idx: number; path: Path } | null>(null);
+  // Table only: the cell the keyboard acts on (arrows move it, Enter edits it).
+  const [activeCell, setActiveCell] = useState<{ idx: number; col: number } | null>(null);
+  const [fieldMenu, setFieldMenu] = useState<{ x: number; y: number; idx: number; path: Path; value: any } | null>(null);
+  const [valueModal, setValueModal] = useState<{ idx: number; path: Path; add: boolean } | null>(null);
   // Closed by default: an empty builder took ~20% of the width to show a
   // placeholder. The toolbar Filter button opens it and carries the count.
   // Open by default: the filter is the first thing most visits to a collection need.
@@ -259,13 +306,13 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
   const tableWin = useVirtualRows({
     scrollerRef: tableScrollRef, listRef: tableBodyRef, count: documents.length,
-    estimate: TABLE_ROW_ESTIMATE, resetKey: documents,
+    estimate: TABLE_ROW_ESTIMATE, resetKey: loadSeq,
   });
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const treeListRef = useRef<HTMLDivElement>(null);
   const treeWin = useVirtualRows({
     scrollerRef: treeScrollRef, listRef: treeListRef, count: documents.length,
-    estimate: TREE_ROW_ESTIMATE, resetKey: documents,
+    estimate: TREE_ROW_ESTIMATE, resetKey: loadSeq,
   });
 
   // `keys`/`hidden` are explicit rather than read from state because every
@@ -279,6 +326,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
         buildSort(keys), buildProjection(hidden),
       );
       setDocuments(result.docs);
+      setLoadSeq(n => n + 1);
+      setEditingCell(null); setActiveCell(null);
       setTotal(result.total);
       setTotalEstimated(!!result.estimated);
     } catch (err: any) { setError(err.message); }
@@ -578,6 +627,15 @@ export default function DocumentsView({ connectionId, database, collection, acti
     } catch (err: any) { setError('Paste failed: ' + err.message); }
   }, [connectionId, database, collection, conditions, limit]);
 
+  const getKeys = (): string[] => {
+    if (documents.length === 0) return [];
+    const keys = new Set<string>();
+    documents.forEach(doc => Object.keys(doc).forEach(k => keys.add(k)));
+    return Array.from(keys);
+  };
+
+  const keys = getKeys();
+
   // Global keyboard shortcuts. Bound only by the tab on screen: every tab ever
   // opened stays mounted, so an unguarded handler would fire Ctrl+D once per
   // open documents tab.
@@ -589,7 +647,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
       // Inside a text field these keys belong to the field: Ctrl+C/V/X are the
       // clipboard, Delete/Backspace delete characters — not documents.
       if (isTypingTarget(e.target)) return;
-      if (showAddDoc || showExplain) return;
+      // An open inline editor owns the keyboard: focus may be on its type
+      // picker or buttons, which are not typing targets, and Delete there must
+      // not turn into "delete the selected documents".
+      if (showAddDoc || showExplain || valueModal || editingCell) return;
       if (editingDoc) {
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowEditFind(v => !v); setTimeout(() => editFindRef.current?.focus(), 50); }
         if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
@@ -620,6 +681,28 @@ export default function DocumentsView({ connectionId, database, collection, acti
         handleBulkDelete();
         return;
       }
+      // Table cell cursor: arrows move it, Enter / F2 edit the value under it.
+      if (viewMode === 'table' && activeCell && !editingCell && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const cols = keys.length;
+        const move = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+        if (move) {
+          e.preventDefault();
+          const idx = Math.min(documents.length - 1, Math.max(0, activeCell.idx + move[0]));
+          const col = Math.min(cols - 1, Math.max(0, activeCell.col + move[1]));
+          setActiveCell({ idx, col });
+          setSelectedIndices(new Set([idx])); lastSelectedIdx.current = idx;
+          tableBodyRef.current?.querySelector(`[data-row="${idx}"]`)?.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if ((e.key === 'Enter' || e.key === 'F2') && keys[activeCell.col]) {
+          e.preventDefault();
+          const k = keys[activeCell.col];
+          const doc = documents[activeCell.idx];
+          if (k === '_id') { if (doc) (readOnly ? openView : openEdit)(doc); }
+          else startEdit(activeCell.idx, [k]);
+          return;
+        }
+      }
       const singleIdx = selectedIndices.size === 1 ? [...selectedIndices][0] : null;
       if (singleIdx === null) return;
       const doc = documents[singleIdx];
@@ -629,7 +712,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste]);
+  }, [active, readOnly, selectedIndices, documents, editingDoc, viewingDoc, showAddDoc, showExplain, showEditFind, openEdit, openView, openAddDoc, handleBulkDelete, handleBulkCopy, handlePaste, viewMode, activeCell, editingCell, keys, valueModal]);
 
   // Find in the edit / view editors: step to the next (or previous) match and select it.
   const findInEdit = useCallback((dir: 1 | -1 = 1) => {
@@ -701,6 +784,96 @@ export default function DocumentsView({ connectionId, database, collection, acti
       setEditingDoc(null);
       loadDocuments(currentFilter(), limit, page);
     } catch (err: any) { setEditError(err.message); }
+  };
+
+  // ── In-place field edits ───────────────────────────────────────────────────
+  // One `updateOne` with an update operator, then the row is patched locally
+  // rather than the page re-fetched — see utils/fieldEdit.ts.
+  const runFieldUpdate = async (idx: number, update: Record<string, any>, patch: (doc: any) => any) => {
+    const doc = documents[idx];
+    if (!doc) throw new Error('The document is no longer on this page');
+    await inv('update-fields', connectionId, database, collection, doc._id, update);
+    setDocuments(prev => prev.map((d, i) => (i === idx ? patch(d) : d)));
+  };
+
+  const startEdit = (idx: number, path: Path) => {
+    if (readOnly) return;
+    const why = editBlock(path);
+    if (why) { showToast({ message: why, kind: 'error' }); return; }
+    const value = getAt(documents[idx], path);
+    // Objects and arrays need room, and so does a string with line breaks: an
+    // <input> would silently drop them on the first keystroke.
+    if (isContainer(value) || (typeof value === 'string' && /[\r\n]/.test(value))) {
+      setValueModal({ idx, path, add: false }); return;
+    }
+    setEditingCell({ idx, path });
+  };
+
+  const commitEdit = async (idx: number, path: Path, value: any) => {
+    await runFieldUpdate(idx, setUpdate(path, value), d => patchSet(d, path, value));
+    setEditingCell(null);
+  };
+
+  const fieldAction = async (what: string, run: () => Promise<void>) => {
+    try { await run(); } catch (err: any) { showToast({ message: `${what} failed: ${err.message}`, kind: 'error' }); }
+  };
+
+  const setFieldNull = (idx: number, path: Path) => fieldAction('Set to null', () =>
+    runFieldUpdate(idx, setUpdate(path, null), d => patchSet(d, path, null)));
+
+  const removeField = async (idx: number, path: Path) => {
+    const doc = documents[idx];
+    if (!await showConfirm({ message: `Remove field "${dotted(path)}" from document ${idToString(doc?._id)}?`, danger: true, confirmText: 'Remove' })) return;
+    fieldAction('Remove field', () => runFieldUpdate(idx, removeUpdate(doc, path), d => patchRemove(d, path)));
+  };
+
+  const renameField = async (idx: number, path: Path) => {
+    const doc = documents[idx];
+    const current = String(path[path.length - 1]);
+    const name = await showInput({ title: 'Rename field', message: `New name for "${dotted(path)}"`, defaultValue: current });
+    if (name == null || name.trim() === current) return;
+    fieldAction('Rename field', async () => {
+      const update = renameUpdate(doc, path, name);
+      await runFieldUpdate(idx, update, d => patchRename(d, path, name.trim()));
+    });
+  };
+
+  const copyText = (text: string, what: string) => {
+    navigator.clipboard.writeText(text).then(() => showToast(`${what} copied`), () => {});
+  };
+
+  const buildFieldItems = (idx: number, path: Path, value: any): ContextMenuEntry[] => {
+    const blocked = readOnly || editBlock(path) !== null;
+    const parent = path.slice(0, -1);
+    const parentValue = parent.length ? getAt(documents[idx], parent) : documents[idx];
+    const container = isContainer(value);
+    const kindLabel = valueKind(value);
+    const filterValue = kindLabel === 'objectId' ? value.$oid : kindLabel === 'date' ? String(value.$date) : value == null ? '' : String(value);
+    return [
+      { label: 'Edit value', icon: 'edit', shortcut: container || viewMode !== 'table' ? undefined : 'Enter', disabled: blocked, onClick: () => startEdit(idx, path) },
+      { label: 'Edit value in dialog…', icon: 'expand', disabled: blocked, onClick: () => setValueModal({ idx, path, add: false }) },
+      { label: 'Set to null', icon: 'clear', disabled: blocked || value === null, onClick: () => setFieldNull(idx, path) },
+      { label: 'Rename field…', icon: 'wrench', disabled: blocked || Array.isArray(parentValue), onClick: () => renameField(idx, path) },
+      { label: 'Remove field', icon: 'trash', disabled: blocked, onClick: () => removeField(idx, path) },
+      { separator: true },
+      { label: container ? 'Add field inside…' : 'Add field next to it…', icon: 'plus', disabled: readOnly,
+        onClick: () => setValueModal({ idx, path: container ? path : parent, add: true }) },
+      { separator: true },
+      { label: 'Copy value', icon: 'copy', onClick: () => copyText(container ? prettyDoc(value) : editText(value), 'Value') },
+      { label: 'Copy field path', icon: 'copy', onClick: () => copyText(dotted(path), 'Field path') },
+      ...(!container ? [{ label: 'Filter on this value', icon: 'filter' as const, onClick: () => {
+        const filterPath = path.filter(s => typeof s !== 'number').map(String).join('.');
+        addFilterFromTree(filterPath, detectType(value), filterValue);
+      } }] : []),
+      { separator: true },
+      ...buildCtxItems(idx),
+    ];
+  };
+
+  const openFieldMenu = (e: React.MouseEvent, idx: number, path: Path, value: any) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!selectedIndices.has(idx)) handleDocClick(idx, e);
+    setFieldMenu({ x: e.clientX, y: e.clientY, idx, path, value });
   };
 
   const handleDelete = async (doc: any) => {
@@ -778,25 +951,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
       { label: 'Copy', icon: 'copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(doc) },
       { label: 'Export JSON', icon: 'save', onClick: () => handleExport(doc) },
       { separator: true },
-      { label: 'Add field', icon: 'plus', disabled: readOnly, onClick: async () => {
-        const updated = { ...await fetchFull(doc), newField: '' };
-        setEditingDoc(updated);
-        setEditJson(prettyDoc(updated));
-        setEditError(null);
-      }},
+      { label: 'Add field…', icon: 'plus', disabled: readOnly, onClick: () => setValueModal({ idx, path: [], add: true }) },
       { separator: true },
       { label: 'Delete', icon: 'trash', disabled: readOnly, onClick: () => handleDelete(doc) },
     ];
   };
 
-  const getKeys = (): string[] => {
-    if (documents.length === 0) return [];
-    const keys = new Set<string>();
-    documents.forEach(doc => Object.keys(doc).forEach(k => keys.add(k)));
-    return Array.from(keys);
-  };
-
-  const keys = getKeys();
   const fieldOptions = knownFields(documents, hiddenFields).sort((a, b) => a === '_id' ? -1 : b === '_id' ? 1 : a.localeCompare(b));
   const jsonValid = validateJson(editJson);
 
@@ -822,6 +982,8 @@ export default function DocumentsView({ connectionId, database, collection, acti
   const toggleViewFind = () => { setShowViewFind(v => !v); setTimeout(() => viewFindRef.current?.focus(), 50); };
 
   const hasSelection = selectedIndices.size > 0;
+  // Only built while the JSON view is on: a page can hold thousands of documents.
+  const jsonText = useMemo(() => (viewMode === 'json' ? pageJson(documents) : ''), [viewMode, documents]);
 
   return (
     <div className="docs-view">
@@ -832,6 +994,10 @@ export default function DocumentsView({ connectionId, database, collection, acti
           </button>
           <button className={viewMode === 'tree' ? 'active' : ''} onClick={() => setViewMode('tree')}>
             <span className="toolbar-label"><Icon name="tree" size={13} /> Tree</span>
+          </button>
+          <button className={viewMode === 'json' ? 'active' : ''} onClick={() => setViewMode('json')}
+            title="The page as JSON, read-only">
+            <span className="toolbar-label"><Icon name="braces" size={13} /> JSON</span>
           </button>
         </div>
         <button
@@ -960,28 +1126,11 @@ export default function DocumentsView({ connectionId, database, collection, acti
         )}
       </div>
 
-      {/* Bulk action bar — only while something is selected; with an empty
-          selection every button in it was disabled anyway. */}
-      {hasSelection && (
-        <div className="bulk-action-bar bulk-action-bar--active">
-          <span>{selectedIndices.size} selected</span>
-          <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
-          <button
-            className="secondary" onClick={() => setShowBulkEdit(true)} disabled={readOnly}
-            title={readOnly ? 'This connection is read-only' : 'Set, rename or unset a field on every selected document'}
-          ><Icon name="edit" size={13} /> Edit field</button>
-          <button
-            className="danger" onClick={handleBulkDelete} disabled={readOnly}
-            title={readOnly ? 'This connection is read-only' : 'Delete selected (Del)'}
-          ><Icon name="trash" size={13} /> Delete</button>
-          <button className="secondary" onClick={() => setSelectedIndices(new Set())}><Icon name="close" size={13} /> Deselect all</button>
-        </div>
-      )}
-
       {error && <div className="docs-error">{error}</div>}
 
       <div className="docs-split">
 
+        <div className="docs-main-wrap">
         <div
           className="docs-main"
           onContextMenu={e => { e.preventDefault(); setEmptyCtxMenu({ x: e.clientX, y: e.clientY }); }}
@@ -1040,6 +1189,7 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     return (
                       <tr key={idx}
                         ref={tableWin.rowRef(idx)}
+                        data-row={idx}
                         className={selectedIndices.has(idx) ? 'doc-row-selected' : ''}
                         onClick={e => handleDocClick(idx, e)}
                         onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
@@ -1060,11 +1210,34 @@ export default function DocumentsView({ connectionId, database, collection, acti
                             }}
                           />
                         </td>
-                        {keys.map(k => (
-                          <td key={k} title={oidTitle(doc[k])}>
-                            {cellText(doc[k])}
-                          </td>
-                        ))}
+                        {keys.map((k, c) => {
+                          const v = doc[k];
+                          const d = cellDisplay(v);
+                          const editing = editingCell?.idx === idx && editingCell.path.length === 1 && editingCell.path[0] === k;
+                          const isActive = activeCell?.idx === idx && activeCell.col === c;
+                          return (
+                            <td
+                              key={k}
+                              className={`${d.cls}${isActive ? ' doc-cell-active' : ''}${editing ? ' doc-cell-editing' : ''}`}
+                              title={oidTitle(v) ?? (k === '_id' ? 'Double-click to edit the document'
+                                : readOnly ? undefined : 'Double-click to edit · right-click for more')}
+                              onClick={() => setActiveCell({ idx, col: c })}
+                              onDoubleClick={e => {
+                                e.stopPropagation();
+                                window.getSelection()?.removeAllRanges();
+                                // The id is the document's identity: it opens the
+                                // whole document rather than an edit of itself.
+                                if (k === '_id') { if (!readOnly) openEdit(doc); else openView(doc); return; }
+                                startEdit(idx, [k]);
+                              }}
+                              onContextMenu={e => { setActiveCell({ idx, col: c }); openFieldMenu(e, idx, [k], v); }}
+                            >
+                              {editing
+                                ? <InlineValueEditor value={v} onCommit={val => commitEdit(idx, [k], val)} onCancel={() => setEditingCell(null)} />
+                                : d.text}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
@@ -1076,6 +1249,11 @@ export default function DocumentsView({ connectionId, database, collection, acti
 
           {viewMode === 'tree' && (
             <div className="tree-view-container" ref={treeScrollRef}>
+              {documents.length > 0 && (
+                <div className="tree-grid-head tree-grid-row" aria-hidden="true">
+                  <span className="tg-key">Key</span><span className="tg-val">Value</span><span className="tg-type">Type</span>
+                </div>
+              )}
               <div ref={treeListRef}>
                 <VirtualSpacer height={treeWin.padTop} />
                 {documents.slice(treeWin.start, treeWin.end).map((doc, i) => {
@@ -1088,6 +1266,12 @@ export default function DocumentsView({ connectionId, database, collection, acti
                     <div key={idx} className="doc-tree-row" ref={treeWin.rowRef(idx)}>
                       <DocumentTree
                         doc={doc}
+                        index={page * limit + idx + 1}
+                        editingPath={editingCell?.idx === idx ? editingCell.path : null}
+                        onStartEdit={readOnly ? undefined : p => startEdit(idx, p)}
+                        onCommitEdit={(p, v) => commitEdit(idx, p, v)}
+                        onCancelEdit={() => setEditingCell(null)}
+                        onFieldContextMenu={(e, p, v) => openFieldMenu(e, idx, p, v)}
                         selected={selectedIndices.has(idx)}
                         onSelect={e => handleDocClick(idx, e)}
                         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); handleDocClick(idx, e); setCtxMenu({ x: e.clientX, y: e.clientY, idx }); }}
@@ -1103,6 +1287,37 @@ export default function DocumentsView({ connectionId, database, collection, acti
                 })}
                 <VirtualSpacer height={treeWin.padBottom} />
               </div>
+            </div>
+          )}
+
+          {viewMode === 'json' && documents.length > 0 && (
+            <div className="json-view-container" onContextMenu={e => e.stopPropagation()}>
+              <MonacoJsonEditor
+                className="fill"
+                value={jsonText}
+                readOnly
+                lineNumbers={lineNumbers}
+                theme={monacoTheme}
+              />
+            </div>
+          )}
+        </div>
+          {/* Bulk action bar — only while something is selected; with an empty
+              selection every button in it was disabled anyway. Floats centred over
+              the document list (not the query panel) and never moves the rows. */}
+          {hasSelection && (
+            <div className="bulk-action-bar bulk-action-bar--active bulk-action-bar--floating">
+              <span>{selectedIndices.size} selected</span>
+              <button className="secondary" onClick={handleBulkCopy} title="Copy selected (Ctrl+C)"><Icon name="copy" size={13} /> Copy</button>
+              <button
+                className="secondary" onClick={() => setShowBulkEdit(true)} disabled={readOnly}
+                title={readOnly ? 'This connection is read-only' : 'Set, rename or unset a field on every selected document'}
+              ><Icon name="edit" size={13} /> Edit field</button>
+              <button
+                className="danger" onClick={handleBulkDelete} disabled={readOnly}
+                title={readOnly ? 'This connection is read-only' : 'Delete selected (Del)'}
+              ><Icon name="trash" size={13} /> Delete</button>
+              <button className="secondary" onClick={() => setSelectedIndices(new Set())}><Icon name="close" size={13} /> Deselect all</button>
             </div>
           )}
         </div>
@@ -1328,6 +1543,36 @@ export default function DocumentsView({ connectionId, database, collection, acti
           onClose={() => setCtxMenu(null)}
         />
       )}
+
+      {fieldMenu && (
+        <ContextMenu
+          x={fieldMenu.x} y={fieldMenu.y}
+          items={buildFieldItems(fieldMenu.idx, fieldMenu.path, fieldMenu.value)}
+          onClose={() => setFieldMenu(null)}
+        />
+      )}
+
+      {valueModal && documents[valueModal.idx] && (() => {
+        const { idx, path, add } = valueModal;
+        const doc = documents[idx];
+        const where = `${add ? 'In' : 'Field'} ${path.length ? dotted(path) : 'the document'} · document ${idToString(doc._id)}`;
+        const target = (name: string) => (add ? addFieldPath(doc, path, name) : path);
+        return (
+          <ValueModal
+            title={add ? 'Add field' : 'Edit value'}
+            askName={add && !Array.isArray(path.length ? getAt(doc, path) : doc)}
+            where={where}
+            value={add ? '' : getAt(doc, path)}
+            preview={(name, v) => setUpdate(target(name), v)}
+            onSave={async (name, v) => {
+              const p = target(name);
+              await runFieldUpdate(idx, setUpdate(p, v), d => patchSet(d, p, v));
+              setValueModal(null);
+            }}
+            onClose={() => setValueModal(null)}
+          />
+        );
+      })()}
 
       {showBulkEdit && (
         <BulkEditModal

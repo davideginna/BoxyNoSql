@@ -8,12 +8,12 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Folder organization with drag & drop, color coding
 - ✅ Import connections from a Studio 3T `.uri` export: folders, colors and client certificates come along, Studio 3T-only options are translated or stripped
 - ✅ Database/collection tree view with search across every database's collections (no need to expand them first), plus a command palette (`Ctrl+P`) over connections, databases, collections and actions
-- ✅ Document viewer (tree + table), filter on a field by dragging it or with one click, ObjectId details on hover (creation date, machine, PID, counter), multi-select, bulk copy/paste/delete and bulk field edit (set/rename/unset across the selection)
+- ✅ Document viewer (table, tree as Key / Value / Type, JSON), edit a single value in place with its type (double-click a cell or a tree value), right-click a field to set null / rename / remove / add, filter on a field by dragging it or with one click, ObjectId details on hover (creation date, machine, PID, counter), multi-select, bulk copy/paste/delete and bulk field edit (set/rename/unset across the selection)
 - ✅ Paginated document browsing with configurable limit
 - ✅ Visual filter builder (open by default, resizable) with a JSON editor for the filter: edit it as JSON and it goes back into the builder, or stays as a custom filter when the builder can't express it
 - ✅ Server-side sort on one or more fields — from the query panel (order and direction per field) or the column headers (shift-click for a second key) — and per-collection field visibility
 - ✅ Query history per collection (filters, queries, pipelines) with named saved queries, kept across restarts
-- ✅ Pinned collections, last session restored on startup (connections and tabs, can be turned off), connection health with auto-reconnect
+- ✅ Pinned collections, connection health with auto-reconnect, every MongoDB connection closed cleanly when the app quits
 - ✅ Shortcut cheat sheet (F1), guided welcome screen, connection clone, CSV/TSV import
 - ✅ Document view/edit with JSON syntax highlighting, shell-style `ObjectId(...)` / `ISODate(...)` (dates stay dates when saved, Studio 3T's `ISODate("…+0000")` accepted), foldable sections with expand/collapse all, find, and a list of changes before saving that shows each changed line
 - ✅ Query terminal with Monaco editor: autocompletion (Ctrl+Space), Mongo method/operator/field suggestions, Ctrl+Enter to run, resizable split

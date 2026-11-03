@@ -9,9 +9,13 @@ export type IconName =
   | 'gear' | 'warn' | 'expand' | 'menu' | 'refresh' | 'close' | 'check'
   | 'chevronRight' | 'chevronDown' | 'arrowUp' | 'arrowDown' | 'arrowRight'
   | 'expandAll' | 'collapseAll' | 'filter' | 'info' | 'download' | 'keyboard'
-  | 'columns' | 'history' | 'plan';
+  | 'columns' | 'history' | 'plan' | 'braces';
 
 const P: Record<IconName, React.ReactNode> = {
+  braces: (<>
+    <path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1" />
+    <path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1" />
+  </>),
   database: (<>
     <ellipse cx="12" cy="5" rx="8" ry="3" />
     <path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
