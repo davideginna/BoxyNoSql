@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.11.0] - 2026-11-03
 
 ### Added
 - **JSON view.** Next to Table and Tree, the documents of the page as one read-only JSON array. The view you pick is remembered
