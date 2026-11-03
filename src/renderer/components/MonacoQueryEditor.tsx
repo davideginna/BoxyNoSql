@@ -155,6 +155,18 @@ function registerCompletions() {
         documentation: 'Current database handle.',
         range,
       });
+      // Shell helpers the terminal provides (src/main/shellEval.ts).
+      ([
+        ['db.getCollection', 'db.getCollection("${1:name}")', 'A collection by name — also for names like "stats" that are Db methods.'],
+        ['print', 'print(${1})', 'Write a line to the output.'],
+        ['printjson', 'printjson(${1})', 'Write a value as indented JSON.'],
+        ['ObjectId', 'ObjectId("${1}")', 'An ObjectId from its 24 hex characters.'],
+        ['ISODate', 'ISODate("${1}")', 'A date.'],
+      ] as const).forEach(([label, insertText, documentation]) => suggestions.push({
+        label, insertText, documentation, range,
+        kind: monaco.languages.CompletionItemKind.Function,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      }));
       suggestions.push({
         label: 'db.collection',
         kind: monaco.languages.CompletionItemKind.Snippet,

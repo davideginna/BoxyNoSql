@@ -1822,6 +1822,13 @@ button.status-filter:hover { text-decoration: underline; }
 .qt-results { flex: 1; overflow: auto; border-top: 1px solid var(--border); min-height: 0; }
 .pane-error { padding: 12px; color: var(--error); font-family: var(--font-mono); white-space: pre-wrap; }
 .pane-empty { padding: 12px; color: var(--text-secondary); font-size: var(--fs-sm); }
+/* print()/printjson() output of a terminal script, above its result. */
+.qt-output {
+  margin: 0; padding: 8px 12px; font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--text-primary); background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border); white-space: pre-wrap; word-break: break-word;
+  max-height: 40%; overflow: auto; flex-shrink: 0;
+}
 .qt-raw {
   margin: 0; padding: 12px; color: var(--text-primary); background: var(--bg-primary);
   font-family: var(--font-mono); font-size: var(--fs-md);

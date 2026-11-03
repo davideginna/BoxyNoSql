@@ -377,6 +377,10 @@ Aprire tab Query su `testdb.users`:
 | 8.4 | Query che tira errore (sintassi) | Banner rosso "Error: …" |
 | 8.5 | `db.collection("users").aggregate([{$match:{active:true}}])` | Risultato aggregato mostrato |
 | 8.6 | Clear | Pulisce risultati |
+| 8.7 | `const r = db.users.updateMany({ x: { $exists: true } }, { $unset: { x: "" } });` + a capo `print(\`rimosso da ${r.modifiedCount}\`)` | Riga di output sopra i risultati con il numero giusto; il campo è davvero rimosso |
+| 8.8 | `db.users.find({}, { name: 1 }).sort({ name: 1 }).pretty()` | Solo `_id` e `name`, ordinati |
+| 8.9 | `db.users.count()`, `db.getCollectionNames()`, `db.getSiblingDB("admin").getName()` | Numero, lista collection, `admin` |
+| 8.10 | Connessione read-only: `db.users.updateMany({}, {$set:{a:1}})` e `db.users.insert({a:1})` | Errore read-only, niente scritto |
 
 ---
 

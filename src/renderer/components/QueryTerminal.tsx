@@ -34,7 +34,9 @@ function isPlainObj(v: any): boolean {
 }
 
 export default function QueryTerminal({ connectionId, database, collection, result, setResult, active = true }: QueryTerminalProps) {
-  const [query, setQuery] = useState(`db.collection("${collection}").find({}).limit(20)`);
+  const [query, setQuery] = useState(`db.getCollection("${collection}").find({}).limit(20)`);
+  // What the script printed (`print`/`printjson`), shown above the result.
+  const [output, setOutput] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sampleFields, setSampleFields] = useState<string[]>([]);
@@ -100,10 +102,15 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     // one you want to pull back up and fix.
     history.record(query, previewLabel(query));
     try {
+      // `{ result, output }`: the last expression's value, and what was printed.
       const res = await (window as any).electron.invoke('run-query', connectionId, database, collection, query);
-      setResult(Array.isArray(res) ? res : [res]);
+      setOutput(res?.output ?? []);
+      const value = res?.result;
+      setResult(value === undefined ? [] : Array.isArray(value) ? value : [value]);
     } catch (err: any) {
-      setError(err.message);
+      setOutput([]);
+      // Electron wraps every handler error in "Error invoking remote method …".
+      setError(String(err.message).replace(/^Error invoking remote method '[^']+': /, ''));
     }
     setLoading(false);
   };
@@ -136,6 +143,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
 
   const handleClear = () => {
     setResult([]);
+    setOutput([]);
     setError(null);
   };
 
@@ -217,7 +225,10 @@ export default function QueryTerminal({ connectionId, database, collection, resu
               Error: {error}
             </div>
           )}
-          {!error && result.length === 0 && !loading && (
+          {!error && output.length > 0 && (
+            <pre className="qt-output" aria-label="Output">{output.join('\n')}</pre>
+          )}
+          {!error && result.length === 0 && output.length === 0 && !loading && (
             <div className="pane-empty">No results</div>
           )}
           {!error && result.length > 0 && allObjects && (

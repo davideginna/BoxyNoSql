@@ -26,12 +26,12 @@ Tests (Vitest):
 ```bash
 npm test               # run all tests once (verbose)
 npm run test:watch     # watch mode
-npm run test:coverage  # v8 coverage (scoped to serialize.ts, extJson.ts, exportFormat.ts, version.ts + src/renderer/utils/**)
+npm run test:coverage  # v8 coverage (scoped to serialize.ts, extJson.ts, exportFormat.ts, version.ts, shellEval.ts + src/renderer/utils/**)
 npx vitest run src/renderer/__tests__/buildFilter.test.ts  # single file
 npx vitest run -t "substring of test name"                 # single test by name
 ```
 
-Test setup in `vitest.config.ts`: tests live in `src/**/__tests__/*.test.{ts,tsx}`. two `test.projects` split the run — **renderer** (`src/renderer/**/__tests__/**`, `jsdom`, loads `src/test/setup.ts` for the jest-dom matchers) and **main** (everything else under `src/`, `node`). Both `extends: true`, so the `@` alias and `globals` come from the root config; `coverage` is root-only. The old `environmentMatchGlobs` did the same job but is a no-op on Vitest 4 — add a project, not a glob. The text coverage reporter hides files at 100%, so a fully covered file simply won't appear in the table. `@` alias works in tests. Automated coverage is deliberately narrow (`serialize.ts`, `extJson.ts`, `exportFormat.ts`, `version.ts`, `utils/**`); UI behaviour is covered by the manual test plan in `PIANO_TEST.md` (written in Italian, runs against a Docker MongoDB).
+Test setup in `vitest.config.ts`: tests live in `src/**/__tests__/*.test.{ts,tsx}`. two `test.projects` split the run — **renderer** (`src/renderer/**/__tests__/**`, `jsdom`, loads `src/test/setup.ts` for the jest-dom matchers) and **main** (everything else under `src/`, `node`). Both `extends: true`, so the `@` alias and `globals` come from the root config; `coverage` is root-only. The old `environmentMatchGlobs` did the same job but is a no-op on Vitest 4 — add a project, not a glob. The text coverage reporter hides files at 100%, so a fully covered file simply won't appear in the table. `@` alias works in tests. Automated coverage is deliberately narrow (`serialize.ts`, `extJson.ts`, `exportFormat.ts`, `version.ts`, `shellEval.ts`, `utils/**`); UI behaviour is covered by the manual test plan in `PIANO_TEST.md` (written in Italian, runs against a Docker MongoDB).
 
 Releases: `.github/workflows/release.yml` builds Linux + Windows installers on any `v*` tag push (or manual dispatch) and uploads `release/*.{deb,AppImage,exe}` as artifacts.
 
@@ -45,6 +45,7 @@ Electron app with two separate TypeScript compilation targets:
 - `extJson.ts` — `fromExtJSON()`, the inverse: `{$oid}` → ObjectId, `{$date}` (ISO, `+0000` offsets, `{$numberLong}`) → Date, an invalid date throws; an already-revived `Date`/BSON value passes through untouched (the query builder's date filters send real `Date`s). Unit-tested, including the `serializeDoc` round trip.
 - `preload.ts` — `contextBridge` exposes `window.electron.invoke(channel, ...args)` and `window.electron.on(channel, cb)`
 - `readOnlyGuard.ts` — read-only connections. `assertWritable(connectionId)` runs first in every write handler (19 of them plus the two copy targets), and `run-query` — which evals user code against a live `Db` — gets `guardHandle()`, a Proxy whose write methods throw and whose `.collection()` hands back another guarded handle. The renderer disables the matching buttons, but that is cosmetic: the guarantee is here, where a hand-made `invoke` cannot get around it. Unit-tested.
+- `shellEval.ts` — the query terminal's mongo-shell dialect on the Node driver: `db.<name>` is a collection (a name `Db` already has keeps its driver meaning; `db.getCollection()` for those), several statements, `print`/`printjson`, `ObjectId()`/`ISODate()`/`NumberLong()`…, the old helpers (`count`, `insert`, `update`, `remove`, `find(filter, projection)`, cursor `pretty`/`count`/`itcount`). `transformShell()` parses the script with `acorn` (a runtime dependency for this) and wraps every call outside a nested function in `(await …)` — the shell looks synchronous, the driver is not — and turns the last expression statement into the `return`. `run-query` answers `{ result, output }`. Unit-tested against fake handles, including the read-only guard through the shell names.
 - `exportFormat.ts` — export serialization: CSV escaping, key union, default file name, and `createChunkWriter()` (one call per document, so JSON/NDJSON/CSV are all written incrementally). Electron-free and unit-tested; `main.ts` owns the save dialog and the write stream.
 - `updater.ts` + `version.ts` — update checking (see **Updates** below). `version.ts` is the semver-ish comparison, kept electron-free so it stays unit-testable.
 
@@ -112,7 +113,7 @@ Every one of those handlers must bail out via `utils/dom.ts` → `isTypingTarget
 
 ## Key constraints
 
-- `run-query` uses `new Function('db', ...)` to eval user input — intentional for a local desktop tool. It only stays safe because the code never leaves the user's machine; do not expose this handler over a network transport without rethinking it. `explain-query` evals the same way but *always* against `guardHandle()`, whatever the connection's read-only flag: an `insertOne` left in the editor must not run because Explain was the button that got clicked.
+- `run-query` evals user input (an `AsyncFunction` built from `shellEval.ts`'s transform) — intentional for a local desktop tool. It only stays safe because the code never leaves the user's machine; do not expose this handler over a network transport without rethinking it. `explain-query` evals the same way but *always* against `guardHandle()`, whatever the connection's read-only flag: an `insertOne` left in the editor must not run because Explain was the button that got clicked.
 - `tsconfig.json` covers only `src/renderer` (noEmit, bundler moduleResolution, `strict` + `noUnusedLocals`/`noUnusedParameters`). `tsconfig.main.json` covers only `src/main` (CommonJS emit). Keep them separate.
 - `@` alias resolves to `src/renderer` in Vite and Vitest; not available in the main process.
 - Connection URIs pass through `sanitizeUri()`, which strips Studio 3T-specific `3t.*` query params so pasted URIs from that tool still connect.

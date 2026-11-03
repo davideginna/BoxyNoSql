@@ -21,6 +21,7 @@
 - **Reopening the last session on startup.** The app no longer reconnects the connections that were open at the last close, nor reopens their tabs: every start is clean. The "Reopen last session on startup" setting is gone
 
 ### Fixed
+- **The query terminal accepts shell syntax.** `db.ENTI.updateMany(…)` failed with "Cannot read properties of undefined", because only `db.collection("ENTI")` worked and only a single expression. Now `db.<collection>` works, along with several statements, `const`/`let`, `print`/`printjson`, `ObjectId("…")`/`ISODate("…")`, `count`/`insert`/`update`/`remove` and `find(filter, projection)`. Calls are awaited for you, so `r.modifiedCount` is the number and not a Promise. What `print` writes is shown above the result. `db.collection("…")` still works
 - **Switching theme updated the editors one switch late.** The editors picked their colours before the new theme was applied
 - **MongoDB connections are closed when the app quits.** They used to be dropped with the process; now each one is closed properly first (waiting at most 2 seconds, so an unreachable server cannot keep the app from closing)
 - **A fast double-click could act on the wrong document.** Selecting a row showed the selection bar above the list and pushed it down, so the second click landed on the row above. The selection bar now floats over the bottom of the list, centred on it and on one line

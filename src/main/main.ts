@@ -3,6 +3,7 @@ import path from 'path';
 import Store from 'electron-store';
 import { MongoClient, Db, ObjectId } from 'mongodb';
 import fs from 'fs';
+import { runShell, runShellSerialized } from './shellEval';
 import { serializeDoc } from './serialize';
 import { fromExtJSON } from './extJson';
 import {
@@ -741,15 +742,13 @@ ipcMain.handle('delete-document', async (_, connectionId: string, dbName: string
 ipcMain.handle('run-query', async (_, connectionId: string, dbName: string, collection: string, query: string) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  const fn = new Function('db', `return (async () => { return (${query}) })()`);
-  // The query terminal evals user code against a live handle, so a read-only
-  // connection cannot be protected by a check up front — it gets a proxied
-  // `db` whose write methods throw instead.
-  const handle = client.db(dbName);
-  let result = await fn(isReadOnly(connectionId) ? guardHandle(handle) : handle);
-  if (result != null && typeof result.toArray === 'function') result = await result.toArray();
-  if (Array.isArray(result)) return result.map(v => serializeDoc(v));
-  return serializeDoc(result);
+  // Shell syntax (`db.users.find()`, statements, `print`) — see shellEval.ts.
+  // The script runs against a live handle, so a read-only connection cannot be
+  // protected by a check up front — it gets a proxied `db` whose write methods
+  // throw instead, and so does every sibling database it opens.
+  const guard = isReadOnly(connectionId);
+  const open = (name: string) => (guard ? guardHandle(client.db(name)) : client.db(name));
+  return runShellSerialized(query, open(dbName), open);
 });
 
 ipcMain.handle('run-aggregation', async (_, connectionId: string, dbName: string, collection: string, pipeline: any[]) => {
@@ -852,8 +851,8 @@ ipcMain.handle('explain-aggregation', async (_, connectionId: string, dbName: st
 ipcMain.handle('explain-query', async (_, connectionId: string, dbName: string, _collection: string, query: string) => {
   const client = clients.get(connectionId);
   if (!client) throw new Error('Not connected');
-  const fn = new Function('db', `return (async () => { return (${query}) })()`);
-  const result = await fn(guardHandle(client.db(dbName)));
+  const open = (name: string) => guardHandle(client.db(name));
+  const { raw: result } = await runShell(query, open(dbName), open, { drain: false });
   if (!result || typeof result.explain !== 'function') {
     throw new Error('Only a cursor can be explained. Use find() or aggregate(), and leave off .toArray().');
   }
