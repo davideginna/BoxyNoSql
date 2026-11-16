@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { showConfirm } from '../dialog';
 import Icon from './Icon';
+import RoleListEditor from './RoleListEditor';
 import { onEscape } from '../utils/keys';
+import {
+  RoleRef, BUILTIN_ROLES, describeRoleChange, diffRoles, formatRole, normalizeRoles,
+  roleSuggestions, databaseSuggestions, validateRoles,
+} from '../utils/userRoles';
 
 const inv = (ch: string, ...a: any[]) => (window as any).electron.invoke(ch, ...a);
-
-const BUILTIN_ROLES = ['read', 'readWrite', 'dbAdmin', 'dbOwner', 'userAdmin',
-  'clusterAdmin', 'readAnyDatabase', 'readWriteAnyDatabase', 'userAdminAnyDatabase', 'dbAdminAnyDatabase'];
 
 interface Props {
   connectionId: string;
@@ -14,14 +16,26 @@ interface Props {
   onClose: () => void;
 }
 
+/** The roles of the user being edited: as loaded (`original`) and as being typed (`roles`). */
+interface EditingUser {
+  user: string;
+  original: RoleRef[];
+  roles: RoleRef[];
+}
+
 export default function UsersRolesModal({ connectionId, database, onClose }: Props) {
+  const emptyNewUser = () => ({ username: '', password: '', roles: [{ role: 'readWrite', db: database }] as RoleRef[] });
+
   const [tab, setTab] = useState<'users' | 'roles'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'readWrite' });
+  const [newUser, setNewUser] = useState(emptyNewUser);
+  const [editing, setEditing] = useState<EditingUser | null>(null);
   const [newRole, setNewRole] = useState({ name: '', inherits: '' });
+  const [suggestions, setSuggestions] = useState<string[]>(BUILTIN_ROLES);
+  const [databases, setDatabases] = useState<string[]>(databaseSuggestions([], database));
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -34,8 +48,26 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
 
   useEffect(() => { load(); }, [tab]);
 
+  // The database's custom roles and the server's databases, for the pickers.
+  // Best effort: without them the pickers still offer the built-ins (and
+  // admin + the open database) and accept free text.
+  useEffect(() => {
+    inv('list-roles', connectionId, database)
+      .then((list: any[]) => setSuggestions(roleSuggestions(list.map(r => r.role))))
+      .catch(() => {});
+    inv('list-databases', connectionId)
+      .then((names: string[]) => setDatabases(databaseSuggestions(names, database)))
+      .catch(() => {});
+  }, [connectionId, database]);
+
+  const editDirty = () => {
+    if (!editing) return false;
+    const d = diffRoles(editing.original, editing.roles);
+    return d.added.length > 0 || d.removed.length > 0 || editing.roles.some(r => !r.role.trim());
+  };
+
   const isDirty = () =>
-    !!newUser.username || !!newUser.password || !!newRole.name || !!newRole.inherits;
+    !!newUser.username || !!newUser.password || !!newRole.name || !!newRole.inherits || editDirty();
 
   const attemptClose = async () => {
     if (isDirty()) {
@@ -54,18 +86,49 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
 
   const createUser = async () => {
     if (!newUser.username || !newUser.password) return;
+    const problem = validateRoles(newUser.roles);
+    if (problem) { setError(problem); return; }
     try {
       await inv('create-user', connectionId, database, newUser.username, newUser.password,
-        [{ role: newUser.role, db: database }]);
-      setNewUser({ username: '', password: '', role: 'readWrite' });
+        normalizeRoles(newUser.roles));
+      setNewUser(emptyNewUser());
+      load();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const startEdit = (u: any) => {
+    const current: RoleRef[] = (u.roles || []).map((r: any) => ({ role: r.role, db: r.db }));
+    setError(null);
+    setEditing({ user: u.user, original: current, roles: current });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const problem = validateRoles(editing.roles);
+    if (problem) { setError(problem); return; }
+    const diff = diffRoles(editing.original, editing.roles);
+    if (diff.added.length === 0 && diff.removed.length === 0) { setEditing(null); return; }
+    const ok = await showConfirm({
+      title: 'Change roles?',
+      message: describeRoleChange(editing.user, diff),
+      confirmText: 'Save roles',
+      danger: diff.removed.length > 0,
+    });
+    if (!ok) return;
+    try {
+      await inv('update-user-roles', connectionId, database, editing.user, normalizeRoles(editing.roles));
+      setEditing(null);
       load();
     } catch (e: any) { setError(e.message); }
   };
 
   const dropUser = async (u: string) => {
     if (!await showConfirm({ message: `Drop user "${u}"?`, danger: true, confirmText: 'Drop' })) return;
-    try { await inv('drop-user', connectionId, database, u); load(); }
-    catch (e: any) { setError(e.message); }
+    try {
+      await inv('drop-user', connectionId, database, u);
+      if (editing?.user === u) setEditing(null);
+      load();
+    } catch (e: any) { setError(e.message); }
   };
 
   const createRole = async () => {
@@ -83,6 +146,8 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
     try { await inv('drop-role', connectionId, database, r); load(); }
     catch (e: any) { setError(e.message); }
   };
+
+  const editDiff = editing ? diffRoles(editing.original, editing.roles) : null;
 
   return (
     <div className="modal-overlay" onClick={attemptClose}>
@@ -102,40 +167,63 @@ export default function UsersRolesModal({ connectionId, database, onClose }: Pro
         <div className="modal-body" style={{ flex: 1, overflow: 'auto' }}>
           {error && <div style={{ color: 'var(--error)', marginBottom: 8, fontSize: 12 }}>{error}</div>}
 
-          {tab === 'users' && (
-            <>
+          {tab === 'users' && editing && (
+            <div className="ur-panel">
+              <div className="ur-panel-title">Roles of <code>{editing.user}</code></div>
+              <RoleListEditor roles={editing.roles} database={database} suggestions={suggestions} databases={databases}
+                onChange={r => setEditing(e => e && { ...e, roles: r })} />
+              {editDiff && (editDiff.added.length > 0 || editDiff.removed.length > 0) && (
+                <div className="ur-diff">
+                  {editDiff.added.map(r => <div key={'+' + formatRole(r)} className="ur-diff-add">+ {formatRole(r)}</div>)}
+                  {editDiff.removed.map(r => <div key={'-' + formatRole(r)} className="ur-diff-remove">− {formatRole(r)}</div>)}
+                </div>
+              )}
+              <div className="ur-panel-actions">
+                <button className="secondary" onClick={() => { setEditing(null); setError(null); }}>Cancel</button>
+                <button onClick={saveEdit}>Save roles</button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'users' && !editing && (
+            <div className="ur-panel">
+              <div className="ur-panel-title">New user</div>
               <div className="ur-form">
                 <input placeholder="Username" value={newUser.username}
                   onChange={e => setNewUser(u => ({ ...u, username: e.target.value }))} />
                 <input type="password" placeholder="Password" value={newUser.password}
                   onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} />
-                <select value={newUser.role}
-                  onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}>
-                  {BUILTIN_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button onClick={createUser}>+ User</button>
               </div>
-              <table className="ur-table">
-                <thead><tr><th>Username</th><th>Roles</th><th style={{ width: 40 }}></th></tr></thead>
-                <tbody>
-                  {loading
-                    ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</td></tr>
-                    : users.length === 0
-                      ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No users</td></tr>
-                      : users.map(u => (
-                        <tr key={u.user}>
-                          <td style={{ fontFamily: 'monospace' }}>{u.user}</td>
-                          <td style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            {u.roles?.map((r: any) => `${r.role}@${r.db}`).join(', ') || '—'}
-                          </td>
-                          <td>
-                            <button className="icon-btn" onClick={() => dropUser(u.user)}><Icon name="trash" size={13} /></button>
-                          </td>
-                        </tr>
-                      ))}
-                </tbody>
-              </table>
-            </>
+              <RoleListEditor roles={newUser.roles} database={database} suggestions={suggestions} databases={databases}
+                onChange={r => setNewUser(u => ({ ...u, roles: r }))} />
+              <div className="ur-panel-actions">
+                <button onClick={createUser} disabled={!newUser.username || !newUser.password}>+ User</button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'users' && (
+            <table className="ur-table">
+              <thead><tr><th>Username</th><th>Roles</th><th style={{ width: 64 }}></th></tr></thead>
+              <tbody>
+                {loading
+                  ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</td></tr>
+                  : users.length === 0
+                    ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No users</td></tr>
+                    : users.map(u => (
+                      <tr key={u.user} className={editing?.user === u.user ? 'ur-row-editing' : undefined}>
+                        <td style={{ fontFamily: 'monospace' }}>{u.user}</td>
+                        <td style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                          {u.roles?.map((r: any) => `${r.role}@${r.db}`).join(', ') || '—'}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="icon-btn" title="Edit roles" onClick={() => startEdit(u)}><Icon name="edit" size={13} /></button>
+                          <button className="icon-btn" title="Drop user" onClick={() => dropUser(u.user)}><Icon name="trash" size={13} /></button>
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
           )}
 
           {tab === 'roles' && (

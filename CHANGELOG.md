@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Edit a user's roles.** In Manage users, the pencil next to a user opens their current roles: add some, remove others, then Save. Before anything is written the app lists what will be granted and what revoked. The password is not touched, so there is no longer any need to drop and recreate the user
+- **Roles on any database.** Each role is a role name plus its database, so `readAnyDatabase@admin` or `read@another_db` can be given from any database. Picking an admin-only built-in (`readAnyDatabase`, `clusterMonitor`, `root`…) moves it to `admin` on its own. The picker also offers the database's custom roles
+- **A new user can have several roles**, with the same editor
+- **Role and database pickers you can type into.** In the role editor, both the role and its database open a list (the server's databases, the open one and `admin` first) that filters as you type; arrows move, Enter picks, Esc closes just the list. The index field picker works the same way now
+
+### Changed
+- **The About cube spins twice as fast when clicked** (up to 16× instead of 8×)
+
 ## [1.11.0] - 2026-11-03
 
 ### Added

@@ -49,7 +49,7 @@ describe('AboutModal — easter egg spin', () => {
     fireEvent.click(cube);
 
     frames.shift()!(1000);
-    expect(anim.playbackRate).toBe(8);
+    expect(anim.playbackRate).toBe(16);
     frames.shift()!(60_000);
     expect(anim.playbackRate).toBe(1);
     expect(frames).toHaveLength(0); // stops scheduling once settled

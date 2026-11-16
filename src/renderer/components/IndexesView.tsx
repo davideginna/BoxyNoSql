@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import SuggestInput from './SuggestInput';
 import { showConfirm } from '../dialog';
 import Icon from './Icon';
 
@@ -54,45 +55,6 @@ function IconTrash() {
 }
 
 let fieldIdSeq = 0;
-
-function FieldSuggestInput({ value, onChange, suggestions, placeholder }: {
-  value: string; onChange: (v: string) => void; suggestions: string[]; placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState(value);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { setFilter(value); }, [value]);
-  useEffect(() => {
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
-
-  const filtered = suggestions.filter(s => s.toLowerCase().includes(filter.toLowerCase()));
-
-  return (
-    <div ref={ref} className="field-suggest">
-      <input
-        value={filter}
-        placeholder={placeholder}
-        onChange={e => { setFilter(e.target.value); onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        className="idx-input"
-      />
-      {open && filtered.length > 0 && (
-        <div className="field-suggest-menu">
-          {filtered.map(s => (
-            <div key={s}
-              className="field-suggest-item"
-              onMouseDown={() => { onChange(s); setFilter(s); setOpen(false); }}
-            >{s}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function formatOps(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -207,7 +169,7 @@ export default function IndexesView({ connectionId, database, collection }: Inde
               {fields.map((f, i) => (
                 <div key={f.id} className="idx-field-row">
                   <span className="idx-field-num">{i + 1}.</span>
-                  <FieldSuggestInput value={f.field} onChange={v => updateField(f.id, { field: v })} suggestions={docFields} placeholder="field name" />
+                  <SuggestInput value={f.field} onChange={v => updateField(f.id, { field: v })} suggestions={docFields} placeholder="field name" className="idx-input" />
                   <select
                     value={String(f.dir)}
                     onChange={e => updateField(f.id, { dir: isNaN(Number(e.target.value)) ? e.target.value as Direction : Number(e.target.value) as Direction })}

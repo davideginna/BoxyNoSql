@@ -1934,7 +1934,7 @@ button.status-filter:hover { text-decoration: underline; }
   padding: var(--space-2) var(--space-5); font-size: var(--fs-sm); cursor: pointer;
   font-family: var(--font-mono); color: var(--tree-key);
 }
-.field-suggest-item:hover { background: var(--bg-hover); }
+.field-suggest-item:hover, .field-suggest-item.active { background: var(--bg-hover); }
 
 .bulk-action-bar {
   display: flex; align-items: center; gap: var(--space-4);
@@ -2106,6 +2106,31 @@ button:not(.secondary):not(.danger):not(.icon-btn):not(.ctx-item):not(.tab):not(
 }
 .ur-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
 .ur-table tr:hover { background: var(--bg-hover); }
+
+/* A bordered block above the users table: "New user", or "Roles of <user>" while editing. */
+.ur-panel {
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: var(--space-4); margin-bottom: 12px;
+}
+.ur-panel-title { font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.ur-panel-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-3); }
+.ur-panel .ur-form { margin-bottom: var(--space-3); }
+.ur-diff { margin-top: var(--space-3); font-family: monospace; font-size: var(--fs-sm); }
+.ur-diff-add { color: var(--success); }
+.ur-diff-remove { color: var(--error); }
+.ur-table tr.ur-row-editing { background: var(--bg-hover); }
+
+.role-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.role-list-row { display: flex; align-items: center; gap: var(--space-2); }
+.role-list-row .field-suggest { min-width: 80px; }
+.role-list-row input {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 5px 8px; border-radius: var(--radius-md); font-size: var(--fs-sm);
+}
+.role-list-at { color: var(--text-secondary); font-size: var(--fs-sm); }
+.role-list-empty { color: var(--text-secondary); font-size: var(--fs-sm); }
+.role-list-add { align-self: flex-start; padding: 3px 10px; font-size: var(--fs-sm); }
 
 /* ── Aggregation Builder ─────────────────────────────────────────────────────── */
 .aggregation-builder {

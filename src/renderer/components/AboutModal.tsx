@@ -19,7 +19,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 // The easter egg's spin boost: up to SPIN_PEAK× in SPIN_UP ms, held for
 // SPIN_HOLD, then eased back to normal speed over SPIN_DOWN.
-export const SPIN_PEAK = 8;
+export const SPIN_PEAK = 16;
 const SPIN_UP = 250;
 const SPIN_HOLD = 1500;
 const SPIN_DOWN = 2000;

@@ -1063,6 +1063,17 @@ ipcMain.handle('drop-user', async (_, connectionId: string, dbName: string, user
   return { success: true };
 });
 
+// Replaces the user's whole roles array (`updateUser` semantics): the renderer
+// sends the complete list, after showing the user what is granted and revoked.
+// The password is not touched — the app never sees it again after creation.
+ipcMain.handle('update-user-roles', async (_, connectionId: string, dbName: string, username: string, roles: { role: string; db: string }[]) => {
+  assertWritable(connectionId);
+  const client = clients.get(connectionId);
+  if (!client) throw new Error('Not connected');
+  await client.db(dbName).command({ updateUser: username, roles });
+  return { success: true };
+});
+
 // ── Roles ─────────────────────────────────────────────────────────────────────
 ipcMain.handle('list-roles', async (_, connectionId: string, dbName: string) => {
   const client = clients.get(connectionId);

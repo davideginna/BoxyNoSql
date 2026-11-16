@@ -24,7 +24,7 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 - ✅ Copy a collection or a whole database across connections, with a confirmation naming both ends and an automatic refresh of the target
 - ✅ Import from JSON / NDJSON at three levels (document, collection, full database)
 - ✅ Export to JSON / NDJSON / CSV through a native save dialog: the current filtered+sorted view, the whole collection, or a query/aggregation result
-- ✅ User/role management per database
+- ✅ User/role management per database: create users with several roles, edit an existing user's roles (grant/revoke shown before saving), roles on any database
 - ✅ Per-tab persistent state: switching between collections/views keeps filters and results
 - ✅ Large pages without the freeze: both document views are windowed, so only the rows near the viewport are in the DOM and a limit of a few thousand scrolls instead of locking up
 - ✅ Read-only connections: a per-connection flag that refuses every write in the main process, not just in the UI
@@ -45,7 +45,6 @@ Desktop NoSQL GUI client. Explore connections, databases, collections and docume
 ## Roadmap
 
 - [ ] AppImage sandbox flags on every launch, not only via the documented `.desktop` entry
-- [ ] Edit an existing user's roles (today: drop and recreate)
 - [ ] Database row: expand only on chevron click or double-click, not on any click
 - [ ] Right-click a database → open a query shell scoped to the whole database
 - [ ] v2 in Rust (Tauri): same installers, Studio 3T feature parity (clean-room), new visual style
