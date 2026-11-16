@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.12.0] - 2026-11-16
 
 ### Added
 - **Edit a user's roles.** In Manage users, the pencil next to a user opens their current roles: add some, remove others, then Save. Before anything is written the app lists what will be granted and what revoked. The password is not touched, so there is no longer any need to drop and recreate the user
