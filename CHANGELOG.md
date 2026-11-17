@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.13.1] - 2026-11-17
+
+### Fixed
+- **Script output uses the whole pane.** When a query terminal script only prints (no result), its output now fills the area below the editor instead of stopping at 40% of it
+
 ## [1.13.0] - 2026-11-17
 
 ### Added

@@ -262,7 +262,12 @@ export default function QueryTerminal({ connectionId, database, collection, resu
             </div>
           )}
           {!error && output.length > 0 && (
-            <pre className="qt-output" aria-label="Output">{output.join('\n')}</pre>
+            <pre
+              // With no result below it, the output is the whole answer: it
+              // takes the pane instead of stopping at the 40% cap.
+              className={`qt-output${result.length === 0 ? ' qt-output-only' : ''}`}
+              aria-label="Output"
+            >{output.join('\n')}</pre>
           )}
           {!error && result.length === 0 && output.length === 0 && !loading && (
             <div className="pane-empty">No results</div>

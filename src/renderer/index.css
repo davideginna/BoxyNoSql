@@ -1836,6 +1836,7 @@ button.status-filter:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border); white-space: pre-wrap; word-break: break-word;
   max-height: 40%; overflow: auto; flex-shrink: 0;
 }
+.qt-output.qt-output-only { max-height: none; border-bottom: none; }
 .qt-raw {
   margin: 0; padding: 12px; color: var(--text-primary); background: var(--bg-primary);
   font-family: var(--font-mono); font-size: var(--fs-md);
