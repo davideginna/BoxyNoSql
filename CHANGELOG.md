@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.12.2] - 2026-11-17
 
 ### Fixed
 - **Connection export keeps everything.** A `.uri` export now carries the client certificate's key password, the per-connection icon colors and the folder colors too, and Import restores them (folders it creates get their color back; folders that already exist keep theirs). The export toast warns when the file holds a certificate password, as it already did for URI passwords
