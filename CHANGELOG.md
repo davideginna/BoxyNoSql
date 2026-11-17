@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.13.0] - 2026-11-17
 
 ### Added
 - **Shell on a database.** Right-click a database → Open shell: a query terminal where `db` is that database, with no collection to pick first, for scripts that touch several collections
