@@ -46,6 +46,8 @@ interface SidebarProps {
   /** Re-reads databases + the collections of every expanded database. */
   onRefreshTree: (connId?: string) => void;
   onRefreshDb: (connId: string, db: string) => void;
+  /** Query terminal on the database itself, no collection picked. */
+  onOpenDbShell: (connId: string, db: string) => void;
   refreshing: boolean;
   onCreateDatabase: (connId: string) => void;
   onCreateCollection: (connId: string, db: string) => void;
@@ -89,7 +91,7 @@ export default function Sidebar(props: SidebarProps) {
     databases, expandedDbs, collections, selectedCollection,
     theme, iconSettings, onOpenManager, onOpenSettings, onOpenAbout, onOpenShortcuts,
     onSelectConnection, onDisconnect, onExpandDb, onSelectCollection,
-    onExpandAll, onLoadAllCollections, onCollapseAll, onRefreshTree, onRefreshDb, refreshing,
+    onExpandAll, onLoadAllCollections, onCollapseAll, onRefreshTree, onRefreshDb, onOpenDbShell, refreshing,
     onCreateDatabase, onCreateCollection, onDropCollection,
     onRenameCollection, onDuplicateCollection, onCopyCollectionName,
     onClearCollection, onDropDatabase, onClearDatabase,
@@ -293,6 +295,8 @@ export default function Sidebar(props: SidebarProps) {
   const isConnReadOnly = (connId: string) => !!connections.find(c => c.id === connId)?.readOnly;
 
   const dbCtxItems: ContextMenuEntry[] = dbCtxMenu ? [
+    { label: 'Open shell', icon: 'search', onClick: () => { onOpenDbShell(dbCtxMenu.connId, dbCtxMenu.db); setDbCtxMenu(null); } },
+    { separator: true },
     { label: 'Refresh collections', icon: 'refresh', onClick: () => { onRefreshDb(dbCtxMenu.connId, dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'New collection', icon: 'plus', disabled: isConnReadOnly(dbCtxMenu.connId), onClick: () => { onCreateCollection(dbCtxMenu.connId, dbCtxMenu.db); setDbCtxMenu(null); } },
     { label: 'Import collection…', icon: 'import', disabled: isConnReadOnly(dbCtxMenu.connId), onClick: () => { onImportCollection(dbCtxMenu.connId, dbCtxMenu.db); setDbCtxMenu(null); } },

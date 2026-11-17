@@ -7,11 +7,14 @@ import Icon from './Icon';
 import { showAlert } from '../dialog';
 import { previewLabel } from '../utils/queryHistory';
 import { onRunKey } from '../utils/keys';
+import { prettyDoc } from '../utils/editableJson';
+import { showToast } from '../toast';
 
 interface QueryTerminalProps {
   connectionId: string;
   database: string;
-  collection: string;
+  /** Absent for the database shell (sidebar → Open shell): `db` is all there is. */
+  collection?: string;
   /** False for a tab that is mounted but not on screen — see `MainContent`. */
   active?: boolean;
   result: any[];
@@ -34,7 +37,12 @@ function isPlainObj(v: any): boolean {
 }
 
 export default function QueryTerminal({ connectionId, database, collection, result, setResult, active = true }: QueryTerminalProps) {
-  const [query, setQuery] = useState(`db.getCollection("${collection}").find({}).limit(20)`);
+  const [query, setQuery] = useState(collection
+    ? `db.getCollection("${collection}").find({}).limit(20)`
+    : 'db.getCollectionNames()');
+  // Bumped by the Format button; the editor formats on each change.
+  const [formatTick, setFormatTick] = useState(0);
+  const namespace = collection ? `${database}.${collection}` : database;
   // What the script printed (`print`/`printjson`), shown above the result.
   const [output, setOutput] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -80,6 +88,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
 
   // Load sample fields from the current collection for context-aware suggestions
   useEffect(() => {
+    if (!collection) { setSampleFields([]); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -93,7 +102,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     return () => { cancelled = true; };
   }, [connectionId, database, collection]);
 
-  const history = useQueryHistory('query', connectionId, database, collection);
+  const history = useQueryHistory('query', connectionId, database, collection ?? '');
 
   const handleRun = async () => {
     setLoading(true);
@@ -103,7 +112,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     history.record(query, previewLabel(query));
     try {
       // `{ result, output }`: the last expression's value, and what was printed.
-      const res = await (window as any).electron.invoke('run-query', connectionId, database, collection, query);
+      const res = await (window as any).electron.invoke('run-query', connectionId, database, collection ?? '', query);
       setOutput(res?.output ?? []);
       const value = res?.result;
       setResult(value === undefined ? [] : Array.isArray(value) ? value : [value]);
@@ -123,7 +132,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
   const exportRows = async (format: 'json' | 'ndjson' | 'csv') => {
     try {
       const res = await (window as any).electron.invoke('export-rows', {
-        rows: result, baseName: `${collection}-query`, format,
+        rows: result, baseName: `${collection ?? database}-query`, format,
       });
       if (res.canceled) return;
       await showAlert({ title: 'Export complete', message: `${res.count} row${res.count === 1 ? '' : 's'} written.`, detail: res.filePath });
@@ -140,6 +149,17 @@ export default function QueryTerminal({ connectionId, database, collection, resu
     if (!active || showExplain) return;
     return onRunKey(e => { e.preventDefault(); handleRun(); });
   }, [active, showExplain, query, connectionId, database, collection]);
+
+  // Copies what the raw view shows: one document alone, several as an array,
+  // ObjectIds and dates in the shell form the editors read back.
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(prettyDoc(result.length === 1 ? result[0] : result));
+      showToast({ message: `Copied ${result.length} result${result.length !== 1 ? 's' : ''} as JSON`, kind: 'success' });
+    } catch {
+      showToast({ message: "Couldn't write to the clipboard.", kind: 'error' });
+    }
+  };
 
   const handleClear = () => {
     setResult([]);
@@ -163,12 +183,12 @@ export default function QueryTerminal({ connectionId, database, collection, resu
       {showExplain && (
         <ExplainModal
           what="query"
-          namespace={`${database}.${collection}`}
-          load={() => (window as any).electron.invoke('explain-query', connectionId, database, collection, query)}
+          namespace={namespace}
+          load={() => (window as any).electron.invoke('explain-query', connectionId, database, collection ?? '', query)}
           onClose={() => setShowExplain(false)}
         />
       )}
-      <div className="toolbar">
+      <div className="toolbar qt-toolbar">
         <button onClick={handleRun} disabled={loading}>
           {loading ? 'Running...' : '▶ Run Query'}
         </button>
@@ -179,7 +199,22 @@ export default function QueryTerminal({ connectionId, database, collection, resu
         >
           <Icon name="plan" size={13} /> Explain
         </button>
+        <button
+          className="secondary"
+          onClick={() => setFormatTick(t => t + 1)}
+          title="Format the script (Shift+Alt+F)"
+        >
+          <Icon name="braces" size={13} /> Format
+        </button>
         <button className="secondary" onClick={handleClear}>Clear</button>
+        <button
+          className="secondary"
+          disabled={result.length === 0}
+          title={result.length === 0 ? 'Run a query first' : 'Copy these results as JSON'}
+          onClick={handleCopy}
+        >
+          <Icon name="copy" size={13} /> Copy
+        </button>
         <button
           className="secondary"
           disabled={result.length === 0}
@@ -201,7 +236,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
           <kbd className="kbd">Alt+Enter</kbd> run
         </span>
         <span className="qt-meta">
-          {result.length > 0 && `${result.length} result${result.length !== 1 ? 's' : ''} · `}{database}.{collection}
+          {result.length > 0 && `${result.length} result${result.length !== 1 ? 's' : ''} · `}{namespace}
         </span>
       </div>
       <div className="pane-col">
@@ -212,6 +247,7 @@ export default function QueryTerminal({ connectionId, database, collection, resu
             onRun={handleRun}
             theme={theme}
             collectionSample={sampleFields}
+            formatTick={formatTick}
           />
         </div>
         <div

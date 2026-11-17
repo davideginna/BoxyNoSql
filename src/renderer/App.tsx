@@ -972,6 +972,12 @@ function App() {
     openTab('documents', collection, dbName, collection, connId);
   };
 
+  // A query terminal scoped to the database: `db` is that database, no
+  // collection is picked, so scripts across collections start here.
+  const handleOpenDbShell = (connId: string, dbName: string) => {
+    openTab('query', `${dbName} shell`, dbName, undefined, connId);
+  };
+
   // ── Tabs ──────────────────────────────────────────────────────────────────────
   const openTab = (type: Tab['type'], title: string, dbName?: string, collection?: string, connId?: string) => {
     const tabId = `${type}-${dbName}-${collection}-${Date.now()}`;
@@ -1060,6 +1066,7 @@ function App() {
         onCollapseAll={handleCollapseAll}
         onRefreshTree={handleRefreshTree}
         onRefreshDb={handleRefreshDb}
+        onOpenDbShell={handleOpenDbShell}
         refreshing={refreshing}
         onCreateDatabase={handleCreateDatabase}
         onCreateCollection={handleCreateCollection}

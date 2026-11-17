@@ -5,6 +5,10 @@ import { applyMonacoTheme, registeredName, type MonacoThemeName } from './monaco
 // module and is not registered without this import, which left `folding:
 // lineNumbers` below a silent no-op (see MonacoJsonEditor.tsx for the same fix).
 import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js';
+// Same story for "Format Document": the formatter itself comes with the
+// typescript/json language contributions below, the action that runs it is
+// this contrib.
+import 'monaco-editor/esm/vs/editor/contrib/format/browser/formatActions.js';
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution';
 import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
 import 'monaco-editor/esm/vs/language/json/monaco.contribution';
@@ -200,13 +204,15 @@ interface Props {
   /** `json` for an aggregation stage body, `javascript` for the query terminal. */
   language?: 'javascript' | 'json';
   lineNumbers?: boolean;
+  /** Each change formats the whole text (a Format button bumps it); 0 does nothing. */
+  formatTick?: number;
 }
 
 export type { MonacoThemeName } from './monacoTheme';
 
 export default function MonacoQueryEditor({
   value, onChange, onRun, theme = 'vs-dark', collectionSample,
-  language = 'javascript', lineNumbers = true,
+  language = 'javascript', lineNumbers = true, formatTick = 0,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -253,6 +259,11 @@ export default function MonacoQueryEditor({
     editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
       onRunRef.current?.();
     });
+    // Shift+Alt+F → format, on every platform (Monaco's own binding is
+    // Ctrl+Shift+I on Linux, which nobody expects).
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
+      editor.getAction('editor.action.formatDocument')?.run();
+    });
     // Ctrl+Space → trigger suggestion
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
       editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
@@ -288,6 +299,14 @@ export default function MonacoQueryEditor({
     if (!ed) return;
     if (ed.getValue() !== value) ed.setValue(value);
   }, [value]);
+
+  useEffect(() => {
+    if (formatTick === 0) return;
+    const ed = editorRef.current;
+    if (!ed) return;
+    ed.focus();
+    ed.getAction('editor.action.formatDocument')?.run();
+  }, [formatTick]);
 
   // Theme update
   useEffect(() => { applyMonacoTheme(theme); }, [theme]);

@@ -272,17 +272,21 @@ export default function MainContent({
   const renderPane = (tab: Tab, viewType: Tab['type'], active: boolean) => {
     const { connectionId, database, collection, id } = tab;
     const connId = connectionId || selectedConnection || '';
-    if (!database || !collection) return null;
+    if (!database) return null;
+    if (viewType === 'query') {
+      // Also the database shell (sidebar → Open shell): no collection, and no
+      // view switcher either, since every other view is about a collection.
+      return <QueryTerminal
+        connectionId={connId} database={database} collection={collection} active={active}
+        result={queryResults[id] || []}
+        setResult={r => setQueryResults(prev => ({ ...prev, [id]: r }))}
+      />;
+    }
+    if (!collection) return null;
     const readOnly = !!connections.find(c => c.id === connId)?.readOnly;
     switch (viewType) {
       case 'documents':
         return <DocumentsView connectionId={connId} database={database} collection={collection} active={active} readOnly={readOnly} />;
-      case 'query':
-        return <QueryTerminal
-          connectionId={connId} database={database} collection={collection} active={active}
-          result={queryResults[id] || []}
-          setResult={r => setQueryResults(prev => ({ ...prev, [id]: r }))}
-        />;
       case 'aggregation':
         return <AggregationBuilder
           connectionId={connId} database={database} collection={collection} active={active}

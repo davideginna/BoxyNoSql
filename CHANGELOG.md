@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Shell on a database.** Right-click a database → Open shell: a query terminal where `db` is that database, with no collection to pick first, for scripts that touch several collections
+- **Format in the query terminal.** The Format button (or Shift+Alt+F) reformats the script. Shift+Alt+F also formats an aggregation stage body
+- **Copy query results.** The query terminal's Copy button puts the result on the clipboard as JSON, with `ObjectId(…)`/`ISODate(…)` as the editors write them
+
 ## [1.12.3] - 2026-11-17
 
 ### Changed

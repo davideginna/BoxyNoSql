@@ -1805,6 +1805,10 @@ button.status-filter:hover { text-decoration: underline; }
    #1e1e1e, #cccccc) and so ignored the active theme. */
 .pane-col { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .qt-hint { font-size: var(--fs-xs); color: var(--text-secondary); margin-left: var(--space-4); }
+/* Seven buttons plus hints: on a narrow window the row wraps as a whole
+   instead of squeezing each label onto two lines. */
+.qt-toolbar { flex-wrap: wrap; row-gap: var(--space-3); }
+.qt-toolbar > button { white-space: nowrap; flex-shrink: 0; }
 .qt-meta { margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary); }
 .kbd {
   background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
