@@ -140,7 +140,8 @@ Dopo `connect` a `mongodb://localhost:27017`:
 | 5.3 | Right-click collection → Rename → "renamed" | Nome aggiornato |
 | 5.4 | Right-click → Clear collection → conferma | Documenti = 0, collection esiste |
 | 5.5 | Right-click → Drop collection → conferma | Sparisce |
-| 5.6 | Click su `users` | Apre tab Documents |
+| 5.6 | Click singolo su `users` | Nessuna tab aperta; la voce resta evidenziata e F2 / Del / Ctrl+C agiscono su di lei |
+| 5.6b | Doppio click su `users` (anche su una collection pinnata) | Apre tab Documents |
 
 ---
 

@@ -749,8 +749,11 @@ button,
   padding: 3px 10px 3px 26px; cursor: pointer;
   white-space: nowrap; min-width: max-content;
   font-size: var(--fs-md); color: var(--text-primary);
+  user-select: none; /* a double click opens the collection; it must not select the label */
 }
 .collection-item:hover { background: var(--bg-hover); }
+/* A single click only focuses the item (so F2, Del, Ctrl+C/D act on it) — show where it is. */
+.collection-item:focus:not(.active) { background: var(--bg-hover); }
 .collection-item.active { background: var(--bg-selected); }
 .collection-item .label { flex: 1; }
 .col-actions { display: flex; gap: var(--space-1); opacity: 0; }

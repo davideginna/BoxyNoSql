@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Collections open on double click.** A single click in the sidebar only selects the collection (F2, Del, Ctrl+C, Ctrl+D still act on it), so browsing the tree no longer opens a tab per click. Enter and the context menu's Open still open it
+- **Duplicate suggests `Copy_<name>`** instead of `<name>_copy`
+
 ## [1.12.0] - 2026-11-16
 
 ### Added

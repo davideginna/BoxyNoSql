@@ -160,14 +160,14 @@ export default function Sidebar(props: SidebarProps) {
                 key={`${p.db}.${p.col}`}
                 tabIndex={0}
                 className={`collection-item pinned-item ${selectedCollection === p.col ? 'active' : ''}`}
-                onClick={() => onSelectCollection(connId, p.db, p.col)}
+                onDoubleClick={() => onSelectCollection(connId, p.db, p.col)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onSelectCollection(connId, p.db, p.col); } }}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setColCtxMenu({ x: e.clientX, y: e.clientY, connId, db: p.db, col: p.col }); }}
                 title={nodeTooltip({ ...where, database: p.db, collection: p.col })}
               >
                 <Icon name="pin" size={12} color={colIconColor} />
                 <span className="label">{p.db}.{p.col}</span>
-                <div className="col-actions" onClick={e => e.stopPropagation()}>
+                <div className="col-actions" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                   <button title="Unpin" onClick={() => onTogglePin(connId, p.db, p.col)}><Icon name="close" size={12} /></button>
                 </div>
               </div>
@@ -209,7 +209,7 @@ export default function Sidebar(props: SidebarProps) {
                     key={col}
                     tabIndex={0}
                     className={`collection-item ${selectedCollection === col ? 'active' : ''}`}
-                    onClick={() => onSelectCollection(connId, db, col)}
+                    onDoubleClick={() => onSelectCollection(connId, db, col)}
                     onKeyDown={e => {
                       const mod = e.ctrlKey || e.metaKey;
                       if (e.key === 'Enter') { e.preventDefault(); onSelectCollection(connId, db, col); }
@@ -224,7 +224,7 @@ export default function Sidebar(props: SidebarProps) {
                   >
                     <ColIcon color={colIconColor} />
                     <span className="label">{col}</span>
-                    <div className="col-actions" onClick={e => e.stopPropagation()}>
+                    <div className="col-actions" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                       <button title="Drop collection" onClick={() => onDropCollection(connId, db, col)}><Icon name="trash" size={12} /></button>
                     </div>
                   </div>

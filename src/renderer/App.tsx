@@ -728,7 +728,7 @@ function App() {
   };
 
   const handleDuplicateCollection = async (connId: string, dbName: string, colName: string) => {
-    const newName = await showInput({ title: 'Duplicate Collection', message: `Copy "${colName}" to:`, defaultValue: `${colName}_copy` });
+    const newName = await showInput({ title: 'Duplicate Collection', message: `Copy "${colName}" to:`, defaultValue: `Copy_${colName}` });
     if (!newName?.trim() || newName.trim() === colName) return;
     try {
       await inv('duplicate-collection', connId, dbName, colName, newName.trim());
