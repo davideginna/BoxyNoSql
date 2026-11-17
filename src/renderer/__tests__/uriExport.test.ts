@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  connectionToUri, exportConnections, connectionsInFolder, exportFileName, uriHasPassword,
+  connectionToUri, exportConnections, connectionsInFolder, exportFileName, uriHasPassword, connectionHasSecret,
 } from '../utils/uriExport';
 import { parseStudio3TExport } from '../utils/uriImport';
 
@@ -62,6 +62,34 @@ describe('export → import round trip', () => {
     expect(local.readOnly).toBeUndefined();
   });
 
+  it('keeps the certificate key password, icon colors and folder colors', () => {
+    const colored = [
+      { id: 'f1', name: 'CAST', color: '#ff0000' },
+      { id: 'f2', name: 'prod', parentId: 'f1' },
+      { id: 'f3', name: 'eu', parentId: 'f2', color: '#00aa00' },
+    ];
+    const text = exportConnections([{
+      name: 'prod', uri: 'mongodb://h', folderId: 'f3',
+      tlsCertificateKeyFile: '/certs/client.pem', tlsCertificateKeyFilePassword: 'p&ss=1,2',
+      iconDbColor: '#123456', iconColColor: '#abcdef',
+    }], colored);
+
+    const [prod] = parseStudio3TExport(text);
+    expect(prod).toMatchObject({
+      folderPath: ['CAST', 'prod', 'eu'],
+      folderColors: ['#ff0000', undefined, '#00aa00'],
+      tlsCertificateKeyFilePassword: 'p&ss=1,2',
+      iconDbColor: '#123456', iconColColor: '#abcdef',
+    });
+    expect(prod.uri).toBe('mongodb://h/');
+  });
+
+  it('writes no folder colors when no folder has one', () => {
+    const uri = connectionToUri({ name: 'a', uri: 'mongodb://h', folderId: 'f2' }, folders);
+    expect(uri).not.toContain('groupColors');
+    expect(parseStudio3TExport(uri)[0].folderColors).toBeUndefined();
+  });
+
   it('does not count the header as a connection name', () => {
     const text = exportConnections([{ name: 'x', uri: 'mongodb://h' }], []);
     expect(text.startsWith('// Connections Exported from')).toBe(true);
@@ -84,6 +112,12 @@ describe('helpers', () => {
   it('exportFileName drops characters a file name cannot hold', () => {
     expect(exportFileName('CAST/prod: main')).toBe('CAST_prod_ main.uri');
     expect(exportFileName('  ')).toBe('connections.uri');
+  });
+
+  it('connectionHasSecret counts the certificate key password', () => {
+    expect(connectionHasSecret({ uri: 'mongodb://h' })).toBe(false);
+    expect(connectionHasSecret({ uri: 'mongodb://h', tlsCertificateKeyFilePassword: 'x' })).toBe(true);
+    expect(connectionHasSecret({ uri: 'mongodb://u:p@h' })).toBe(true);
   });
 
   it('uriHasPassword', () => {

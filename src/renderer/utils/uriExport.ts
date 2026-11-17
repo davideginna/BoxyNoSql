@@ -7,7 +7,9 @@
 // that does not know them just ignores them.
 //
 // The URI is written as stored, credentials included: a file without the
-// password would not connect after import.
+// password would not connect after import. The client certificate's key
+// password travels too (`3t.boxy.tlsCertificateKeyFilePassword`), for the same
+// reason — the export toast warns when the file holds secrets.
 
 import { folderBreadcrumb, type Folder } from './connectionPath';
 
@@ -20,9 +22,12 @@ export interface ExportableConnection {
   readOnly?: boolean;
   tls?: boolean;
   tlsCertificateKeyFile?: string;
+  tlsCertificateKeyFilePassword?: string;
   tlsCAFile?: string;
   tlsAllowInvalidCertificates?: boolean;
   tlsServername?: string;
+  iconDbColor?: string;
+  iconColColor?: string;
 }
 
 function hexToRgb(hex: string): string | undefined {
@@ -55,10 +60,11 @@ export function connectionToUri(conn: ExportableConnection, folders: Folder[]): 
   const params: string[] = [];
   // Studio 3T separates group levels with commas, so a comma inside a folder
   // name would add a level on import.
-  const group = conn.folderId
-    ? folderBreadcrumb(conn.folderId, folders).map(f => enc(f.name.replace(/,/g, ' '))).join(',')
-    : '';
-  if (group) params.push(`3t.group=${group}`);
+  const chain = conn.folderId ? folderBreadcrumb(conn.folderId, folders) : [];
+  if (chain.length) params.push(`3t.group=${chain.map(f => enc(f.name.replace(/,/g, ' '))).join(',')}`);
+  // One color per `3t.group` level, empty where a folder has none, so the
+  // import can color the folders it creates. Written only if some level has one.
+  if (chain.some(f => f.color)) params.push(`3t.boxy.groupColors=${chain.map(f => enc(f.color || '')).join(',')}`);
   params.push(`3t.connection.name=${enc(conn.name)}`);
   const rgb = conn.color ? hexToRgb(conn.color) : undefined;
   if (rgb) params.push(`3t.defaultColor=${rgb}`);
@@ -67,10 +73,13 @@ export function connectionToUri(conn: ExportableConnection, folders: Folder[]): 
   // so a connection with TLS set only on the form needs it spelled out.
   if (conn.tls && !hasParam(uri, 'tls') && !hasParam(uri, 'ssl')) params.push('tls=true');
   if (conn.tlsCertificateKeyFile) params.push(`3t.clientCertPath=${enc(conn.tlsCertificateKeyFile)}`);
+  if (conn.tlsCertificateKeyFilePassword) params.push(`3t.boxy.tlsCertificateKeyFilePassword=${enc(conn.tlsCertificateKeyFilePassword)}`);
   if (conn.tlsServername) params.push(`3t.sniName=${enc(conn.tlsServername)}`);
   if (conn.tlsCAFile) params.push(`3t.boxy.tlsCAFile=${enc(conn.tlsCAFile)}`);
   if (conn.tlsAllowInvalidCertificates) params.push('3t.boxy.tlsAllowInvalidCertificates=true');
   if (conn.readOnly) params.push('3t.boxy.readOnly=true');
+  if (conn.iconDbColor) params.push(`3t.boxy.iconDbColor=${enc(conn.iconDbColor)}`);
+  if (conn.iconColColor) params.push(`3t.boxy.iconColColor=${enc(conn.iconColColor)}`);
   return appendParams(uri, params);
 }
 
@@ -106,6 +115,11 @@ export function connectionsInFolder<C extends { folderId?: string }>(
 export function exportFileName(label: string): string {
   const safe = label.trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ');
   return `${safe || 'connections'}.uri`;
+}
+
+/** True when the connection carries a password the export will write: in the URI or for the client certificate key. */
+export function connectionHasSecret(conn: { uri: string; tlsCertificateKeyFilePassword?: string }): boolean {
+  return uriHasPassword(conn.uri) || !!conn.tlsCertificateKeyFilePassword;
 }
 
 /** True when the URI carries a password — worth saying when it goes to the clipboard or a file. */

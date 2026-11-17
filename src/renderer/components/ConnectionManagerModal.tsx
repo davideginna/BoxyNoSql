@@ -6,7 +6,7 @@ import ImportConnectionsModal from './ImportConnectionsModal';
 import { DEFAULT_CONNECTION_COLOR } from '../utils/iconColors';
 import { pickFile } from '../utils/fileImport';
 import { parseStudio3TExport, ImportedConnection } from '../utils/uriImport';
-import { exportConnections, exportFileName, connectionsInFolder, uriHasPassword } from '../utils/uriExport';
+import { exportConnections, exportFileName, connectionsInFolder, uriHasPassword, connectionHasSecret } from '../utils/uriExport';
 import { showAlert } from '../dialog';
 import { showToast } from '../toast';
 import { onEscape, SWALLOW_ESCAPE } from '../utils/keys';
@@ -15,8 +15,9 @@ interface Connection {
   id: string; name: string; uri: string; database?: string;
   folderId?: string; color?: string; order?: number;
   readOnly?: boolean;
-  tls?: boolean; tlsCertificateKeyFile?: string; tlsCAFile?: string;
+  tls?: boolean; tlsCertificateKeyFile?: string; tlsCertificateKeyFilePassword?: string; tlsCAFile?: string;
   tlsAllowInvalidCertificates?: boolean; tlsServername?: string;
+  iconDbColor?: string; iconColColor?: string;
 }
 interface Folder { id: string; name: string; color?: string; order?: number; parentId?: string; }
 
@@ -107,7 +108,7 @@ export default function ConnectionManagerModal(props: Props) {
       });
       if (res?.canceled) return;
       const what = conns.length === 1 ? `“${conns[0].name}”` : `${conns.length} connections`;
-      const secret = conns.some(c => uriHasPassword(c.uri)) ? ' — the file contains passwords' : '';
+      const secret = conns.some(connectionHasSecret) ? ' — the file contains passwords' : '';
       showToast({ message: `Exported ${what} to ${res.filePath}${secret}`, kind: 'success' });
     } catch (e: any) {
       await showAlert({ title: 'Export failed', message: "Couldn't write the file.", detail: e.message, danger: true });

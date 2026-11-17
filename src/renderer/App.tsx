@@ -519,9 +519,10 @@ function App() {
     let nextConnections = connections;
     const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const resolveFolderPath = async (path: string[]): Promise<string | undefined> => {
+    // `colors` only colors folders created here; an existing folder keeps its own.
+    const resolveFolderPath = async (path: string[], colors?: (string | undefined)[]): Promise<string | undefined> => {
       let parentId: string | undefined;
-      for (const name of path) {
+      for (const [level, name] of path.entries()) {
         const existing = nextFolders.find(
           f => f.parentId === parentId && f.name.toLowerCase() === name.toLowerCase()
         );
@@ -529,6 +530,7 @@ function App() {
         const folder: Folder = {
           id: newId(),
           name,
+          color: colors?.[level],
           order: nextFolders.filter(f => f.parentId === parentId).length,
           parentId,
         };
@@ -541,7 +543,7 @@ function App() {
     let failed = 0;
     for (const item of items) {
       try {
-        const folderId = await resolveFolderPath(item.folderPath);
+        const folderId = await resolveFolderPath(item.folderPath, item.folderColors);
         const conn: Connection = {
           id: newId(),
           name: item.name,
@@ -552,10 +554,13 @@ function App() {
           order: nextConnections.filter(c => c.folderId === folderId).length,
           tls: item.tls,
           tlsCertificateKeyFile: item.tlsCertificateKeyFile,
+          tlsCertificateKeyFilePassword: item.tlsCertificateKeyFilePassword,
           tlsServername: item.tlsServername,
           tlsCAFile: item.tlsCAFile,
           tlsAllowInvalidCertificates: item.tlsAllowInvalidCertificates,
           readOnly: item.readOnly,
+          iconDbColor: item.iconDbColor,
+          iconColColor: item.iconColColor,
         };
         nextConnections = await inv('save-connection', conn);
       } catch { failed++; }

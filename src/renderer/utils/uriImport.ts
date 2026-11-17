@@ -15,6 +15,8 @@ export interface ImportedConnection {
   name: string;
   uri: string;
   folderPath: string[];
+  /** Color per `folderPath` level (`undefined` where none); only in files this app exported. */
+  folderColors?: (string | undefined)[];
   color?: string;
   database?: string;
   /** TLS settings recovered from `ssl`/`tls` and the `3t.*` certificate params. */
@@ -22,15 +24,25 @@ export interface ImportedConnection {
   tlsCertificateKeyFile?: string;
   tlsServername?: string;
   /** Only in files this app exported (`3t.boxy.*` — see uriExport.ts). */
+  tlsCertificateKeyFilePassword?: string;
   tlsCAFile?: string;
   tlsAllowInvalidCertificates?: boolean;
   readOnly?: boolean;
+  iconDbColor?: string;
+  iconColColor?: string;
 }
 
 function rgbToHex(value: string): string | undefined {
   const parts = value.split(',').map(p => parseInt(p.trim(), 10));
   if (parts.length !== 3 || parts.some(n => !Number.isFinite(n) || n < 0 || n > 255)) return undefined;
   return '#' + parts.map(n => n.toString(16).padStart(2, '0')).join('');
+}
+
+// `#rgb`/`#rrggbb` as the color pickers store it; anything else is dropped
+// rather than stored as a color the UI cannot draw.
+function hexColor(value: string | null | undefined): string | undefined {
+  const v = value?.trim().toLowerCase();
+  return v && /^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(v) ? v : undefined;
 }
 
 // Drops `3t.*` params and params with an empty value (Studio 3T exports
@@ -95,19 +107,29 @@ export function parseStudio3TExport(text: string): ImportedConnection[] {
     const caFile = params.get('3t.boxy.tlsCAFile')?.trim() || undefined;
     const allowInvalid = /^true$/i.test(params.get('3t.boxy.tlsAllowInvalidCertificates') || '') || undefined;
     const readOnly = /^true$/i.test(params.get('3t.boxy.readOnly') || '') || undefined;
+    const certPassword = params.get('3t.boxy.tlsCertificateKeyFilePassword') || undefined;
+    // Not filtered like folderPath: the colors are positional, one per level.
+    const groupColors = params.get('3t.boxy.groupColors');
+    const folderColors = groupColors !== null && folderPath.length
+      ? folderPath.map((_, i) => hexColor(groupColors.split(',')[i]))
+      : undefined;
 
     out.push({
       name,
       uri: cleanUri(line, params),
       folderPath,
+      folderColors: folderColors?.some(Boolean) ? folderColors : undefined,
       color: colorParam ? rgbToHex(colorParam) : undefined,
       database,
       tls: tlsOn || !!clientCert || !!caFile || undefined,
       tlsCertificateKeyFile: clientCert,
+      tlsCertificateKeyFilePassword: certPassword,
       tlsServername: sni,
       tlsCAFile: caFile,
       tlsAllowInvalidCertificates: allowInvalid,
       readOnly,
+      iconDbColor: hexColor(params.get('3t.boxy.iconDbColor')),
+      iconColColor: hexColor(params.get('3t.boxy.iconColColor')),
     });
     lastComment = undefined;
   }
