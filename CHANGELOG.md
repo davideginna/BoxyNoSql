@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Exported `.uri` files match the common format more closely**: each line carries `3t.uriVersion=3`, and certificate paths are written with plain `/` instead of `%2F`
+
 ## [1.12.2] - 2026-11-17
 
 ### Fixed

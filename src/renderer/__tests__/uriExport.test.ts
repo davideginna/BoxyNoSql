@@ -24,13 +24,20 @@ describe('connectionToUri', () => {
 
   it('inserts the slash a bare host needs before the query string', () => {
     expect(connectionToUri({ name: 'local', uri: 'mongodb://localhost:27017' }, []))
-      .toBe('mongodb://localhost:27017/?3t.connection.name=local');
+      .toBe('mongodb://localhost:27017/?3t.connection.name=local&3t.uriVersion=3');
   });
 
   it('spells out tls only when the URI does not already say it', () => {
     expect(connectionToUri({ name: 'a', uri: 'mongodb://h', tls: true }, [])).toContain('tls=true');
     const withSsl = connectionToUri({ name: 'a', uri: 'mongodb://h/?ssl=true', tls: true }, []);
     expect(withSsl).not.toContain('tls=true');
+  });
+
+  it('writes certificate paths with readable slashes', () => {
+    const uri = connectionToUri({ name: 'a', uri: 'mongodb://h', tlsCertificateKeyFile: '/certs/my client.pem', tlsCAFile: 'C:/ca.pem' }, []);
+    expect(uri).toContain('3t.clientCertPath=/certs/my%20client.pem');
+    expect(uri).toContain('3t.boxy.tlsCAFile=C:/ca.pem');
+    expect(parseStudio3TExport(uri)[0]).toMatchObject({ tlsCertificateKeyFile: '/certs/my client.pem', tlsCAFile: 'C:/ca.pem' });
   });
 
   it('replaces a comma in a folder name, which would add a level', () => {

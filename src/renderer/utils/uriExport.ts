@@ -54,6 +54,10 @@ function appendParams(uri: string, params: string[]): string {
 
 const enc = encodeURIComponent;
 
+// File paths keep `/` and `:` readable, as the other client writes them
+// (`3t.clientCertPath=/home/…/client.pem`); both are legal in a query value.
+const encPath = (path: string) => enc(path).replace(/%2F/gi, '/').replace(/%3A/gi, ':');
+
 /** One connection as a single `.uri` line, `3t.*` metadata in the query string. */
 export function connectionToUri(conn: ExportableConnection, folders: Folder[]): string {
   const uri = conn.uri.trim();
@@ -66,16 +70,19 @@ export function connectionToUri(conn: ExportableConnection, folders: Folder[]): 
   // import can color the folders it creates. Written only if some level has one.
   if (chain.some(f => f.color)) params.push(`3t.boxy.groupColors=${chain.map(f => enc(f.color || '')).join(',')}`);
   params.push(`3t.connection.name=${enc(conn.name)}`);
+  // The URI-format version the other client stamps on its own exports; written
+  // so its import reads this file the same way. Ignored on our import.
+  params.push('3t.uriVersion=3');
   const rgb = conn.color ? hexToRgb(conn.color) : undefined;
   if (rgb) params.push(`3t.defaultColor=${rgb}`);
   if (conn.database) params.push(`3t.databases=${enc(conn.database)}`);
   // The import turns TLS on from `tls`/`ssl` in the URI or a client certificate,
   // so a connection with TLS set only on the form needs it spelled out.
   if (conn.tls && !hasParam(uri, 'tls') && !hasParam(uri, 'ssl')) params.push('tls=true');
-  if (conn.tlsCertificateKeyFile) params.push(`3t.clientCertPath=${enc(conn.tlsCertificateKeyFile)}`);
+  if (conn.tlsCertificateKeyFile) params.push(`3t.clientCertPath=${encPath(conn.tlsCertificateKeyFile)}`);
   if (conn.tlsCertificateKeyFilePassword) params.push(`3t.boxy.tlsCertificateKeyFilePassword=${enc(conn.tlsCertificateKeyFilePassword)}`);
   if (conn.tlsServername) params.push(`3t.sniName=${enc(conn.tlsServername)}`);
-  if (conn.tlsCAFile) params.push(`3t.boxy.tlsCAFile=${enc(conn.tlsCAFile)}`);
+  if (conn.tlsCAFile) params.push(`3t.boxy.tlsCAFile=${encPath(conn.tlsCAFile)}`);
   if (conn.tlsAllowInvalidCertificates) params.push('3t.boxy.tlsAllowInvalidCertificates=true');
   if (conn.readOnly) params.push('3t.boxy.readOnly=true');
   if (conn.iconDbColor) params.push(`3t.boxy.iconDbColor=${enc(conn.iconDbColor)}`);
